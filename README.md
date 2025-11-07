@@ -107,4 +107,4 @@ chord-grid/
 
 ## License
 
-MIT
+GPL V3

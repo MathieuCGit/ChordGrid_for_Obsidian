@@ -3,8 +3,8 @@
   "name": "Chord Grid Renderer",
   "version": "1.0.0",
   "minAppVersion": "0.15.0",
-  "description": "Affiche des grilles d'accords avec notation rythmique à partir d'une syntaxe simple",
-  "author": "Votre Nom",
-  "authorUrl": "https://votre-site.com",
+  "description": "Displays chord grids with rhythmic notation from a simple syntax.",
+  "author": "Mathieu CONAN",
+  "authorUrl": "https://github.com/MathieuCGit/chord-grid",
   "isDesktopOnly": false
 }
