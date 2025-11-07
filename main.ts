@@ -411,7 +411,6 @@ export default class ChordGridPlugin extends Plugin {
 
     // Draw stem for short notes - ATTACHED TO BOTTOM OF SLASH
     if (value >= 2 && value !== 1) {
-      // We don't need the stem position here for beams, but draw it anyway
       this.drawStem(svg, centerX, staffLineY, 25);
     }
 
@@ -428,62 +427,75 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw a group of notes with proper beaming (sans crochets individuels)
+   * Draw a group of notes with proper beaming, including nested beam segments for mixed durations
+   * notesValues: array of numbers (e.g., [32,32,16,16])
    */
-  drawNoteGroup(svg: SVGElement, notes: number[], x: number, staffLineY: number, width: number): number {
-    const noteSpacing = width / notes.length;
+  drawNoteGroup(svg: SVGElement, notesValues: number[], x: number, staffLineY: number, width: number): number {
+    const noteCount = notesValues.length;
+    const noteSpacing = width / noteCount;
     const stemHeight = 25;
-    
-    // Determine beam count based on shortest note value
-    const minNoteValue = Math.min(...notes);
-    const beamCount = minNoteValue === 8 ? 1 : minNoteValue === 16 ? 2 : minNoteValue === 32 ? 3 : 0;
 
-    let firstNoteX: number = 0;
-    const stemPositions: number[] = [];
-    const stemBottomYs: number[] = [];
+    // Map notes to beam counts and positions
+    const notes: { value: number; beamCount: number; centerX: number; stemX?: number; stemTopY?: number; stemBottomY?: number }[] = [];
 
-    // Draw notes and collect stem positions
-    notes.forEach((note, index) => {
-      const noteX = x + index * noteSpacing + noteSpacing / 2;
-      
-      if (index === 0) {
-        firstNoteX = noteX;
-      }
-      
-      // Draw slash
-      this.drawSlash(svg, noteX, staffLineY);
-      
-      // Draw stem and store its X position AND bottom Y for beam alignment
-      const stemInfo = this.drawStem(svg, noteX, staffLineY, stemHeight);
-      stemPositions.push(stemInfo.x);
-      stemBottomYs.push(stemInfo.bottomY);
-    });
+    for (let i = 0; i < noteCount; i++) {
+      const val = notesValues[i];
+      const centerX = x + i * noteSpacing + noteSpacing / 2;
+      const beamCount = val === 8 ? 1 : val === 16 ? 2 : val === 32 ? 3 : 0;
 
-    // Draw connecting beams ONLY for beamed notes (pas de crochets individuels)
-    if (beamCount > 0 && stemPositions.length > 1) {
-      // Use the exact stem positions for ligatures
-      const startX = stemPositions[0];
-      const endX = stemPositions[stemPositions.length - 1];
+      // draw slash
+      this.drawSlash(svg, centerX, staffLineY);
+      // draw stem and capture positions
+      const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
 
-      // Attach beams at the BOTTOM of the stems (for downward stems), then stack upwards
-      // Compute a suitable base Y using the shallowest bottom among stems (to avoid drawing below any stem)
-      const beamBaseY = Math.min(...stemBottomYs);
+      notes.push({ value: val, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+    }
 
-      for (let i = 0; i < beamCount; i++) {
-        // Position Y des ligatures : COMMENCER À LA BASE DE LA HAMPE et remonter pour chaque ligature
-        const beamY = beamBaseY - i * 5; // stack beams upwards (towards the note)
-        const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        beam.setAttribute('x1', startX.toString());
-        beam.setAttribute('y1', beamY.toString());
-        beam.setAttribute('x2', endX.toString());
-        beam.setAttribute('y2', beamY.toString());
-        beam.setAttribute('stroke', '#000');
-        beam.setAttribute('stroke-width', '2');
-        svg.appendChild(beam);
+    // Determine maximum beam count in this group
+    const maxBeamCount = notes.reduce((m, n) => Math.max(m, n.beamCount), 0);
+    if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
+
+    // For each beam level (1 = lowest beam line, 2 = second line, etc.), draw continuous segments
+    const beamGap = 5; // vertical gap between stacked beams
+
+    // Determine base Y for beams: use the minimum stemBottomY (closest to staff) so beams sit on top of stems
+    const baseStemBottom = Math.min(...notes.map(n => n.stemBottomY || 0));
+
+    for (let level = 1; level <= maxBeamCount; level++) {
+      // Build continuous segments where notes have beamCount >= level
+      let segStartIndex: number | null = null;
+
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
+        const active = n.beamCount >= level;
+
+        if (active && segStartIndex === null) {
+          segStartIndex = i;
+        } else if ((!active || i === notes.length - 1) && segStartIndex !== null) {
+          // If we are at the end and active, extend to i
+          const segEnd = (active && i === notes.length - 1) ? i : i - 1;
+
+          // compute beam Y: start from baseStemBottom and go up for higher levels
+          const beamY = baseStemBottom - (level - 1) * beamGap;
+
+          const startX = notes[segStartIndex].stemX!;
+          const endX = notes[segEnd].stemX!;
+
+          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          beam.setAttribute('x1', startX.toString());
+          beam.setAttribute('y1', beamY.toString());
+          beam.setAttribute('x2', endX.toString());
+          beam.setAttribute('y2', beamY.toString());
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+
+          segStartIndex = null;
+        }
       }
     }
 
-    return firstNoteX;
+    return notes.length ? notes[0].centerX : null;
   }
 
   /**
