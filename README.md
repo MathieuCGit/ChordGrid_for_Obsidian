@@ -1,19 +1,19 @@
-# Plugin Chord Grid pour Obsidian
+# Chord Grid Plugin for Obsidian
 
-Plugin permettant d'afficher des grilles d'accords avec notation rythmique sous forme de rendu graphique vectoriel (SVG).
+A plugin that displays chord charts with rhythmic notation using vector graphics (SVG).
 
 ## Installation
 
-1. Créez un dossier `chord-grid` dans `.obsidian/plugins/`
-2. Copiez les fichiers suivants dans ce dossier :
-   - `main.ts` (le code du plugin)
+1. Create a `chord-grid` folder in `.obsidian/plugins/`
+2. Copy the following files into this folder:
+   - `main.ts` (plugin code)
    - `manifest.json`
-3. Compilez le TypeScript : `npm run build` (voir section Développement)
-4. Activez le plugin dans Obsidian : Paramètres → Plugins communautaires
+3. Compile TypeScript: `npm run build` (see Development section)
+4. Enable the plugin in Obsidian: Settings → Community plugins
 
-## Utilisation
+## Usage
 
-Dans vos notes Obsidian, créez un bloc de code avec le langage `chordgrid` :
+In your Obsidian notes, create a code block with the `chordgrid` language:
 
 ````markdown
 ```chordgrid
@@ -21,90 +21,90 @@ Dans vos notes Obsidian, créez un bloc de code avec le langage `chordgrid` :
 ```
 ````
 
-### Syntaxe
+### Syntax
 
-**Signature temporelle :** `4/4`, `3/4`, `6/8`, etc.
+**Time signature:** `4/4`, `3/4`, `6/8`, etc.
 
-**Barres de mesure :**
-- `|` : Barre simple
-- `||` : Double barre
-- `||:` : Début de reprise
-- `:||` : Fin de reprise
+**Bar lines:**
+- `|` : Single bar
+- `||` : Double bar
+- `||:` : Start repeat
+- `:||` : End repeat
 
-**Accords :** Notation standard (ex: `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`)
+**Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`)
 
-**Rythme entre crochets :**
-- `1` = Ronde
-- `2` = Blanche
-- `4` = Noire
-- `8` = Croche
-- `16` = Double croche
+**Rhythm in brackets:**
+- `1` = Whole note
+- `2` = Half note
+- `4` = Quarter note
+- `8` = Eighth note
+- `16` = Sixteenth note
 
-**Groupement rythmique :**
-- Les chiffres collés représentent un temps (ex: `88` = 2 croches dans le même temps, avec hampes liées)
-- Les chiffres séparés par des espaces représentent des temps différents
+**Rhythmic grouping:**
+- Numbers grouped together represent one beat (e.g., `88` = 2 eighth notes in the same beat, with connected beams)
+- Numbers separated by spaces represent different beats
 
-### Exemples
+### Examples
 
-**Mesure simple en 4/4 :**
+**Simple 4/4 measure:**
 ```chordgrid
 4/4 | G[4 4 4 4] |
 ```
 
-**Grille avec reprises :**
+**Chart with repeats:**
 ```chordgrid
 4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||
 ```
 
-**Rythme mixte :**
+**Mixed rhythms:**
 ```chordgrid
 4/4 | C[8888 4 4] | G[4 88 4 8] |
 ```
 
-**Plusieurs lignes :**
+**Multiple lines:**
 ```chordgrid
 4/4 ||: C[4 4 4 4] | F[4 4 4 4] | G[4 4 4 4] | C[2 2] |
     Am[88 88 4 4] | Dm[4 4 2] | G7[16161616 4 4] | C[1] :||
 ```
 
-## Développement
+## Development
 
-### Prérequis
+### Prerequisites
 - Node.js
 - npm
 
-### Configuration
+### Setup
 ```bash
 npm install
-npm run dev  # Mode développement avec watch
-npm run build  # Compilation production
+npm run dev  # Development mode with watch
+npm run build  # Production build
 ```
 
 ### Structure
 ```
 chord-grid/
-├── main.ts          # Code principal du plugin
-├── manifest.json    # Métadonnées du plugin
-├── package.json     # Dépendances npm
-└── tsconfig.json    # Configuration TypeScript
+├── main.ts          # Main plugin code
+├── manifest.json    # Plugin metadata
+├── package.json     # npm dependencies
+└── tsconfig.json    # TypeScript configuration
 ```
 
-## Fonctionnalités
+## Features
 
-- ✅ Rendu SVG vectoriel
-- ✅ Grilles d'accords avec notation rythmique
-- ✅ Groupement automatique des croches par temps
-- ✅ Barres de reprise
-- ✅ Support des signatures temporelles
-- ✅ 4 mesures par ligne (automatique)
-- ✅ Largeur dynamique des mesures
+- ✅ Vector SVG rendering
+- ✅ Chord charts with rhythmic notation
+- ✅ Automatic eighth note beaming by beat
+- ✅ Repeat bars
+- ✅ Time signature support
+- ✅ 4 measures per line (automatic)
+- ✅ Dynamic measure width
 
-## Limitations actuelles
+## Current Limitations
 
-- Pas de support pour les silences
-- Pas de support pour les nuances ou articulations
-- Pas d'export vers d'autres formats
+- No support for rests
+- No support for dynamics or articulations
+- No export to other formats
 
-## Licence
+## License
 
 MIT
