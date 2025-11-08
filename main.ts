@@ -518,6 +518,7 @@ export default class ChordGridPlugin extends Plugin {
     for (let level = 1; level <= maxBeamCount; level++) {
       let segStartIndex: number | null = null;
 
+      // First pass: draw continuous beam segments
       for (let i = 0; i < notes.length; i++) {
         const n = notes[i];
         const active = n.beamCount >= level;
@@ -549,22 +550,83 @@ export default class ChordGridPlugin extends Plugin {
         }
       }
 
-      // Now draw stubs for notes that have this level but their left neighbor DOES NOT have it
-      // This creates the "extra beam to the left that stops in the void" effect.
-      // BUT: don't draw a stub for the first note (i=0) to avoid it extending beyond the group boundary
-      const stubLength = Math.max(8, noteSpacing * 0.4); // length of stub to draw leftwards
+      // Second pass: draw stubs for isolated notes at higher beam levels
+      // A stub should point in the direction of the beamed group (if any exists)
+      // RULE: First note of group cannot have left stub, last note cannot have right stub
+      const stubLength = Math.max(8, noteSpacing * 0.4);
+      
       for (let i = 0; i < notes.length; i++) {
         const n = notes[i];
         const hasLevel = n.beamCount >= level;
-        const leftHas = (i - 1 >= 0) ? (notes[i - 1].beamCount >= level) : false;
-        // Only draw stub if not the first note AND has level AND left doesn't have it
-        if (i > 0 && hasLevel && !leftHas) {
-          // draw a left-facing stub from this stem
-          const beamY = baseStemBottom - (level - 1) * beamGap;
-          const startX = n.stemX!;
-          const stubX = startX - stubLength;
+        
+        if (!hasLevel) continue;
+        
+        const leftBeamCount = (i - 1 >= 0) ? notes[i - 1].beamCount : 0;
+        const rightBeamCount = (i + 1 < notes.length) ? notes[i + 1].beamCount : 0;
+        
+        const leftHasLevel = leftBeamCount >= level;
+        const rightHasLevel = rightBeamCount >= level;
+        
+        // Skip if both neighbors have this level (continuous beam covers it)
+        if (leftHasLevel && rightHasLevel) continue;
+        
+        // Skip if neither neighbor has this level AND this is an isolated note with no beam at all
+        if (!leftHasLevel && !rightHasLevel) {
+          // This note is isolated at this level
+          // Draw stub to the right ONLY if not the last note of the entire group
+          if (i < notes.length - 1) {
+            const beamY = baseStemBottom - (level - 1) * beamGap;
+            const stemX = n.stemX!;
+            const stubX = stemX + stubLength;
+            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            beam.setAttribute('x1', stemX.toString());
+            beam.setAttribute('y1', beamY.toString());
+            beam.setAttribute('x2', stubX.toString());
+            beam.setAttribute('y2', beamY.toString());
+            beam.setAttribute('stroke', '#000');
+            beam.setAttribute('stroke-width', '2');
+            svg.appendChild(beam);
+          }
+          // If this IS the last note, draw stub to the LEFT instead
+          else if (i > 0) {
+            const beamY = baseStemBottom - (level - 1) * beamGap;
+            const stemX = n.stemX!;
+            const stubX = stemX - stubLength;
+            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            beam.setAttribute('x1', stemX.toString());
+            beam.setAttribute('y1', beamY.toString());
+            beam.setAttribute('x2', stubX.toString());
+            beam.setAttribute('y2', beamY.toString());
+            beam.setAttribute('stroke', '#000');
+            beam.setAttribute('stroke-width', '2');
+            svg.appendChild(beam);
+          }
+          continue;
+        }
+        
+        const beamY = baseStemBottom - (level - 1) * beamGap;
+        const stemX = n.stemX!;
+        
+        // If only left has level: stub to the LEFT (part of group on the left)
+        // BUT only if not the first note of the group
+        if (leftHasLevel && !rightHasLevel && i > 0) {
+          const stubX = stemX - stubLength;
           const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          beam.setAttribute('x1', startX.toString());
+          beam.setAttribute('x1', stemX.toString());
+          beam.setAttribute('y1', beamY.toString());
+          beam.setAttribute('x2', stubX.toString());
+          beam.setAttribute('y2', beamY.toString());
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+        }
+        
+        // If only right has level: stub to the RIGHT (part of group on the right)
+        // BUT only if not the last note of the group
+        if (!leftHasLevel && rightHasLevel && i < notes.length - 1) {
+          const stubX = stemX + stubLength;
+          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          beam.setAttribute('x1', stemX.toString());
           beam.setAttribute('y1', beamY.toString());
           beam.setAttribute('x2', stubX.toString());
           beam.setAttribute('y2', beamY.toString());
