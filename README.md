@@ -39,10 +39,13 @@ In your Obsidian notes, create a code block with the `chordgrid` language:
 - `4` = Quarter note
 - `8` = Eighth note
 - `16` = Sixteenth note
+- `32` = Thirty tow note
+- `64` = sixty four note
 
 **Rhythmic grouping:**
 - Numbers grouped together represent one beat (e.g., `88` = 2 eighth notes in the same beat, with connected beams)
 - Numbers separated by spaces represent different beats
+- Use underscore `_` result in adding tie for example [88_4] will add a tie between the last eight note of the first beat ant the quarter note on the second beat
 
 ### Examples
 

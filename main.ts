@@ -4,6 +4,7 @@ import { Plugin, MarkdownPostProcessorContext } from 'obsidian';
 interface NoteValue {
   value: number;        // 1,2,4,8,16,32...
   dotted?: boolean;     // whether this specific note is dotted
+  tied?: boolean;       // whether this note is tied to the previous one
 }
 
 interface Beat {
@@ -13,6 +14,7 @@ interface Beat {
 interface ChordInMeasure {
   chord: string;
   beats: Beat[];
+  rawRhythm: string; // Store original rhythm string for tie detection
 }
 
 interface Measure {
@@ -26,6 +28,14 @@ interface Measure {
 interface ChordGrid {
   timeSignature: string;
   measures: Measure[];
+}
+
+interface TiePosition {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  type: 'internal' | 'cross-measure';
 }
 
 export default class ChordGridPlugin extends Plugin {
@@ -87,7 +97,8 @@ export default class ChordGridPlugin extends Plugin {
           // Add chord to current measure
           currentMeasure.chords.push({
             chord: token.chord!,
-            beats: token.beats!
+            beats: token.beats!,
+            rawRhythm: token.rhythm!
           });
         }
       }
@@ -113,17 +124,10 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Tokenize a line into meaningful tokens
-   *
-   * Changes: rhythm tokens now parse per-note dotted flags.
-   * A token may be like:
-   *  - "4" => quarter
-   *  - "4." => dotted quarter
-   *  - "3232161616" => sequence of small notes (32 32 16 16 16 ...)
-   *  - "8.16" or "8. 16" => dotted eighth + sixteenth (we support both forms)
+   * Tokenize a line into meaningful tokens with proper tie handling
    */
-  tokenizeLine(line: string): Array<{type: string, chord?: string, beats?: Beat[]}> {
-    const tokens: Array<{type: string, chord?: string, beats?: Beat[]}> = [];
+  tokenizeLine(line: string): Array<{type: string, chord?: string, beats?: Beat[], rhythm?: string}> {
+    const tokens: Array<{type: string, chord?: string, beats?: Beat[], rhythm?: string}> = [];
     let remaining = line.replace(/^\d+\/\d+\s*/, ''); // Remove time signature
     
     while (remaining.length > 0) {
@@ -155,34 +159,38 @@ export default class ChordGridPlugin extends Plugin {
         continue;
       }
       
-      // Check for chords - allow dots in rhythm tokens (e.g., 4. for dotted quarter)
-      const chordMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9.\s]+)\]/);
+      // Check for chords - allow underscores for ties
+      const chordMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9._\s]+)\]/);
       if (chordMatch) {
         const chord = chordMatch[1];
         const rhythm = chordMatch[2];
         
-        // Parse rhythm into beats
+        // Parse rhythm into beats with tie detection
         const beats: Beat[] = [];
-        // split tokens on spaces; each token may itself contain multiple numeric elements
         const rhythmTokens = rhythm.split(/\s+/).filter(r => r.length > 0);
         
         for (const token of rhythmTokens) {
-          // We will parse the token character by character, allowing for patterns like:
-          // "8.", "16", "3232", "8.16", etc.
-          // When we encounter a complete note (with optional dot), we close it and start a new beat
           const notes: NoteValue[] = [];
           let i = 0;
+          let isTied = false;
           
           while (i < token.length) {
             const ch = token[i];
-            // Helper to check ahead safely
-            const next = (offset = 1) => token[i + offset] || '';
             
+            // Check for tie marker at start of token
+            if (ch === '_' && notes.length === 0) {
+              isTied = true;
+              i++;
+              continue;
+            }
+            
+            const next = (offset = 1) => token[i + offset] || '';
+
             let noteValue: number | null = null;
             let dotted = false;
             let charsConsumed = 0;
             
-            // parse 64 (sixty-fourth note - quadruple croche)
+            // parse 64
             if (ch === '6' && next(1) === '4') {
               noteValue = 64;
               charsConsumed = 2;
@@ -200,7 +208,7 @@ export default class ChordGridPlugin extends Plugin {
                 charsConsumed = 3;
               }
             }
-            // parse 16 (might be '16' with dot '16.')
+            // parse 16
             else if (ch === '1' && next(1) === '6') {
               noteValue = 16;
               charsConsumed = 2;
@@ -217,6 +225,13 @@ export default class ChordGridPlugin extends Plugin {
                 dotted = true;
                 charsConsumed = 2;
               }
+            } else if (ch === '_') {
+              // Internal tie marker - mark the previous note as tied
+              if (notes.length > 0) {
+                notes[notes.length - 1].tied = true;
+              }
+              i++;
+              continue;
             } else {
               // skip unexpected characters
               i += 1;
@@ -224,18 +239,18 @@ export default class ChordGridPlugin extends Plugin {
             }
             
             if (noteValue !== null) {
-              notes.push({ value: noteValue, dotted });
+              notes.push({ value: noteValue, dotted, tied: isTied });
+              isTied = false;
               i += charsConsumed;
             }
-          } // end parse token chars
+          }
 
           if (notes.length > 0) {
-            // Each rhythm token becomes a Beat. It's possible token included multiple notes.
             beats.push({ notes });
           }
-        } // end rhythmTokens loop
+        }
         
-        tokens.push({ type: 'chord', chord, beats });
+        tokens.push({ type: 'chord', chord, beats, rhythm });
         remaining = remaining.substring(chordMatch[0].length);
         continue;
       }
@@ -306,21 +321,91 @@ export default class ChordGridPlugin extends Plugin {
     const timeSigText = this.createText(grid.timeSignature, 10, 40, '18px', 'bold');
     svg.appendChild(timeSigText);
 
-    // Draw all measures
-    measurePositions.forEach(({measure, lineIndex, posInLine}) => {
+    // Store note positions for tie detection
+    const notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[] = [];
+
+    // Draw all measures and collect note positions
+    measurePositions.forEach(({measure, lineIndex, posInLine}, measureIndex) => {
       const x = posInLine * measureWidth + 40;
       const y = lineIndex * (measureHeight + 20) + 20;
 
-      this.drawMeasure(svg, measure, x, y, measureWidth, measureHeight);
+      this.drawMeasure(svg, measure, x, y, measureWidth, measureHeight, measureIndex, notePositions);
     });
+
+    // Detect and draw ties based on note positions
+    this.detectAndDrawTies(svg, notePositions, grid);
 
     return svg;
   }
 
   /**
+   * Detect and draw ties based on note positions and grid structure
+   */
+  detectAndDrawTies(svg: SVGElement, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[], grid: ChordGrid) {
+    const ties: TiePosition[] = [];
+
+    // Detect internal ties (within same measure)
+    for (let i = 0; i < notePositions.length - 1; i++) {
+      const currentNote = notePositions[i];
+      const nextNote = notePositions[i + 1];
+      
+      if (currentNote.tied && 
+          currentNote.measureIndex === nextNote.measureIndex &&
+          currentNote.chordIndex === nextNote.chordIndex) {
+        // Internal tie within same chord
+        ties.push({
+          startX: currentNote.x,
+          startY: currentNote.y - 15,
+          endX: nextNote.x,
+          endY: nextNote.y - 15,
+          type: 'internal'
+        });
+      }
+    }
+
+    // Detect cross-measure ties
+    for (let i = 0; i < notePositions.length - 1; i++) {
+      const currentNote = notePositions[i];
+      const nextNote = notePositions[i + 1];
+      
+      if (currentNote.tied && 
+          currentNote.measureIndex !== nextNote.measureIndex &&
+          nextNote.measureIndex === currentNote.measureIndex + 1) {
+        // Cross-measure tie
+        ties.push({
+          startX: currentNote.x,
+          startY: currentNote.y - 15,
+          endX: nextNote.x,
+          endY: nextNote.y - 15,
+          type: 'cross-measure'
+        });
+      }
+    }
+
+    // Draw all detected ties
+    ties.forEach(tie => {
+      this.drawTie(svg, tie);
+    });
+  }
+
+  /**
+   * Draw a tie
+   */
+  drawTie(svg: SVGElement, tie: TiePosition) {
+    const tieElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const controlY = tie.startY - 8;
+    
+    tieElement.setAttribute('d', `M ${tie.startX} ${tie.startY} Q ${(tie.startX + tie.endX) / 2} ${controlY} ${tie.endX} ${tie.endY}`);
+    tieElement.setAttribute('stroke', '#000');
+    tieElement.setAttribute('stroke-width', '1.5');
+    tieElement.setAttribute('fill', 'none');
+    svg.appendChild(tieElement);
+  }
+
+  /**
    * Draw a single measure with chord, rhythm, and bar lines
    */
-  drawMeasure(svg: SVGElement, measure: Measure, x: number, y: number, width: number, height: number) {
+  drawMeasure(svg: SVGElement, measure: Measure, x: number, y: number, width: number, height: number, measureIndex: number, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[]) {
     // Draw left bar line
     if (measure.isRepeatStart) {
       this.drawRepeatBar(svg, x, y, height, true);
@@ -340,12 +425,13 @@ export default class ChordGridPlugin extends Plugin {
     svg.appendChild(staffLine);
 
     // Draw all chords in the measure
-    const chordWidth = width / measure.chords.length;
+    const chordWidth = width / Math.max(measure.chords.length, 1);
+    
     measure.chords.forEach((chordData, chordIndex) => {
       const chordX = x + (chordIndex * chordWidth) + 10;
       
-      // Draw rhythm notation for this chord
-      const firstNoteX = this.drawRhythm(svg, chordData, chordX, staffLineY, chordWidth - 20);
+      // Draw rhythm notation for this chord and collect note positions
+      const firstNoteX = this.drawRhythm(svg, chordData, chordX, staffLineY, chordWidth - 20, measureIndex, chordIndex, notePositions);
 
       // Draw chord name above the first note
       if (firstNoteX !== null) {
@@ -363,6 +449,320 @@ export default class ChordGridPlugin extends Plugin {
       } else {
         this.drawBar(svg, rightBarX, y, height);
       }
+    }
+  }
+
+  /**
+   * Draw rhythm pattern for a chord and return the x position of the first note
+   */
+  drawRhythm(svg: SVGElement, chordData: ChordInMeasure, x: number, staffLineY: number, width: number, measureIndex: number, chordIndex: number, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[]): number | null {
+    const beats = chordData.beats;
+    const beatWidth = beats.length > 0 ? width / beats.length : width;
+    let currentX = x;
+    let firstNoteX: number | null = null;
+
+    beats.forEach((beat, beatIndex) => {
+      const firstNoteInBeatX = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions);
+      
+      if (beatIndex === 0 && firstNoteInBeatX !== null) {
+        firstNoteX = firstNoteInBeatX;
+      }
+      
+      currentX += beatWidth;
+    });
+
+    return firstNoteX;
+  }
+
+  /**
+   * Draw a single beat - handles both single notes and beamed groups
+   */
+  drawBeat(svg: SVGElement, beat: Beat, x: number, staffLineY: number, width: number, measureIndex: number, chordIndex: number, beatIndex: number, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[]): number | null {
+    if (beat.notes.length === 1) {
+      const nv = beat.notes[0];
+      const noteX = this.drawSingleNote(svg, nv, x, staffLineY, width);
+      
+      // Store note position for tie detection
+      notePositions.push({
+        x: noteX,
+        y: staffLineY,
+        measureIndex,
+        chordIndex,
+        beatIndex,
+        noteIndex: 0,
+        tied: nv.tied || false
+      });
+      
+      return noteX;
+    } else {
+      const firstNoteX = this.drawNoteGroup(svg, beat.notes, x, staffLineY, width);
+      
+      // Store note positions for grouped notes
+      beat.notes.forEach((nv, noteIndex) => {
+        const noteX = x + (noteIndex * (width / beat.notes.length)) + (width / beat.notes.length) / 2;
+        notePositions.push({
+          x: noteX,
+          y: staffLineY,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          noteIndex,
+          tied: nv.tied || false
+        });
+      });
+      
+      return firstNoteX;
+    }
+  }
+
+  /**
+   * Draw a single note with slash and stem
+   */
+  drawSingleNote(svg: SVGElement, nv: NoteValue, x: number, staffLineY: number, width: number): number {
+    const centerX = x + width / 2;
+
+    // Draw slash (top-right to bottom-left)
+    this.drawSlash(svg, centerX, staffLineY);
+
+    // Draw stem for short notes - ATTACHED TO BOTTOM OF SLASH
+    if (nv.value >= 2 && nv.value !== 1) {
+      this.drawStem(svg, centerX, staffLineY, 25);
+    }
+
+    // Draw flags if needed (for single isolated short notes)
+    if (nv.value === 8) {
+      this.drawFlag(svg, centerX, staffLineY, 1);
+    } else if (nv.value === 16) {
+      this.drawFlag(svg, centerX, staffLineY, 2);
+    } else if (nv.value === 32) {
+      this.drawFlag(svg, centerX, staffLineY, 3);
+    } else if (nv.value === 64) {
+      this.drawFlag(svg, centerX, staffLineY, 4);
+    }
+
+    // If this note is dotted, draw a small dot to the right of the note head
+    if (nv.dotted) {
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', (centerX + 8).toString());
+      dot.setAttribute('cy', (staffLineY).toString());
+      dot.setAttribute('r', '2');
+      dot.setAttribute('fill', '#000');
+      svg.appendChild(dot);
+    }
+
+    return centerX;
+  }
+
+  /**
+   * Draw a group of notes with proper beaming, including nested beam segments for mixed durations
+   */
+  drawNoteGroup(svg: SVGElement, notesValues: NoteValue[], x: number, staffLineY: number, width: number): number {
+    const noteCount = notesValues.length;
+    const hasSmallNotes = notesValues.some(nv => nv.value >= 32);
+    const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
+    const stemHeight = 25;
+
+    const notes: { nv: NoteValue; beamCount: number; centerX: number; stemX?: number; stemTopY?: number; stemBottomY?: number }[] = [];
+
+    for (let i = 0; i < noteCount; i++) {
+      const nv = notesValues[i];
+      const centerX = x + i * noteSpacing + noteSpacing / 2;
+      const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
+
+      this.drawSlash(svg, centerX, staffLineY);
+
+      const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
+      notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+
+      if (nv.dotted) {
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', (centerX + 8).toString());
+        dot.setAttribute('cy', (staffLineY).toString());
+        dot.setAttribute('r', '2');
+        dot.setAttribute('fill', '#000');
+        svg.appendChild(dot);
+      }
+    }
+
+    const maxBeamCount = notes.reduce((m, n) => Math.max(m, n.beamCount), 0);
+    if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
+
+    const beamGap = 5;
+    const validStemBottoms = notes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
+    const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
+
+    for (let level = 1; level <= maxBeamCount; level++) {
+      let segStartIndex: number | null = null;
+
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
+        const active = n.beamCount >= level;
+
+        if (active && segStartIndex === null) {
+          segStartIndex = i;
+        } else if ((!active || i === notes.length - 1) && segStartIndex !== null) {
+          const segEnd = (active && i === notes.length - 1) ? i : i - 1;
+          const beamY = baseStemBottom - (level - 1) * beamGap;
+
+          const startX = notes[segStartIndex].stemX!;
+          const endX = notes[segEnd].stemX!;
+          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          beam.setAttribute('x1', startX.toString());
+          beam.setAttribute('y1', beamY.toString());
+          beam.setAttribute('x2', endX.toString());
+          beam.setAttribute('y2', beamY.toString());
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+
+          segStartIndex = null;
+        }
+      }
+
+      const stubLength = Math.max(8, noteSpacing * 0.4);
+      
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
+        const hasLevel = n.beamCount >= level;
+        
+        if (!hasLevel) continue;
+        
+        const leftBeamCount = (i - 1 >= 0) ? notes[i - 1].beamCount : 0;
+        const rightBeamCount = (i + 1 < notes.length) ? notes[i + 1].beamCount : 0;
+        
+        const leftHasLevel = leftBeamCount >= level;
+        const rightHasLevel = rightBeamCount >= level;
+        
+        if (leftHasLevel && rightHasLevel) continue;
+        
+        if (!leftHasLevel && !rightHasLevel) {
+          const beamY = baseStemBottom - (level - 1) * beamGap;
+          const stemX = n.stemX!;
+          
+          const leftNote = i > 0 ? notes[i - 1] : null;
+          const isAfterDottedStronger = leftNote && leftNote.nv.dotted && leftNote.nv.value < n.nv.value;
+          
+          const rightNote = i < notes.length - 1 ? notes[i + 1] : null;
+          const isBeforeDottedWeaker = rightNote && rightNote.nv.dotted && n.nv.value < rightNote.nv.value;
+          
+          if (isAfterDottedStronger && i > 0) {
+            const stubX = stemX - stubLength;
+            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            beam.setAttribute('x1', stemX.toString());
+            beam.setAttribute('y1', beamY.toString());
+            beam.setAttribute('x2', stubX.toString());
+            beam.setAttribute('y2', beamY.toString());
+            beam.setAttribute('stroke', '#000');
+            beam.setAttribute('stroke-width', '2');
+            svg.appendChild(beam);
+          } else if (i < notes.length - 1) {
+            const stubX = stemX + stubLength;
+            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            beam.setAttribute('x1', stemX.toString());
+            beam.setAttribute('y1', beamY.toString());
+            beam.setAttribute('x2', stubX.toString());
+            beam.setAttribute('y2', beamY.toString());
+            beam.setAttribute('stroke', '#000');
+            beam.setAttribute('stroke-width', '2');
+            svg.appendChild(beam);
+          } else if (i > 0) {
+            const stubX = stemX - stubLength;
+            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            beam.setAttribute('x1', stemX.toString());
+            beam.setAttribute('y1', beamY.toString());
+            beam.setAttribute('x2', stubX.toString());
+            beam.setAttribute('y2', beamY.toString());
+            beam.setAttribute('stroke', '#000');
+            beam.setAttribute('stroke-width', '2');
+            svg.appendChild(beam);
+          }
+          continue;
+        }
+        
+        const beamY = baseStemBottom - (level - 1) * beamGap;
+        const stemX = n.stemX!;
+        
+        if (leftHasLevel && !rightHasLevel && i > 0) {
+          const stubX = stemX - stubLength;
+          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          beam.setAttribute('x1', stemX.toString());
+          beam.setAttribute('y1', beamY.toString());
+          beam.setAttribute('x2', stubX.toString());
+          beam.setAttribute('y2', beamY.toString());
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+        }
+        
+        if (!leftHasLevel && rightHasLevel && i < notes.length - 1) {
+          const stubX = stemX + stubLength;
+          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          beam.setAttribute('x1', stemX.toString());
+          beam.setAttribute('y1', beamY.toString());
+          beam.setAttribute('x2', stubX.toString());
+          beam.setAttribute('y2', beamY.toString());
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+        }
+      }
+    }
+
+    return notes.length ? notes[0].centerX : null;
+  }
+
+  /**
+   * Draw a slash at 45° angle (top-RIGHT to bottom-LEFT - proper slash direction)
+   */
+  drawSlash(svg: SVGElement, x: number, y: number) {
+    const slashLength = 10;
+    const slash = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    slash.setAttribute('x1', (x + slashLength/2).toString());
+    slash.setAttribute('y1', (y - slashLength/2).toString());
+    slash.setAttribute('x2', (x - slashLength/2).toString());
+    slash.setAttribute('y2', (y + slashLength/2).toString());
+    slash.setAttribute('stroke', '#000');
+    slash.setAttribute('stroke-width', '3');
+    svg.appendChild(slash);
+  }
+
+  /**
+   * Draw a stem for a note - ATTACHED TO BOTTOM OF SLASH
+   */
+  drawStem(svg: SVGElement, x: number, y: number, height: number): {x: number, topY: number, bottomY: number} {
+    const slashLength = 10;
+    const stemStartX = x - slashLength/2 + 2;
+    const stemStartY = y + slashLength/2;
+    
+    const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    stem.setAttribute('x1', stemStartX.toString());
+    stem.setAttribute('y1', stemStartY.toString());
+    stem.setAttribute('x2', stemStartX.toString());
+    stem.setAttribute('y2', (stemStartY + height).toString());
+    stem.setAttribute('stroke', '#000');
+    stem.setAttribute('stroke-width', '2');
+    svg.appendChild(stem);
+
+    return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
+  }
+
+  /**
+   * Draw flag(s) for a note (for isolated short notes)
+   */
+  drawFlag(svg: SVGElement, x: number, staffLineY: number, count: number) {
+    const slashLength = 10;
+    const stemStartX = x - slashLength/2 + 2;
+    const stemBottomY = staffLineY + slashLength/2 + 25;
+
+    for (let i = 0; i < count; i++) {
+      const flag = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const flagY = stemBottomY - i * 10;
+      
+      flag.setAttribute('d', `M ${stemStartX} ${flagY} Q ${stemStartX - 10} ${flagY - 5} ${stemStartX - 8} ${flagY - 12}`);
+      flag.setAttribute('stroke', '#000');
+      flag.setAttribute('stroke-width', '2');
+      flag.setAttribute('fill', 'none');
+      svg.appendChild(flag);
     }
   }
 
@@ -401,342 +801,6 @@ export default class ChordGridPlugin extends Plugin {
       circle.setAttribute('fill', '#000');
       svg.appendChild(circle);
     });
-  }
-
-  /**
-   * Draw rhythm pattern for a chord and return the x position of the first note
-   */
-  drawRhythm(svg: SVGElement, chordData: ChordInMeasure, x: number, staffLineY: number, width: number): number | null {
-    const beats = chordData.beats;
-    const beatWidth = beats.length > 0 ? width / beats.length : width;
-    let currentX = x;
-    let firstNoteX: number | null = null;
-
-    beats.forEach((beat, beatIndex) => {
-      const firstNoteInBeatX = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth);
-      
-      if (beatIndex === 0 && firstNoteInBeatX !== null) {
-        firstNoteX = firstNoteInBeatX;
-      }
-      
-      currentX += beatWidth;
-    });
-
-    return firstNoteX;
-  }
-
-  /**
-   * Draw a single beat - handles both single notes and beamed groups
-   * Returns the x position of the first note in this beat
-   */
-  drawBeat(svg: SVGElement, beat: Beat, x: number, staffLineY: number, width: number): number | null {
-    if (beat.notes.length === 1) {
-      // Single note — pass the beat and the single note to drawSingleNote so it can render dotted per-note
-      const nv = beat.notes[0];
-      return this.drawSingleNote(svg, nv, x, staffLineY, width);
-    } else {
-      // Multiple notes - use proper rhythmic grouping with beams
-      return this.drawNoteGroup(svg, beat.notes, x, staffLineY, width);
-    }
-  }
-
-  /**
-   * Draw a single note with slash and stem
-   */
-  drawSingleNote(svg: SVGElement, nv: NoteValue, x: number, staffLineY: number, width: number): number {
-    const centerX = x + width / 2;
-
-    // Draw slash (top-right to bottom-left)
-    this.drawSlash(svg, centerX, staffLineY);
-
-    // Draw stem for short notes - ATTACHED TO BOTTOM OF SLASH
-    if (nv.value >= 2 && nv.value !== 1) {
-      this.drawStem(svg, centerX, staffLineY, 25);
-    }
-
-    // Draw flags if needed (for single isolated short notes)
-    if (nv.value === 8) {
-      this.drawFlag(svg, centerX, staffLineY, 1);
-    } else if (nv.value === 16) {
-      this.drawFlag(svg, centerX, staffLineY, 2);
-    } else if (nv.value === 32) {
-      this.drawFlag(svg, centerX, staffLineY, 3);
-    } else if (nv.value === 64) {
-      this.drawFlag(svg, centerX, staffLineY, 4);
-    }
-
-    // If this note is dotted, draw a small dot to the right of the note head
-    if (nv.dotted) {
-      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      // position slightly right and vertically aligned to staffLineY
-      dot.setAttribute('cx', (centerX + 8).toString());
-      dot.setAttribute('cy', (staffLineY).toString());
-      dot.setAttribute('r', '2');
-      dot.setAttribute('fill', '#000');
-      svg.appendChild(dot);
-    }
-
-    return centerX;
-  }
-
-  /**
-   * Draw a group of notes with proper beaming, including nested beam segments for mixed durations
-   * notesValues: array of NoteValue objects (e.g., [{value:8},{value:16}])
-   *
-   * Behavior:
-   * - Compute beamCount per note (8->1,16->2,32->3).
-   * - Draw stem for each note and store stem positions.
-   * - For each beam level, draw continuous beams where notes have beamCount >= level.
-   * - For notes that have extra beams (level > neighbor's level), draw a short stub extending left from that stem.
-   * - Draw per-note dotted points next to heads.
-   */
-  drawNoteGroup(svg: SVGElement, notesValues: NoteValue[], x: number, staffLineY: number, width: number): number {
-    const noteCount = notesValues.length;
-    // Increase spacing only if there are 32nd or 64th notes to avoid overlaps
-    const hasSmallNotes = notesValues.some(nv => nv.value >= 32);
-    const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
-    const stemHeight = 25;
-
-    // Map notes to their drawing info
-    const notes: { nv: NoteValue; beamCount: number; centerX: number; stemX?: number; stemTopY?: number; stemBottomY?: number }[] = [];
-
-    for (let i = 0; i < noteCount; i++) {
-      const nv = notesValues[i];
-      const centerX = x + i * noteSpacing + noteSpacing / 2;
-      const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
-
-      // Draw slash for each note
-      this.drawSlash(svg, centerX, staffLineY);
-
-      // Draw stem and store positions
-      const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
-      notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
-
-      // Draw per-note dot near head if dotted
-      if (nv.dotted) {
-        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', (centerX + 8).toString());
-        dot.setAttribute('cy', (staffLineY).toString());
-        dot.setAttribute('r', '2');
-        dot.setAttribute('fill', '#000');
-        svg.appendChild(dot);
-      }
-    }
-
-    // Determine maximum beam count in this group
-    const maxBeamCount = notes.reduce((m, n) => Math.max(m, n.beamCount), 0);
-    if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
-
-    // beamGap controls vertical gap between stacked beams
-    const beamGap = 5;
-
-    // baseStemBottom is the top-most (min) stem bottom Y so beams sit on top of stems
-    // Filter out undefined values before computing min
-    const validStemBottoms = notes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
-    const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
-
-    // For each beam level, draw continuous beams and stubs for isolated higher beams
-    for (let level = 1; level <= maxBeamCount; level++) {
-      let segStartIndex: number | null = null;
-
-      // First pass: draw continuous beam segments
-      for (let i = 0; i < notes.length; i++) {
-        const n = notes[i];
-        const active = n.beamCount >= level;
-
-        // look at neighbors to find continuous segments
-        if (active && segStartIndex === null) {
-          // start new segment
-          segStartIndex = i;
-        } else if ((!active || i === notes.length - 1) && segStartIndex !== null) {
-          // closing segment: if we're at end but active, segEnd should be i; otherwise i-1
-          const segEnd = (active && i === notes.length - 1) ? i : i - 1;
-
-          // compute beam Y: start from baseStemBottom and go up for higher levels
-          const beamY = baseStemBottom - (level - 1) * beamGap;
-
-          // draw continuous beam from segStartIndex to segEnd
-          const startX = notes[segStartIndex].stemX!;
-          const endX = notes[segEnd].stemX!;
-          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          beam.setAttribute('x1', startX.toString());
-          beam.setAttribute('y1', beamY.toString());
-          beam.setAttribute('x2', endX.toString());
-          beam.setAttribute('y2', beamY.toString());
-          beam.setAttribute('stroke', '#000');
-          beam.setAttribute('stroke-width', '2');
-          svg.appendChild(beam);
-
-          segStartIndex = null;
-        }
-      }
-
-      // Second pass: draw stubs for isolated notes at higher beam levels
-      // A stub should point in the direction of the beamed group (if any exists)
-      // RULE: First note of group cannot have left stub, last note cannot have right stub
-      // RHYTHMIC RULE: For dotted notes like 16.32, the stub should point towards the weaker beat
-      const stubLength = Math.max(8, noteSpacing * 0.4);
-      
-      for (let i = 0; i < notes.length; i++) {
-        const n = notes[i];
-        const hasLevel = n.beamCount >= level;
-        
-        if (!hasLevel) continue;
-        
-        const leftBeamCount = (i - 1 >= 0) ? notes[i - 1].beamCount : 0;
-        const rightBeamCount = (i + 1 < notes.length) ? notes[i + 1].beamCount : 0;
-        
-        const leftHasLevel = leftBeamCount >= level;
-        const rightHasLevel = rightBeamCount >= level;
-        
-        // Skip if both neighbors have this level (continuous beam covers it)
-        if (leftHasLevel && rightHasLevel) continue;
-        
-        // For isolated notes at this level
-        if (!leftHasLevel && !rightHasLevel) {
-          const beamY = baseStemBottom - (level - 1) * beamGap;
-          const stemX = n.stemX!;
-          
-          // Check if left note is dotted and stronger (e.g., 16. in "16.32")
-          // In this case, stub should point LEFT (towards the stronger note)
-          const leftNote = i > 0 ? notes[i - 1] : null;
-          const isAfterDottedStronger = leftNote && leftNote.nv.dotted && leftNote.nv.value < n.nv.value;
-          
-          // Check if right note will be dotted and current is stronger (e.g., 32 in "3216.")
-          // In this case, stub should point RIGHT (towards the weaker note that will be dotted)
-          const rightNote = i < notes.length - 1 ? notes[i + 1] : null;
-          const isBeforeDottedWeaker = rightNote && rightNote.nv.dotted && n.nv.value < rightNote.nv.value;
-          
-          if (isAfterDottedStronger && i > 0) {
-            // Stub to the LEFT (after a dotted stronger note like 16.)
-            const stubX = stemX - stubLength;
-            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            beam.setAttribute('x1', stemX.toString());
-            beam.setAttribute('y1', beamY.toString());
-            beam.setAttribute('x2', stubX.toString());
-            beam.setAttribute('y2', beamY.toString());
-            beam.setAttribute('stroke', '#000');
-            beam.setAttribute('stroke-width', '2');
-            svg.appendChild(beam);
-          } else if (i < notes.length - 1) {
-            // Stub to the RIGHT (default or before a dotted weaker note)
-            const stubX = stemX + stubLength;
-            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            beam.setAttribute('x1', stemX.toString());
-            beam.setAttribute('y1', beamY.toString());
-            beam.setAttribute('x2', stubX.toString());
-            beam.setAttribute('y2', beamY.toString());
-            beam.setAttribute('stroke', '#000');
-            beam.setAttribute('stroke-width', '2');
-            svg.appendChild(beam);
-          } else if (i > 0) {
-            // Last note: stub to the LEFT
-            const stubX = stemX - stubLength;
-            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            beam.setAttribute('x1', stemX.toString());
-            beam.setAttribute('y1', beamY.toString());
-            beam.setAttribute('x2', stubX.toString());
-            beam.setAttribute('y2', beamY.toString());
-            beam.setAttribute('stroke', '#000');
-            beam.setAttribute('stroke-width', '2');
-            svg.appendChild(beam);
-          }
-          continue;
-        }
-        
-        const beamY = baseStemBottom - (level - 1) * beamGap;
-        const stemX = n.stemX!;
-        
-        // If only left has level: stub to the LEFT (part of group on the left)
-        // BUT only if not the first note of the group
-        if (leftHasLevel && !rightHasLevel && i > 0) {
-          const stubX = stemX - stubLength;
-          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          beam.setAttribute('x1', stemX.toString());
-          beam.setAttribute('y1', beamY.toString());
-          beam.setAttribute('x2', stubX.toString());
-          beam.setAttribute('y2', beamY.toString());
-          beam.setAttribute('stroke', '#000');
-          beam.setAttribute('stroke-width', '2');
-          svg.appendChild(beam);
-        }
-        
-        // If only right has level: stub to the RIGHT (part of group on the right)
-        // BUT only if not the last note of the group
-        if (!leftHasLevel && rightHasLevel && i < notes.length - 1) {
-          const stubX = stemX + stubLength;
-          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          beam.setAttribute('x1', stemX.toString());
-          beam.setAttribute('y1', beamY.toString());
-          beam.setAttribute('x2', stubX.toString());
-          beam.setAttribute('y2', beamY.toString());
-          beam.setAttribute('stroke', '#000');
-          beam.setAttribute('stroke-width', '2');
-          svg.appendChild(beam);
-        }
-      }
-    }
-
-    return notes.length ? notes[0].centerX : null;
-  }
-
-  /**
-   * Draw a slash at 45° angle (top-RIGHT to bottom-LEFT - proper slash direction)
-   * with stem attached to the bottom
-   */
-  drawSlash(svg: SVGElement, x: number, y: number) {
-    const slashLength = 10;
-    // 45° slash from top-RIGHT to bottom-LEFT (proper slash direction)
-    const slash = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    slash.setAttribute('x1', (x + slashLength/2).toString());
-    slash.setAttribute('y1', (y - slashLength/2).toString());
-    slash.setAttribute('x2', (x - slashLength/2).toString());
-    slash.setAttribute('y2', (y + slashLength/2).toString());
-    slash.setAttribute('stroke', '#000');
-    slash.setAttribute('stroke-width', '3');
-    svg.appendChild(slash);
-  }
-
-  /**
-   * Draw a stem for a note - ATTACHED TO BOTTOM OF SLASH
-   * Returns the X position of the stem and the bottom Y for proper beam alignment
-   */
-  drawStem(svg: SVGElement, x: number, y: number, height: number): {x: number, topY: number, bottomY: number} {
-    // Calculate the bottom point of the slash (where stem should attach)
-    const slashLength = 10;
-    const stemStartX = x - slashLength/2 + 2; // Bottom-left of slash + offset
-    const stemStartY = y + slashLength/2;     // Bottom of slash
-    
-    const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    stem.setAttribute('x1', stemStartX.toString());
-    stem.setAttribute('y1', stemStartY.toString());
-    stem.setAttribute('x2', stemStartX.toString());
-    stem.setAttribute('y2', (stemStartY + height).toString());
-    stem.setAttribute('stroke', '#000');
-    stem.setAttribute('stroke-width', '2');
-    svg.appendChild(stem);
-
-    return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
-  }
-
-  /**
-   * Draw flag(s) for a note (for isolated short notes)
-   */
-  drawFlag(svg: SVGElement, x: number, staffLineY: number, count: number) {
-    const slashLength = 10;
-    const stemStartX = x - slashLength/2 + 2;
-    const stemBottomY = staffLineY + slashLength/2 + 25;
-
-    for (let i = 0; i < count; i++) {
-      const flag = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      const flagY = stemBottomY - i * 10;
-      
-      flag.setAttribute('d', `M ${stemStartX} ${flagY} Q ${stemStartX - 10} ${flagY - 5} ${stemStartX - 8} ${flagY - 12}`);
-      flag.setAttribute('stroke', '#000');
-      flag.setAttribute('stroke-width', '2');
-      flag.setAttribute('fill', 'none');
-      svg.appendChild(flag);
-    }
   }
 
   /**
