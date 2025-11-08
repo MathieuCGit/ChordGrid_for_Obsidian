@@ -169,46 +169,63 @@ export default class ChordGridPlugin extends Plugin {
         for (const token of rhythmTokens) {
           // We will parse the token character by character, allowing for patterns like:
           // "8.", "16", "3232", "8.16", etc.
+          // When we encounter a complete note (with optional dot), we close it and start a new beat
           const notes: NoteValue[] = [];
           let i = 0;
+          
           while (i < token.length) {
             const ch = token[i];
             // Helper to check ahead safely
             const next = (offset = 1) => token[i + offset] || '';
-            // parse 32
-            if (ch === '3' && next(1) === '2') {
-              // check for dot immediately after '32' (like "32.")
-              let dotted = false;
+            
+            let noteValue: number | null = null;
+            let dotted = false;
+            let charsConsumed = 0;
+            
+            // parse 64 (sixty-fourth note - quadruple croche)
+            if (ch === '6' && next(1) === '4') {
+              noteValue = 64;
+              charsConsumed = 2;
               if (token[i+2] === '.') {
                 dotted = true;
-                // consume dot by incrementing extra later
+                charsConsumed = 3;
               }
-              notes.push({ value: 32, dotted });
-              // advance i by 2 (for '32')
-              i += 2;
-              // if there was a dot, skip it
-              if (token[i] === '.') i += 1;
+            }
+            // parse 32
+            else if (ch === '3' && next(1) === '2') {
+              noteValue = 32;
+              charsConsumed = 2;
+              if (token[i+2] === '.') {
+                dotted = true;
+                charsConsumed = 3;
+              }
             }
             // parse 16 (might be '16' with dot '16.')
             else if (ch === '1' && next(1) === '6') {
-              let dotted = false;
-              if (token[i+2] === '.') dotted = true;
-              notes.push({ value: 16, dotted });
-              i += 2;
-              if (token[i] === '.') i += 1;
+              noteValue = 16;
+              charsConsumed = 2;
+              if (token[i+2] === '.') {
+                dotted = true;
+                charsConsumed = 3;
+              }
             }
             // parse single-digit values: 8,4,2,1
             else if (ch === '8' || ch === '4' || ch === '2' || ch === '1') {
-              // handle '1' possibly part of '16' but we already handled '16' above
-              let dotted = false;
-              if (token[i+1] === '.') dotted = true;
-              const val = parseInt(ch, 10);
-              notes.push({ value: val, dotted });
-              i += 1;
-              if (token[i] === '.') i += 1;
+              noteValue = parseInt(ch, 10);
+              charsConsumed = 1;
+              if (token[i+1] === '.') {
+                dotted = true;
+                charsConsumed = 2;
+              }
             } else {
               // skip unexpected characters
               i += 1;
+              continue;
+            }
+            
+            if (noteValue !== null) {
+              notes.push({ value: noteValue, dotted });
+              i += charsConsumed;
             }
           } // end parse token chars
 
@@ -444,6 +461,8 @@ export default class ChordGridPlugin extends Plugin {
       this.drawFlag(svg, centerX, staffLineY, 2);
     } else if (nv.value === 32) {
       this.drawFlag(svg, centerX, staffLineY, 3);
+    } else if (nv.value === 64) {
+      this.drawFlag(svg, centerX, staffLineY, 4);
     }
 
     // If this note is dotted, draw a small dot to the right of the note head
@@ -473,7 +492,9 @@ export default class ChordGridPlugin extends Plugin {
    */
   drawNoteGroup(svg: SVGElement, notesValues: NoteValue[], x: number, staffLineY: number, width: number): number {
     const noteCount = notesValues.length;
-    const noteSpacing = noteCount > 0 ? width / noteCount : width;
+    // Increase spacing only if there are 32nd or 64th notes to avoid overlaps
+    const hasSmallNotes = notesValues.some(nv => nv.value >= 32);
+    const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
     const stemHeight = 25;
 
     // Map notes to their drawing info
@@ -482,7 +503,7 @@ export default class ChordGridPlugin extends Plugin {
     for (let i = 0; i < noteCount; i++) {
       const nv = notesValues[i];
       const centerX = x + i * noteSpacing + noteSpacing / 2;
-      const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : 0;
+      const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
 
       // Draw slash for each note
       this.drawSlash(svg, centerX, staffLineY);
@@ -553,6 +574,7 @@ export default class ChordGridPlugin extends Plugin {
       // Second pass: draw stubs for isolated notes at higher beam levels
       // A stub should point in the direction of the beamed group (if any exists)
       // RULE: First note of group cannot have left stub, last note cannot have right stub
+      // RHYTHMIC RULE: For dotted notes like 16.32, the stub should point towards the weaker beat
       const stubLength = Math.max(8, noteSpacing * 0.4);
       
       for (let i = 0; i < notes.length; i++) {
@@ -570,13 +592,34 @@ export default class ChordGridPlugin extends Plugin {
         // Skip if both neighbors have this level (continuous beam covers it)
         if (leftHasLevel && rightHasLevel) continue;
         
-        // Skip if neither neighbor has this level AND this is an isolated note with no beam at all
+        // For isolated notes at this level
         if (!leftHasLevel && !rightHasLevel) {
-          // This note is isolated at this level
-          // Draw stub to the right ONLY if not the last note of the entire group
-          if (i < notes.length - 1) {
-            const beamY = baseStemBottom - (level - 1) * beamGap;
-            const stemX = n.stemX!;
+          const beamY = baseStemBottom - (level - 1) * beamGap;
+          const stemX = n.stemX!;
+          
+          // Check if left note is dotted and stronger (e.g., 16. in "16.32")
+          // In this case, stub should point LEFT (towards the stronger note)
+          const leftNote = i > 0 ? notes[i - 1] : null;
+          const isAfterDottedStronger = leftNote && leftNote.nv.dotted && leftNote.nv.value < n.nv.value;
+          
+          // Check if right note will be dotted and current is stronger (e.g., 32 in "3216.")
+          // In this case, stub should point RIGHT (towards the weaker note that will be dotted)
+          const rightNote = i < notes.length - 1 ? notes[i + 1] : null;
+          const isBeforeDottedWeaker = rightNote && rightNote.nv.dotted && n.nv.value < rightNote.nv.value;
+          
+          if (isAfterDottedStronger && i > 0) {
+            // Stub to the LEFT (after a dotted stronger note like 16.)
+            const stubX = stemX - stubLength;
+            const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            beam.setAttribute('x1', stemX.toString());
+            beam.setAttribute('y1', beamY.toString());
+            beam.setAttribute('x2', stubX.toString());
+            beam.setAttribute('y2', beamY.toString());
+            beam.setAttribute('stroke', '#000');
+            beam.setAttribute('stroke-width', '2');
+            svg.appendChild(beam);
+          } else if (i < notes.length - 1) {
+            // Stub to the RIGHT (default or before a dotted weaker note)
             const stubX = stemX + stubLength;
             const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             beam.setAttribute('x1', stemX.toString());
@@ -586,11 +629,8 @@ export default class ChordGridPlugin extends Plugin {
             beam.setAttribute('stroke', '#000');
             beam.setAttribute('stroke-width', '2');
             svg.appendChild(beam);
-          }
-          // If this IS the last note, draw stub to the LEFT instead
-          else if (i > 0) {
-            const beamY = baseStemBottom - (level - 1) * beamGap;
-            const stemX = n.stemX!;
+          } else if (i > 0) {
+            // Last note: stub to the LEFT
             const stubX = stemX - stubLength;
             const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             beam.setAttribute('x1', stemX.toString());
