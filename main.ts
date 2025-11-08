@@ -89,9 +89,10 @@ export default class ChordGridPlugin extends Plugin {
             currentMeasure = { 
               chords: [], 
               hasBarLine: false,
-              isRepeatStart: false
+              isRepeatStart: isRepeatStart
             };
             isRepeatEnd = false;
+            isRepeatStart = false;
           }
         } else if (token.type === 'chord') {
           // Add chord to current measure
@@ -134,17 +135,17 @@ export default class ChordGridPlugin extends Plugin {
       remaining = remaining.trim();
       
       // Check for repeat markers
-      if (remaining.startsWith('||:')) {
+      if (remaining.startsWith(':||')) {
+        tokens.push({ type: 'repeatEnd' });
+        remaining = remaining.substring(3);
+        continue;
+      } else if (remaining.startsWith('||:')) {
         tokens.push({ type: 'repeatStart' });
         remaining = remaining.substring(3);
         continue;
       } else if (remaining.startsWith('|:')) {
         tokens.push({ type: 'repeatStart' });
         remaining = remaining.substring(2);
-        continue;
-      } else if (remaining.startsWith(':||')) {
-        tokens.push({ type: 'repeatEnd' });
-        remaining = remaining.substring(3);
         continue;
       }
       
@@ -159,99 +160,28 @@ export default class ChordGridPlugin extends Plugin {
         continue;
       }
       
-      // Check for chords - allow underscores for ties
-      const chordMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9._\s]+)\]/);
-      if (chordMatch) {
-        const chord = chordMatch[1];
-        const rhythm = chordMatch[2];
+      // CORRECTION : Accepter les rythmes sans accord [4 4 4 4]
+      // Pattern 1: Accord avec rythme - C[4 4 4 4]
+      const chordWithRhythmMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9._\s]+)\]/);
+      if (chordWithRhythmMatch) {
+        const chord = chordWithRhythmMatch[1];
+        const rhythm = chordWithRhythmMatch[2];
         
-        // Parse rhythm into beats with tie detection
-        const beats: Beat[] = [];
-        const rhythmTokens = rhythm.split(/\s+/).filter(r => r.length > 0);
-        
-        for (const token of rhythmTokens) {
-          const notes: NoteValue[] = [];
-          let i = 0;
-          let isTied = false;
-          
-          while (i < token.length) {
-            const ch = token[i];
-            
-            // Check for tie marker at start of token
-            if (ch === '_' && notes.length === 0) {
-              isTied = true;
-              i++;
-              continue;
-            }
-            
-            const next = (offset = 1) => token[i + offset] || '';
-
-            let noteValue: number | null = null;
-            let dotted = false;
-            let charsConsumed = 0;
-            
-            // parse 64
-            if (ch === '6' && next(1) === '4') {
-              noteValue = 64;
-              charsConsumed = 2;
-              if (token[i+2] === '.') {
-                dotted = true;
-                charsConsumed = 3;
-              }
-            }
-            // parse 32
-            else if (ch === '3' && next(1) === '2') {
-              noteValue = 32;
-              charsConsumed = 2;
-              if (token[i+2] === '.') {
-                dotted = true;
-                charsConsumed = 3;
-              }
-            }
-            // parse 16
-            else if (ch === '1' && next(1) === '6') {
-              noteValue = 16;
-              charsConsumed = 2;
-              if (token[i+2] === '.') {
-                dotted = true;
-                charsConsumed = 3;
-              }
-            }
-            // parse single-digit values: 8,4,2,1
-            else if (ch === '8' || ch === '4' || ch === '2' || ch === '1') {
-              noteValue = parseInt(ch, 10);
-              charsConsumed = 1;
-              if (token[i+1] === '.') {
-                dotted = true;
-                charsConsumed = 2;
-              }
-            } else if (ch === '_') {
-              // Internal tie marker - mark the previous note as tied
-              if (notes.length > 0) {
-                notes[notes.length - 1].tied = true;
-              }
-              i++;
-              continue;
-            } else {
-              // skip unexpected characters
-              i += 1;
-              continue;
-            }
-            
-            if (noteValue !== null) {
-              notes.push({ value: noteValue, dotted, tied: isTied });
-              isTied = false;
-              i += charsConsumed;
-            }
-          }
-
-          if (notes.length > 0) {
-            beats.push({ notes });
-          }
-        }
-        
+        // Parse rhythm into beats with tie detection (méthode existante)
+        const beats = this.parseRhythm(rhythm);
         tokens.push({ type: 'chord', chord, beats, rhythm });
-        remaining = remaining.substring(chordMatch[0].length);
+        remaining = remaining.substring(chordWithRhythmMatch[0].length);
+        continue;
+      }
+      
+      // CORRECTION : Pattern 2: Rythme seul - [4 4 4 4]
+      const rhythmOnlyMatch = remaining.match(/^\[([0-9._\s]+)\]/);
+      if (rhythmOnlyMatch) {
+        const rhythm = rhythmOnlyMatch[1];
+        // UTILISER LA MÊME MÉTHODE parseRhythm pour la cohérence
+        const beats = this.parseRhythm(rhythm);
+        tokens.push({ type: 'chord', chord: '', beats, rhythm });
+        remaining = remaining.substring(rhythmOnlyMatch[0].length);
         continue;
       }
       
@@ -260,6 +190,97 @@ export default class ChordGridPlugin extends Plugin {
     }
     
     return tokens;
+  }
+
+  /**
+   * Parse rhythm string into beats - VERSION ORIGINALE (avec ligatures)
+   */
+  parseRhythm(rhythm: string): Beat[] {
+    const beats: Beat[] = [];
+    const rhythmTokens = rhythm.split(/\s+/).filter(r => r.length > 0);
+    
+    for (const token of rhythmTokens) {
+      const notes: NoteValue[] = [];
+      let i = 0;
+      let isTied = false;
+      
+      while (i < token.length) {
+        const ch = token[i];
+        
+        // Check for tie marker at start of token
+        if (ch === '_' && notes.length === 0) {
+          isTied = true;
+          i++;
+          continue;
+        }
+        
+        const next = (offset = 1) => token[i + offset] || '';
+
+        let noteValue: number | null = null;
+        let dotted = false;
+        let charsConsumed = 0;
+        
+        // parse 64
+        if (ch === '6' && next(1) === '4') {
+          noteValue = 64;
+          charsConsumed = 2;
+          if (token[i+2] === '.') {
+            dotted = true;
+            charsConsumed = 3;
+          }
+        }
+        // parse 32
+        else if (ch === '3' && next(1) === '2') {
+          noteValue = 32;
+          charsConsumed = 2;
+          if (token[i+2] === '.') {
+            dotted = true;
+            charsConsumed = 3;
+          }
+        }
+        // parse 16
+        else if (ch === '1' && next(1) === '6') {
+          noteValue = 16;
+          charsConsumed = 2;
+          if (token[i+2] === '.') {
+            dotted = true;
+            charsConsumed = 3;
+          }
+        }
+        // parse single-digit values: 8,4,2,1
+        else if (ch === '8' || ch === '4' || ch === '2' || ch === '1') {
+          noteValue = parseInt(ch, 10);
+          charsConsumed = 1;
+          if (token[i+1] === '.') {
+            dotted = true;
+            charsConsumed = 2;
+          }
+        } else if (ch === '_') {
+          // Internal tie marker - mark the previous note as tied
+          if (notes.length > 0) {
+            notes[notes.length - 1].tied = true;
+          }
+          i++;
+          continue;
+        } else {
+          // skip unexpected characters
+          i += 1;
+          continue;
+        }
+        
+        if (noteValue !== null) {
+          notes.push({ value: noteValue, dotted, tied: isTied });
+          isTied = false;
+          i += charsConsumed;
+        }
+      }
+
+      if (notes.length > 0) {
+        beats.push({ notes });
+      }
+    }
+    
+    return beats;
   }
 
   /**
@@ -284,7 +305,8 @@ export default class ChordGridPlugin extends Plugin {
     // Calculate lines considering line breaks
     let currentLine = 0;
     let measuresInCurrentLine = 0;
-    const measurePositions: {measure: Measure, lineIndex: number, posInLine: number}[] = [];
+    const measurePositions: {measure: Measure, lineIndex: number, posInLine: number, globalIndex: number}[] = [];
+    let globalIndex = 0;
     
     grid.measures.forEach((measure, index) => {
       if (measure.isLineBreak) {
@@ -301,7 +323,8 @@ export default class ChordGridPlugin extends Plugin {
       measurePositions.push({
         measure,
         lineIndex: currentLine,
-        posInLine: measuresInCurrentLine
+        posInLine: measuresInCurrentLine,
+        globalIndex: globalIndex++
       });
       
       measuresInCurrentLine++;
@@ -325,11 +348,11 @@ export default class ChordGridPlugin extends Plugin {
     const notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[] = [];
 
     // Draw all measures and collect note positions
-    measurePositions.forEach(({measure, lineIndex, posInLine}, measureIndex) => {
+    measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex}) => {
       const x = posInLine * measureWidth + 40;
       const y = lineIndex * (measureHeight + 20) + 20;
 
-      this.drawMeasure(svg, measure, x, y, measureWidth, measureHeight, measureIndex, notePositions);
+      this.drawMeasure(svg, measure, x, y, measureWidth, measureHeight, globalIndex, notePositions, grid);
     });
 
     // Detect and draw ties based on note positions
@@ -355,9 +378,9 @@ export default class ChordGridPlugin extends Plugin {
         // Internal tie within same chord
         ties.push({
           startX: currentNote.x,
-          startY: currentNote.y - 15,
+          startY: currentNote.y - 8,
           endX: nextNote.x,
-          endY: nextNote.y - 15,
+          endY: nextNote.y - 8,
           type: 'internal'
         });
       }
@@ -374,9 +397,9 @@ export default class ChordGridPlugin extends Plugin {
         // Cross-measure tie
         ties.push({
           startX: currentNote.x,
-          startY: currentNote.y - 15,
+          startY: currentNote.y - 8,
           endX: nextNote.x,
-          endY: nextNote.y - 15,
+          endY: nextNote.y - 8,
           type: 'cross-measure'
         });
       }
@@ -393,7 +416,7 @@ export default class ChordGridPlugin extends Plugin {
    */
   drawTie(svg: SVGElement, tie: TiePosition) {
     const tieElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const controlY = tie.startY - 8;
+    const controlY = tie.startY - 5;
     
     tieElement.setAttribute('d', `M ${tie.startX} ${tie.startY} Q ${(tie.startX + tie.endX) / 2} ${controlY} ${tie.endX} ${tie.endY}`);
     tieElement.setAttribute('stroke', '#000');
@@ -405,12 +428,16 @@ export default class ChordGridPlugin extends Plugin {
   /**
    * Draw a single measure with chord, rhythm, and bar lines
    */
-  drawMeasure(svg: SVGElement, measure: Measure, x: number, y: number, width: number, height: number, measureIndex: number, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[]) {
-    // Draw left bar line
-    if (measure.isRepeatStart) {
-      this.drawRepeatBar(svg, x, y, height, true);
-    } else {
-      this.drawBar(svg, x, y, height);
+  drawMeasure(svg: SVGElement, measure: Measure, x: number, y: number, width: number, height: number, measureIndex: number, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[], grid: ChordGrid) {
+    const leftBarX = x;
+    const rightBarX = x + width - 2;
+
+    // BARRE GAUCHE
+    if (measureIndex === 0) {
+      this.drawBar(svg, leftBarX, y, height);
+    } else if (measure.isRepeatStart) {
+      this.drawBar(svg, leftBarX, y, height);
+      this.drawBarWithRepeat(svg, leftBarX, y, height, true);
     }
 
     // Draw single staff line
@@ -430,26 +457,57 @@ export default class ChordGridPlugin extends Plugin {
     measure.chords.forEach((chordData, chordIndex) => {
       const chordX = x + (chordIndex * chordWidth) + 10;
       
-      // Draw rhythm notation for this chord and collect note positions
       const firstNoteX = this.drawRhythm(svg, chordData, chordX, staffLineY, chordWidth - 20, measureIndex, chordIndex, notePositions);
 
-      // Draw chord name above the first note
-      if (firstNoteX !== null) {
+      // CORRECTION : Ne dessiner le nom d'accord que s'il n'est pas vide
+      if (firstNoteX !== null && chordData.chord && chordData.chord.trim() !== '') {
         const chordText = this.createText(chordData.chord, firstNoteX, y + 40, '24px', 'bold');
         chordText.setAttribute('text-anchor', 'middle');
         svg.appendChild(chordText);
       }
     });
 
-    // Draw right bar line ONLY if hasBarLine is true or it's a repeat end
-    const rightBarX = x + width - 2;
-    if (measure.hasBarLine || measure.isRepeatEnd) {
-      if (measure.isRepeatEnd) {
-        this.drawRepeatBar(svg, rightBarX, y, height, false);
-      } else {
-        this.drawBar(svg, rightBarX, y, height);
-      }
+    // BARRE DROITE
+    if (measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, y, height, false);
+      this.drawBar(svg, rightBarX, y, height);
+      this.drawBar(svg, rightBarX + 6, y, height);
+    } else if (measure.hasBarLine || measureIndex === grid.measures.length - 1) {
+      this.drawBar(svg, rightBarX, y, height);
     }
+  }
+
+  /**
+   * Draw a bar with repeat symbols - UNE barre supplémentaire avec points
+   */
+  drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean) {
+    // Points seulement (la barre est dessinée séparément)
+    const dotOffset = isStart ? 12 : -12;
+    const dot1Y = y + height * 0.35;
+    const dot2Y = y + height * 0.65;
+
+    [dot1Y, dot2Y].forEach(dotY => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', (x + dotOffset).toString());
+      circle.setAttribute('cy', dotY.toString());
+      circle.setAttribute('r', '2');
+      circle.setAttribute('fill', '#000');
+      svg.appendChild(circle);
+    });
+  }
+
+  /**
+   * Draw a simple bar line
+   */
+  drawBar(svg: SVGElement, x: number, y: number, height: number) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', x.toString());
+    line.setAttribute('y1', y.toString());
+    line.setAttribute('x2', x.toString());
+    line.setAttribute('y2', (y + height).toString());
+    line.setAttribute('stroke', '#000');
+    line.setAttribute('stroke-width', '1.5');
+    svg.appendChild(line);
   }
 
   /**
@@ -480,9 +538,8 @@ export default class ChordGridPlugin extends Plugin {
   drawBeat(svg: SVGElement, beat: Beat, x: number, staffLineY: number, width: number, measureIndex: number, chordIndex: number, beatIndex: number, notePositions: {x: number, y: number, measureIndex: number, chordIndex: number, beatIndex: number, noteIndex: number, tied: boolean}[]): number | null {
     if (beat.notes.length === 1) {
       const nv = beat.notes[0];
-      const noteX = this.drawSingleNote(svg, nv, x, staffLineY, width);
+      const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
       
-      // Store note position for tie detection
       notePositions.push({
         x: noteX,
         y: staffLineY,
@@ -495,11 +552,10 @@ export default class ChordGridPlugin extends Plugin {
       
       return noteX;
     } else {
-      const firstNoteX = this.drawNoteGroup(svg, beat.notes, x, staffLineY, width);
+      const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
       
-      // Store note positions for grouped notes
       beat.notes.forEach((nv, noteIndex) => {
-        const noteX = x + (noteIndex * (width / beat.notes.length)) + (width / beat.notes.length) / 2;
+        const noteX = x + 10 + (noteIndex * (width / beat.notes.length)) + (width / beat.notes.length) / 2;
         notePositions.push({
           x: noteX,
           y: staffLineY,
@@ -516,31 +572,31 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw a single note with slash and stem
+   * Draw a single note with proper note heads for different durations
    */
   drawSingleNote(svg: SVGElement, nv: NoteValue, x: number, staffLineY: number, width: number): number {
-    const centerX = x + width / 2;
+    const centerX = x;
 
-    // Draw slash (top-right to bottom-left)
-    this.drawSlash(svg, centerX, staffLineY);
-
-    // Draw stem for short notes - ATTACHED TO BOTTOM OF SLASH
-    if (nv.value >= 2 && nv.value !== 1) {
+    if (nv.value === 1) {
+      this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
+    } else if (nv.value === 2) {
+      this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
       this.drawStem(svg, centerX, staffLineY, 25);
+    } else {
+      this.drawSlash(svg, centerX, staffLineY);
+      this.drawStem(svg, centerX, staffLineY, 25);
+
+      if (nv.value === 8) {
+        this.drawFlag(svg, centerX, staffLineY, 1);
+      } else if (nv.value === 16) {
+        this.drawFlag(svg, centerX, staffLineY, 2);
+      } else if (nv.value === 32) {
+        this.drawFlag(svg, centerX, staffLineY, 3);
+      } else if (nv.value === 64) {
+        this.drawFlag(svg, centerX, staffLineY, 4);
+      }
     }
 
-    // Draw flags if needed (for single isolated short notes)
-    if (nv.value === 8) {
-      this.drawFlag(svg, centerX, staffLineY, 1);
-    } else if (nv.value === 16) {
-      this.drawFlag(svg, centerX, staffLineY, 2);
-    } else if (nv.value === 32) {
-      this.drawFlag(svg, centerX, staffLineY, 3);
-    } else if (nv.value === 64) {
-      this.drawFlag(svg, centerX, staffLineY, 4);
-    }
-
-    // If this note is dotted, draw a small dot to the right of the note head
     if (nv.dotted) {
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       dot.setAttribute('cx', (centerX + 8).toString());
@@ -554,10 +610,33 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw a group of notes with proper beaming, including nested beam segments for mixed durations
+   * Draw a diamond note head for whole and half notes
    */
-  drawNoteGroup(svg: SVGElement, notesValues: NoteValue[], x: number, staffLineY: number, width: number): number {
+  drawDiamondNoteHead(svg: SVGElement, x: number, y: number, hollow: boolean) {
+    const diamondSize = 6;
+    
+    const diamond = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    const points = [
+      [x, y - diamondSize],
+      [x + diamondSize, y],
+      [x, y + diamondSize],
+      [x - diamondSize, y]
+    ];
+    
+    diamond.setAttribute('points', points.map(p => `${p[0]},${p[1]}`).join(' '));
+    diamond.setAttribute('fill', hollow ? 'white' : 'black');
+    diamond.setAttribute('stroke', '#000');
+    diamond.setAttribute('stroke-width', '1');
+    svg.appendChild(diamond);
+  }
+
+  /**
+   * Draw a group of notes with proper beaming (avec ligatures)
+   */
+  drawNoteGroup(svg: SVGElement, notesValues: NoteValue[], x: number, staffLineY: number, width: number): number | null {
     const noteCount = notesValues.length;
+    if (noteCount === 0) return null;
+    
     const hasSmallNotes = notesValues.some(nv => nv.value >= 32);
     const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
     const stemHeight = 25;
@@ -566,13 +645,21 @@ export default class ChordGridPlugin extends Plugin {
 
     for (let i = 0; i < noteCount; i++) {
       const nv = notesValues[i];
-      const centerX = x + i * noteSpacing + noteSpacing / 2;
-      const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
-
-      this.drawSlash(svg, centerX, staffLineY);
-
-      const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
-      notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+      const centerX = x + i * noteSpacing;
+      
+      if (nv.value === 1) {
+        this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
+        notes.push({ nv, beamCount: 0, centerX });
+      } else if (nv.value === 2) {
+        this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
+        const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
+        notes.push({ nv, beamCount: 0, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+      } else {
+        this.drawSlash(svg, centerX, staffLineY);
+        const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
+        const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
+        notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+      }
 
       if (nv.dotted) {
         const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -584,28 +671,32 @@ export default class ChordGridPlugin extends Plugin {
       }
     }
 
-    const maxBeamCount = notes.reduce((m, n) => Math.max(m, n.beamCount), 0);
+    // Beaming logic avec gestion des ligatures
+    const beamedNotes = notes.filter(n => n.beamCount > 0);
+    if (beamedNotes.length === 0) return notes.length ? notes[0].centerX : null;
+
+    const maxBeamCount = beamedNotes.reduce((m, n) => Math.max(m, n.beamCount), 0);
     if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
 
     const beamGap = 5;
-    const validStemBottoms = notes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
+    const validStemBottoms = beamedNotes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
     const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
 
     for (let level = 1; level <= maxBeamCount; level++) {
       let segStartIndex: number | null = null;
 
-      for (let i = 0; i < notes.length; i++) {
-        const n = notes[i];
+      for (let i = 0; i < beamedNotes.length; i++) {
+        const n = beamedNotes[i];
         const active = n.beamCount >= level;
 
         if (active && segStartIndex === null) {
           segStartIndex = i;
-        } else if ((!active || i === notes.length - 1) && segStartIndex !== null) {
-          const segEnd = (active && i === notes.length - 1) ? i : i - 1;
+        } else if ((!active || i === beamedNotes.length - 1) && segStartIndex !== null) {
+          const segEnd = (active && i === beamedNotes.length - 1) ? i : i - 1;
           const beamY = baseStemBottom - (level - 1) * beamGap;
 
-          const startX = notes[segStartIndex].stemX!;
-          const endX = notes[segEnd].stemX!;
+          const startX = beamedNotes[segStartIndex].stemX!;
+          const endX = beamedNotes[segEnd].stemX!;
           const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
           beam.setAttribute('x1', startX.toString());
           beam.setAttribute('y1', beamY.toString());
@@ -621,14 +712,14 @@ export default class ChordGridPlugin extends Plugin {
 
       const stubLength = Math.max(8, noteSpacing * 0.4);
       
-      for (let i = 0; i < notes.length; i++) {
-        const n = notes[i];
+      for (let i = 0; i < beamedNotes.length; i++) {
+        const n = beamedNotes[i];
         const hasLevel = n.beamCount >= level;
         
         if (!hasLevel) continue;
         
-        const leftBeamCount = (i - 1 >= 0) ? notes[i - 1].beamCount : 0;
-        const rightBeamCount = (i + 1 < notes.length) ? notes[i + 1].beamCount : 0;
+        const leftBeamCount = (i - 1 >= 0) ? beamedNotes[i - 1].beamCount : 0;
+        const rightBeamCount = (i + 1 < beamedNotes.length) ? beamedNotes[i + 1].beamCount : 0;
         
         const leftHasLevel = leftBeamCount >= level;
         const rightHasLevel = rightBeamCount >= level;
@@ -639,10 +730,10 @@ export default class ChordGridPlugin extends Plugin {
           const beamY = baseStemBottom - (level - 1) * beamGap;
           const stemX = n.stemX!;
           
-          const leftNote = i > 0 ? notes[i - 1] : null;
+          const leftNote = i > 0 ? beamedNotes[i - 1] : null;
           const isAfterDottedStronger = leftNote && leftNote.nv.dotted && leftNote.nv.value < n.nv.value;
           
-          const rightNote = i < notes.length - 1 ? notes[i + 1] : null;
+          const rightNote = i < beamedNotes.length - 1 ? beamedNotes[i + 1] : null;
           const isBeforeDottedWeaker = rightNote && rightNote.nv.dotted && n.nv.value < rightNote.nv.value;
           
           if (isAfterDottedStronger && i > 0) {
@@ -655,7 +746,7 @@ export default class ChordGridPlugin extends Plugin {
             beam.setAttribute('stroke', '#000');
             beam.setAttribute('stroke-width', '2');
             svg.appendChild(beam);
-          } else if (i < notes.length - 1) {
+          } else if (i < beamedNotes.length - 1) {
             const stubX = stemX + stubLength;
             const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             beam.setAttribute('x1', stemX.toString());
@@ -694,7 +785,7 @@ export default class ChordGridPlugin extends Plugin {
           svg.appendChild(beam);
         }
         
-        if (!leftHasLevel && rightHasLevel && i < notes.length - 1) {
+        if (!leftHasLevel && rightHasLevel && i < beamedNotes.length - 1) {
           const stubX = stemX + stubLength;
           const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
           beam.setAttribute('x1', stemX.toString());
@@ -712,7 +803,7 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw a slash at 45° angle (top-RIGHT to bottom-LEFT - proper slash direction)
+   * Draw a slash at 45° angle
    */
   drawSlash(svg: SVGElement, x: number, y: number) {
     const slashLength = 10;
@@ -727,7 +818,7 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw a stem for a note - ATTACHED TO BOTTOM OF SLASH
+   * Draw a stem for a note
    */
   drawStem(svg: SVGElement, x: number, y: number, height: number): {x: number, topY: number, bottomY: number} {
     const slashLength = 10;
@@ -747,7 +838,7 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw flag(s) for a note (for isolated short notes)
+   * Draw flag(s) for a note
    */
   drawFlag(svg: SVGElement, x: number, staffLineY: number, count: number) {
     const slashLength = 10;
@@ -764,43 +855,6 @@ export default class ChordGridPlugin extends Plugin {
       flag.setAttribute('fill', 'none');
       svg.appendChild(flag);
     }
-  }
-
-  /**
-   * Draw a simple bar line
-   */
-  drawBar(svg: SVGElement, x: number, y: number, height: number) {
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', x.toString());
-    line.setAttribute('y1', y.toString());
-    line.setAttribute('x2', x.toString());
-    line.setAttribute('y2', (y + height).toString());
-    line.setAttribute('stroke', '#000');
-    line.setAttribute('stroke-width', '2');
-    svg.appendChild(line);
-  }
-
-  /**
-   * Draw repeat bar with dots
-   */
-  drawRepeatBar(svg: SVGElement, x: number, y: number, height: number, isStart: boolean) {
-    const offset = isStart ? 0 : -6;
-    const barX = x + offset;
-    this.drawBar(svg, barX, y, height);
-    this.drawBar(svg, barX + 4, y, height);
-
-    const dotOffset = isStart ? 10 : -10;
-    const dot1Y = y + height * 0.35;
-    const dot2Y = y + height * 0.65;
-
-    [dot1Y, dot2Y].forEach(dotY => {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', (x + dotOffset).toString());
-      circle.setAttribute('cy', dotY.toString());
-      circle.setAttribute('r', '3');
-      circle.setAttribute('fill', '#000');
-      svg.appendChild(circle);
-    });
   }
 
   /**
