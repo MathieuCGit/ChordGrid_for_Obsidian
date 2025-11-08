@@ -1,8 +1,13 @@
 import { Plugin, MarkdownPostProcessorContext } from 'obsidian';
 
 // Interface definitions for our data structures
+interface NoteValue {
+  value: number;        // 1,2,4,8,16,32...
+  dotted?: boolean;     // whether this specific note is dotted
+}
+
 interface Beat {
-  notes: number[]; // List of rhythmic values (8, 4, 2, 1, etc.)
+  notes: NoteValue[]; // List of rhythmic values (8, 4, 2, 1, etc.) with optional dotted flag
 }
 
 interface ChordInMeasure {
@@ -81,8 +86,8 @@ export default class ChordGridPlugin extends Plugin {
         } else if (token.type === 'chord') {
           // Add chord to current measure
           currentMeasure.chords.push({
-            chord: token.chord,
-            beats: token.beats
+            chord: token.chord!,
+            beats: token.beats!
           });
         }
       }
@@ -109,6 +114,13 @@ export default class ChordGridPlugin extends Plugin {
 
   /**
    * Tokenize a line into meaningful tokens
+   *
+   * Changes: rhythm tokens now parse per-note dotted flags.
+   * A token may be like:
+   *  - "4" => quarter
+   *  - "4." => dotted quarter
+   *  - "3232161616" => sequence of small notes (32 32 16 16 16 ...)
+   *  - "8.16" or "8. 16" => dotted eighth + sixteenth (we support both forms)
    */
   tokenizeLine(line: string): Array<{type: string, chord?: string, beats?: Beat[]}> {
     const tokens: Array<{type: string, chord?: string, beats?: Beat[]}> = [];
@@ -143,58 +155,68 @@ export default class ChordGridPlugin extends Plugin {
         continue;
       }
       
-      // Check for chords
-      const chordMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9\s]+)\]/);
+      // Check for chords - allow dots in rhythm tokens (e.g., 4. for dotted quarter)
+      const chordMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9.\s]+)\]/);
       if (chordMatch) {
         const chord = chordMatch[1];
         const rhythm = chordMatch[2];
         
         // Parse rhythm into beats
         const beats: Beat[] = [];
-        const rhythmTokens = rhythm.split(/\s+/);
+        // split tokens on spaces; each token may itself contain multiple numeric elements
+        const rhythmTokens = rhythm.split(/\s+/).filter(r => r.length > 0);
         
         for (const token of rhythmTokens) {
-          const notes: number[] = [];
-          
-          // Parse notes correctly
+          // We will parse the token character by character, allowing for patterns like:
+          // "8.", "16", "3232", "8.16", etc.
+          const notes: NoteValue[] = [];
           let i = 0;
           while (i < token.length) {
-            const char = token[i];
-            
-            if (char === '1') {
-              if (i + 1 < token.length && token[i + 1] === '6') {
-                notes.push(16);
-                i += 2;
-              } else {
-                notes.push(1);
-                i += 1;
+            const ch = token[i];
+            // Helper to check ahead safely
+            const next = (offset = 1) => token[i + offset] || '';
+            // parse 32
+            if (ch === '3' && next(1) === '2') {
+              // check for dot immediately after '32' (like "32.")
+              let dotted = false;
+              if (token[i+2] === '.') {
+                dotted = true;
+                // consume dot by incrementing extra later
               }
-            }
-            else if (char === '2') {
-              notes.push(2);
-              i += 1;
-            }
-            else if (char === '4') {
-              notes.push(4);
-              i += 1;
-            }
-            else if (char === '8') {
-              notes.push(8);
-              i += 1;
-            }
-            else if (char === '3' && i + 1 < token.length && token[i + 1] === '2') {
-              notes.push(32);
+              notes.push({ value: 32, dotted });
+              // advance i by 2 (for '32')
               i += 2;
+              // if there was a dot, skip it
+              if (token[i] === '.') i += 1;
             }
-            else {
+            // parse 16 (might be '16' with dot '16.')
+            else if (ch === '1' && next(1) === '6') {
+              let dotted = false;
+              if (token[i+2] === '.') dotted = true;
+              notes.push({ value: 16, dotted });
+              i += 2;
+              if (token[i] === '.') i += 1;
+            }
+            // parse single-digit values: 8,4,2,1
+            else if (ch === '8' || ch === '4' || ch === '2' || ch === '1') {
+              // handle '1' possibly part of '16' but we already handled '16' above
+              let dotted = false;
+              if (token[i+1] === '.') dotted = true;
+              const val = parseInt(ch, 10);
+              notes.push({ value: val, dotted });
+              i += 1;
+              if (token[i] === '.') i += 1;
+            } else {
+              // skip unexpected characters
               i += 1;
             }
-          }
-          
+          } // end parse token chars
+
           if (notes.length > 0) {
+            // Each rhythm token becomes a Beat. It's possible token included multiple notes.
             beats.push({ notes });
           }
-        }
+        } // end rhythmTokens loop
         
         tokens.push({ type: 'chord', chord, beats });
         remaining = remaining.substring(chordMatch[0].length);
@@ -369,7 +391,7 @@ export default class ChordGridPlugin extends Plugin {
    */
   drawRhythm(svg: SVGElement, chordData: ChordInMeasure, x: number, staffLineY: number, width: number): number | null {
     const beats = chordData.beats;
-    const beatWidth = width / beats.length;
+    const beatWidth = beats.length > 0 ? width / beats.length : width;
     let currentX = x;
     let firstNoteX: number | null = null;
 
@@ -392,8 +414,9 @@ export default class ChordGridPlugin extends Plugin {
    */
   drawBeat(svg: SVGElement, beat: Beat, x: number, staffLineY: number, width: number): number | null {
     if (beat.notes.length === 1) {
-      // Single note
-      return this.drawSingleNote(svg, beat.notes[0], x, staffLineY, width);
+      // Single note — pass the beat and the single note to drawSingleNote so it can render dotted per-note
+      const nv = beat.notes[0];
+      return this.drawSingleNote(svg, nv, x, staffLineY, width);
     } else {
       // Multiple notes - use proper rhythmic grouping with beams
       return this.drawNoteGroup(svg, beat.notes, x, staffLineY, width);
@@ -403,24 +426,35 @@ export default class ChordGridPlugin extends Plugin {
   /**
    * Draw a single note with slash and stem
    */
-  drawSingleNote(svg: SVGElement, value: number, x: number, staffLineY: number, width: number): number {
+  drawSingleNote(svg: SVGElement, nv: NoteValue, x: number, staffLineY: number, width: number): number {
     const centerX = x + width / 2;
 
     // Draw slash (top-right to bottom-left)
     this.drawSlash(svg, centerX, staffLineY);
 
     // Draw stem for short notes - ATTACHED TO BOTTOM OF SLASH
-    if (value >= 2 && value !== 1) {
+    if (nv.value >= 2 && nv.value !== 1) {
       this.drawStem(svg, centerX, staffLineY, 25);
     }
 
-    // Draw flags if needed
-    if (value === 8) {
+    // Draw flags if needed (for single isolated short notes)
+    if (nv.value === 8) {
       this.drawFlag(svg, centerX, staffLineY, 1);
-    } else if (value === 16) {
+    } else if (nv.value === 16) {
       this.drawFlag(svg, centerX, staffLineY, 2);
-    } else if (value === 32) {
+    } else if (nv.value === 32) {
       this.drawFlag(svg, centerX, staffLineY, 3);
+    }
+
+    // If this note is dotted, draw a small dot to the right of the note head
+    if (nv.dotted) {
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      // position slightly right and vertically aligned to staffLineY
+      dot.setAttribute('cx', (centerX + 8).toString());
+      dot.setAttribute('cy', (staffLineY).toString());
+      dot.setAttribute('r', '2');
+      dot.setAttribute('fill', '#000');
+      svg.appendChild(dot);
     }
 
     return centerX;
@@ -428,59 +462,80 @@ export default class ChordGridPlugin extends Plugin {
 
   /**
    * Draw a group of notes with proper beaming, including nested beam segments for mixed durations
-   * notesValues: array of numbers (e.g., [32,32,16,16])
+   * notesValues: array of NoteValue objects (e.g., [{value:8},{value:16}])
+   *
+   * Behavior:
+   * - Compute beamCount per note (8->1,16->2,32->3).
+   * - Draw stem for each note and store stem positions.
+   * - For each beam level, draw continuous beams where notes have beamCount >= level.
+   * - For notes that have extra beams (level > neighbor's level), draw a short stub extending left from that stem.
+   * - Draw per-note dotted points next to heads.
    */
-  drawNoteGroup(svg: SVGElement, notesValues: number[], x: number, staffLineY: number, width: number): number {
+  drawNoteGroup(svg: SVGElement, notesValues: NoteValue[], x: number, staffLineY: number, width: number): number {
     const noteCount = notesValues.length;
-    const noteSpacing = width / noteCount;
+    const noteSpacing = noteCount > 0 ? width / noteCount : width;
     const stemHeight = 25;
 
-    // Map notes to beam counts and positions
-    const notes: { value: number; beamCount: number; centerX: number; stemX?: number; stemTopY?: number; stemBottomY?: number }[] = [];
+    // Map notes to their drawing info
+    const notes: { nv: NoteValue; beamCount: number; centerX: number; stemX?: number; stemTopY?: number; stemBottomY?: number }[] = [];
 
     for (let i = 0; i < noteCount; i++) {
-      const val = notesValues[i];
+      const nv = notesValues[i];
       const centerX = x + i * noteSpacing + noteSpacing / 2;
-      const beamCount = val === 8 ? 1 : val === 16 ? 2 : val === 32 ? 3 : 0;
+      const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : 0;
 
-      // draw slash
+      // Draw slash for each note
       this.drawSlash(svg, centerX, staffLineY);
-      // draw stem and capture positions
-      const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
 
-      notes.push({ value: val, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+      // Draw stem and store positions
+      const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
+      notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
+
+      // Draw per-note dot near head if dotted
+      if (nv.dotted) {
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', (centerX + 8).toString());
+        dot.setAttribute('cy', (staffLineY).toString());
+        dot.setAttribute('r', '2');
+        dot.setAttribute('fill', '#000');
+        svg.appendChild(dot);
+      }
     }
 
     // Determine maximum beam count in this group
     const maxBeamCount = notes.reduce((m, n) => Math.max(m, n.beamCount), 0);
     if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
 
-    // For each beam level (1 = lowest beam line, 2 = second line, etc.), draw continuous segments
-    const beamGap = 5; // vertical gap between stacked beams
+    // beamGap controls vertical gap between stacked beams
+    const beamGap = 5;
 
-    // Determine base Y for beams: use the minimum stemBottomY (closest to staff) so beams sit on top of stems
-    const baseStemBottom = Math.min(...notes.map(n => n.stemBottomY || 0));
+    // baseStemBottom is the top-most (min) stem bottom Y so beams sit on top of stems
+    // Filter out undefined values before computing min
+    const validStemBottoms = notes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
+    const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
 
+    // For each beam level, draw continuous beams and stubs for isolated higher beams
     for (let level = 1; level <= maxBeamCount; level++) {
-      // Build continuous segments where notes have beamCount >= level
       let segStartIndex: number | null = null;
 
       for (let i = 0; i < notes.length; i++) {
         const n = notes[i];
         const active = n.beamCount >= level;
 
+        // look at neighbors to find continuous segments
         if (active && segStartIndex === null) {
+          // start new segment
           segStartIndex = i;
         } else if ((!active || i === notes.length - 1) && segStartIndex !== null) {
-          // If we are at the end and active, extend to i
+          // closing segment: if we're at end but active, segEnd should be i; otherwise i-1
           const segEnd = (active && i === notes.length - 1) ? i : i - 1;
 
           // compute beam Y: start from baseStemBottom and go up for higher levels
           const beamY = baseStemBottom - (level - 1) * beamGap;
 
+          // draw continuous beam from segStartIndex to segEnd
           const startX = notes[segStartIndex].stemX!;
           const endX = notes[segEnd].stemX!;
-
           const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
           beam.setAttribute('x1', startX.toString());
           beam.setAttribute('y1', beamY.toString());
@@ -491,6 +546,31 @@ export default class ChordGridPlugin extends Plugin {
           svg.appendChild(beam);
 
           segStartIndex = null;
+        }
+      }
+
+      // Now draw stubs for notes that have this level but their left neighbor DOES NOT have it
+      // This creates the "extra beam to the left that stops in the void" effect.
+      // BUT: don't draw a stub for the first note (i=0) to avoid it extending beyond the group boundary
+      const stubLength = Math.max(8, noteSpacing * 0.4); // length of stub to draw leftwards
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i];
+        const hasLevel = n.beamCount >= level;
+        const leftHas = (i - 1 >= 0) ? (notes[i - 1].beamCount >= level) : false;
+        // Only draw stub if not the first note AND has level AND left doesn't have it
+        if (i > 0 && hasLevel && !leftHas) {
+          // draw a left-facing stub from this stem
+          const beamY = baseStemBottom - (level - 1) * beamGap;
+          const startX = n.stemX!;
+          const stubX = startX - stubLength;
+          const beam = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          beam.setAttribute('x1', startX.toString());
+          beam.setAttribute('y1', beamY.toString());
+          beam.setAttribute('x2', stubX.toString());
+          beam.setAttribute('y2', beamY.toString());
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
         }
       }
     }
@@ -538,7 +618,7 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Draw flag(s) for a note
+   * Draw flag(s) for a note (for isolated short notes)
    */
   drawFlag(svg: SVGElement, x: number, staffLineY: number, count: number) {
     const slashLength = 10;
