@@ -7,6 +7,7 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -20,6 +21,7 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // main.ts
 var main_exports = {};
@@ -28,402 +30,372 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
-var ChordGridPlugin = class extends import_obsidian.Plugin {
-  async onload() {
-    console.log("Loading Chord Grid plugin");
-    this.registerMarkdownCodeBlockProcessor("chordgrid", (source, el, ctx) => {
-      this.renderChordGrid(source, el);
-    });
+
+// src/parser/ChordGridParser.ts
+var ChordGridParser = class {
+  parse(input) {
+    const lines = input.trim().split("\n");
+    const firstLine = lines[0];
+    const timeSignature = this.parseTimeSignature(firstLine);
+    const allMeasures = [];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+      const measures = this.parseLine(line, lineIndex === 0);
+      if (measures.length > 0 && lineIndex < lines.length - 1) {
+        measures[measures.length - 1].lineBreakAfter = true;
+      }
+      allMeasures.push(...measures);
+    }
+    const renderedLines = this.groupIntoLines(allMeasures, 4);
+    const grid = {
+      timeSignature,
+      measures: allMeasures,
+      lines: renderedLines
+    };
+    const errors = [];
+    const expectedQuarterNotes = timeSignature.numerator * (4 / timeSignature.denominator);
+    for (let mi = 0; mi < allMeasures.length; mi++) {
+      const measure = allMeasures[mi];
+      let foundQuarterNotes = 0;
+      for (const beat of measure.beats) {
+        for (const n of beat.notes) {
+          if (!n.value) continue;
+          const baseWhole = 1 / n.value;
+          const dottedMultiplier = n.dotted ? 1.5 : 1;
+          const whole = baseWhole * dottedMultiplier;
+          foundQuarterNotes += whole * 4;
+        }
+      }
+      const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
+      if (diff > 1e-6) {
+        errors.push({
+          measureIndex: mi,
+          measureSource: measure.source,
+          expectedQuarterNotes,
+          foundQuarterNotes,
+          message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
+        });
+      }
+    }
+    return { grid, errors };
   }
-  /**
-   * Parse chord grid text into structured data
-   */
-  parseChordGrid(source) {
-    const lines = source.trim().split("\n");
-    let timeSignature = "4/4";
+  parseLine(line, isFirstLine) {
+    if (isFirstLine) {
+      line = line.replace(/^\d+\/\d+\s*/, "");
+    }
     const measures = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed)
-        continue;
-      if (measures.length === 0) {
-        const timeSigMatch = trimmed.match(/^(\d+\/\d+)/);
-        if (timeSigMatch) {
-          timeSignature = timeSigMatch[1];
-        }
-      }
-      const tokens = this.tokenizeLine(trimmed);
-      let currentMeasure = { chords: [], hasBarLine: false };
-      let isRepeatStart = false;
-      let isRepeatEnd = false;
-      for (const token of tokens) {
-        if (token.type === "repeatStart") {
-          isRepeatStart = true;
-        } else if (token.type === "repeatEnd") {
-          isRepeatEnd = true;
-        } else if (token.type === "barLine") {
-          if (currentMeasure.chords.length > 0) {
-            currentMeasure.hasBarLine = true;
-            currentMeasure.isRepeatEnd = isRepeatEnd;
-            measures.push(currentMeasure);
-            currentMeasure = {
-              chords: [],
-              hasBarLine: false,
-              isRepeatStart
-            };
-            isRepeatEnd = false;
-            isRepeatStart = false;
-          }
-        } else if (token.type === "chord") {
-          currentMeasure.chords.push({
-            chord: token.chord,
-            beats: token.beats,
-            rawRhythm: token.rhythm
-          });
-        }
-      }
-      if (currentMeasure.chords.length > 0) {
-        currentMeasure.isRepeatEnd = isRepeatEnd;
-        measures.push(currentMeasure);
-      }
-      if (measures.length > 0 && isRepeatStart) {
-        measures[0].isRepeatStart = true;
-      }
-      if (lines.length > 1 && line !== lines[lines.length - 1]) {
-        measures.push({ chords: [], hasBarLine: false, isLineBreak: true });
-      }
-    }
-    return { timeSignature, measures };
-  }
-  /**
-   * Tokenize a line into meaningful tokens with proper tie handling
-   */
-  tokenizeLine(line) {
     const tokens = [];
-    let remaining = line.replace(/^\d+\/\d+\s*/, "");
-    while (remaining.length > 0) {
-      remaining = remaining.trim();
-      if (remaining.startsWith(":||")) {
-        tokens.push({ type: "repeatEnd" });
-        remaining = remaining.substring(3);
-        continue;
-      } else if (remaining.startsWith("||:")) {
-        tokens.push({ type: "repeatStart" });
-        remaining = remaining.substring(3);
-        continue;
-      } else if (remaining.startsWith("|:")) {
-        tokens.push({ type: "repeatStart" });
-        remaining = remaining.substring(2);
-        continue;
-      }
-      if (remaining.startsWith("||")) {
-        tokens.push({ type: "barLine" });
-        remaining = remaining.substring(2);
-        continue;
-      } else if (remaining.startsWith("|")) {
-        tokens.push({ type: "barLine" });
-        remaining = remaining.substring(1);
-        continue;
-      }
-      const chordWithRhythmMatch = remaining.match(/^([A-G][#b]?(?:maj|min|m|dim|aug|sus|[0-9])*)\[([0-9._\s]+)\]/);
-      if (chordWithRhythmMatch) {
-        const chord = chordWithRhythmMatch[1];
-        const rhythm = chordWithRhythmMatch[2];
-        const beats = this.parseRhythm(rhythm);
-        tokens.push({ type: "chord", chord, beats, rhythm });
-        remaining = remaining.substring(chordWithRhythmMatch[0].length);
-        continue;
-      }
-      const rhythmOnlyMatch = remaining.match(/^\[([0-9._\s]+)\]/);
-      if (rhythmOnlyMatch) {
-        const rhythm = rhythmOnlyMatch[1];
-        const beats = this.parseRhythm(rhythm);
-        tokens.push({ type: "chord", chord: "", beats, rhythm });
-        remaining = remaining.substring(rhythmOnlyMatch[0].length);
-        continue;
-      }
-      remaining = remaining.substring(1);
+    const re = /(\|\|:|:?\|\||\|)/g;
+    let lastIndex = 0;
+    let m;
+    const parts = [];
+    while ((m = re.exec(line)) !== null) {
+      const sep = m[0];
+      const text = line.slice(lastIndex, m.index).trim();
+      parts.push({ sep: null, text });
+      parts.push({ sep, text: "" });
+      lastIndex = re.lastIndex;
     }
-    return tokens;
+    const trailing = line.slice(lastIndex).trim();
+    if (trailing.length > 0) parts.push({ sep: null, text: trailing });
+    let currentText = "";
+    for (const p of parts) {
+      if (p.sep === null) {
+        if (p.text) {
+          if (currentText.length > 0) currentText += " ";
+          currentText += p.text;
+        }
+      } else {
+        tokens.push({ bar: p.sep, content: currentText.trim() });
+        currentText = "";
+      }
+    }
+    if (currentText.trim().length > 0) {
+      tokens.push({ bar: "|", content: currentText.trim() });
+    }
+    const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
+    const analyzer = new BeamAndTieAnalyzer();
+    const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
+    const nonEmptyTokens = tokens.filter((t) => t.content.trim().length > 0);
+    for (let ti = 0; ti < nonEmptyTokens.length; ti++) {
+      const t = nonEmptyTokens[ti];
+      const text = t.content;
+      const bar = t.bar;
+      const beats = [];
+      let firstChord = "";
+      let anySource = "";
+      let m2;
+      const isFirstMeasureOfLine = ti === 0;
+      const isLastMeasureOfLine = ti === nonEmptyTokens.length - 1;
+      const chordSegments = [];
+      while ((m2 = segmentRe.exec(text)) !== null) {
+        const leadingSpace = m2[1] || "";
+        const chord = (m2[2] || "").trim();
+        const rhythm = (m2[3] || "").trim();
+        const sourceText = m2[0];
+        if (!firstChord && chord) firstChord = chord;
+        anySource += (anySource ? " " : "") + sourceText;
+        if (rhythm.length > 0) {
+          const hasSignificantSpace = leadingSpace.length > 0;
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+          chordSegments.push({
+            chord,
+            // utiliser l'accord actuel
+            beats: parsedBeats
+          });
+          beats.push(...parsedBeats);
+        }
+      }
+      console.log("Parsed chords:", chordSegments.map((s) => s.chord));
+      measures.push({
+        beats,
+        chord: firstChord,
+        // garder pour compatibilité
+        chordSegments,
+        // nouvelle propriété pour tous les accords
+        barline: bar,
+        lineBreakAfter: false,
+        source: anySource || text
+      });
+    }
+    return measures;
   }
-  /**
-   * Parse rhythm string into beats - VERSION ORIGINALE (avec ligatures)
-   */
-  parseRhythm(rhythm) {
+  // Minimal implementation to avoid "this.parseTimeSignature is not a function"
+  parseTimeSignature(line) {
+    const m = /^\s*(\d+)\/(\d+)/.exec(line);
+    if (m) {
+      return {
+        numerator: parseInt(m[1], 10),
+        denominator: parseInt(m[2], 10)
+      };
+    }
+    return { numerator: 4, denominator: 4 };
+  }
+  // Placeholder for grouping helper (kept as referenced; implement if missing)
+  groupIntoLines(measures, perLine) {
+    const lines = [];
+    for (let i = 0; i < measures.length; i += perLine) {
+      lines.push(measures.slice(i, i + perLine));
+    }
+    return lines;
+  }
+};
+var BeamAndTieAnalyzer = class {
+  constructor() {
+    __publicField(this, "tieContext");
+    // Garder le contexte du dernier groupe de notes pour détecter
+    // si deux segments doivent être liés ou séparés
+    __publicField(this, "rhythmContext");
+    this.tieContext = {
+      lastNote: null,
+      crossMeasure: false,
+      crossLine: false,
+      pendingTieToVoid: false
+    };
+    this.rhythmContext = {
+      lastGroupTime: 0,
+      lastGroupHasSpace: false,
+      lastBeamableNotes: []
+    };
+  }
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
+    var _a, _b, _c;
+    this.rhythmContext.lastGroupHasSpace = hasSignificantSpace;
     const beats = [];
-    const rhythmTokens = rhythm.split(/\s+/).filter((r) => r.length > 0);
-    for (const token of rhythmTokens) {
-      const notes = [];
-      let i = 0;
-      let isTied = false;
-      while (i < token.length) {
-        const ch = token[i];
-        if (ch === "_" && notes.length === 0) {
-          isTied = true;
-          i++;
-          continue;
-        }
-        const next = (offset = 1) => token[i + offset] || "";
-        let noteValue = null;
-        let dotted = false;
-        let charsConsumed = 0;
-        if (ch === "6" && next(1) === "4") {
-          noteValue = 64;
-          charsConsumed = 2;
-          if (token[i + 2] === ".") {
-            dotted = true;
-            charsConsumed = 3;
-          }
-        } else if (ch === "3" && next(1) === "2") {
-          noteValue = 32;
-          charsConsumed = 2;
-          if (token[i + 2] === ".") {
-            dotted = true;
-            charsConsumed = 3;
-          }
-        } else if (ch === "1" && next(1) === "6") {
-          noteValue = 16;
-          charsConsumed = 2;
-          if (token[i + 2] === ".") {
-            dotted = true;
-            charsConsumed = 3;
-          }
-        } else if (ch === "8" || ch === "4" || ch === "2" || ch === "1") {
-          noteValue = parseInt(ch, 10);
-          charsConsumed = 1;
-          if (token[i + 1] === ".") {
-            dotted = true;
-            charsConsumed = 2;
-          }
-        } else if (ch === "_") {
-          if (notes.length > 0) {
-            notes[notes.length - 1].tied = true;
-          }
-          i++;
-          continue;
+    let currentBeat = [];
+    let i = 0;
+    while (i < rhythmStr.length) {
+      if (rhythmStr[i] === "_") {
+        if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
+          this.markTieToVoid(currentBeat);
+        } else if (i === 0 && isFirstMeasureOfLine) {
+          this.tieContext.pendingTieToVoid = false;
         } else {
-          i += 1;
-          continue;
+          this.markTieStart(currentBeat);
         }
-        if (noteValue !== null) {
-          notes.push({ value: noteValue, dotted, tied: isTied });
-          isTied = false;
-          i += charsConsumed;
+        i++;
+        continue;
+      }
+      if (rhythmStr[i] === " ") {
+        if (currentBeat.length > 0) {
+          beats.push(this.createBeat(currentBeat));
+          currentBeat = [];
         }
+        i++;
+        continue;
       }
-      if (notes.length > 0) {
-        beats.push({ notes });
+      if (rhythmStr[i] === "-") {
+        i++;
+        const note2 = this.parseNote(rhythmStr, i);
+        note2.isRest = true;
+        currentBeat.push(note2);
+        i += (_a = note2.length) != null ? _a : 0;
+        continue;
       }
+      const note = this.parseNote(rhythmStr, i);
+      if (i === 0 && isFirstMeasureOfLine && rhythmStr[0] === "_") {
+        note.tieFromVoid = true;
+      }
+      if ((_b = this.tieContext.lastNote) == null ? void 0 : _b.tieStart) {
+        note.tieEnd = true;
+        this.tieContext.lastNote = null;
+      }
+      currentBeat.push(note);
+      i += (_c = note.length) != null ? _c : 0;
+    }
+    if (currentBeat.length > 0) {
+      beats.push(this.createBeat(currentBeat));
     }
     return beats;
   }
-  /**
-   * Render chord grid from source text into container element
-   */
-  renderChordGrid(source, container) {
-    const grid = this.parseChordGrid(source);
-    const svg = this.createSVG(grid);
-    container.empty();
-    container.appendChild(svg);
+  markTieToVoid(notes) {
+    if (notes.length > 0) {
+      const lastNote = notes[notes.length - 1];
+      lastNote.tieStart = true;
+      lastNote.tieToVoid = true;
+      this.tieContext.pendingTieToVoid = true;
+    }
   }
-  /**
-   * Create SVG element for the entire chord grid
-   */
-  createSVG(grid) {
-    const measuresPerLine = 4;
-    const measureWidth = 200;
-    const measureHeight = 120;
-    let currentLine = 0;
-    let measuresInCurrentLine = 0;
-    const measurePositions = [];
-    let globalIndex = 0;
-    grid.measures.forEach((measure, index) => {
-      if (measure.isLineBreak) {
-        currentLine++;
-        measuresInCurrentLine = 0;
-        return;
-      }
-      if (measuresInCurrentLine >= measuresPerLine) {
-        currentLine++;
-        measuresInCurrentLine = 0;
-      }
-      measurePositions.push({
-        measure,
-        lineIndex: currentLine,
-        posInLine: measuresInCurrentLine,
-        globalIndex: globalIndex++
-      });
-      measuresInCurrentLine++;
-    });
-    const lines = currentLine + 1;
-    const width = measuresPerLine * measureWidth + 60;
-    const height = lines * (measureHeight + 20) + 20;
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", width.toString());
-    svg.setAttribute("height", height.toString());
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    svg.style.background = "#ffffff";
-    const timeSigText = this.createText(grid.timeSignature, 10, 40, "18px", "bold");
-    svg.appendChild(timeSigText);
-    const notePositions = [];
-    measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2 }) => {
-      const x = posInLine * measureWidth + 40;
-      const y = lineIndex * (measureHeight + 20) + 20;
-      this.drawMeasure(svg, measure, x, y, measureWidth, measureHeight, globalIndex2, notePositions, grid);
-    });
-    this.detectAndDrawTies(svg, notePositions, grid);
-    return svg;
-  }
-  /**
-   * Detect and draw ties based on note positions and grid structure
-   */
-  detectAndDrawTies(svg, notePositions, grid) {
-    const ties = [];
-    for (let i = 0; i < notePositions.length - 1; i++) {
-      const currentNote = notePositions[i];
-      const nextNote = notePositions[i + 1];
-      if (currentNote.tied && currentNote.measureIndex === nextNote.measureIndex && currentNote.chordIndex === nextNote.chordIndex) {
-        ties.push({
-          startX: currentNote.x,
-          startY: currentNote.y - 8,
-          endX: nextNote.x,
-          endY: nextNote.y - 8,
-          type: "internal"
-        });
+  parseNote(rhythmStr, startIndex) {
+    const VALID = ["64", "32", "16", "8", "4", "2", "1"];
+    for (const v of VALID) {
+      if (rhythmStr.startsWith(v, startIndex)) {
+        let len = v.length;
+        let dotted = false;
+        if (startIndex + len < rhythmStr.length && rhythmStr[startIndex + len] === ".") {
+          dotted = true;
+          len += 1;
+        }
+        return {
+          value: parseInt(v),
+          dotted,
+          tieStart: false,
+          tieEnd: false,
+          tieToVoid: false,
+          tieFromVoid: false,
+          isRest: false,
+          position: startIndex,
+          length: len
+        };
       }
     }
-    for (let i = 0; i < notePositions.length - 1; i++) {
-      const currentNote = notePositions[i];
-      const nextNote = notePositions[i + 1];
-      if (currentNote.tied && currentNote.measureIndex !== nextNote.measureIndex && nextNote.measureIndex === currentNote.measureIndex + 1) {
-        ties.push({
-          startX: currentNote.x,
-          startY: currentNote.y - 8,
-          endX: nextNote.x,
-          endY: nextNote.y - 8,
-          type: "cross-measure"
+    return {
+      value: 4,
+      dotted: false,
+      tieStart: false,
+      tieEnd: false,
+      tieToVoid: false,
+      tieFromVoid: false,
+      isRest: false,
+      position: startIndex,
+      length: 1
+    };
+  }
+  markTieStart(notes) {
+    if (notes.length === 0) return;
+    const last = notes[notes.length - 1];
+    last.tieStart = true;
+    this.tieContext.lastNote = last;
+    this.tieContext.crossMeasure = true;
+  }
+  createBeat(notes) {
+    const beatNotes = notes.map((n) => ({ ...n }));
+    const beamGroups = [];
+    let hasBeam = false;
+    const beamableNotes = beatNotes.filter((n) => n.value >= 8 && !n.isRest);
+    if (beamableNotes.length > 0) {
+      const hasIncomingTie = beamableNotes[0].tieEnd || beamableNotes[0].tieFromVoid;
+      if (!this.rhythmContext.lastGroupHasSpace && hasIncomingTie) {
+        const lastBeamableCount = this.rhythmContext.lastBeamableNotes.length;
+        beamGroups.push({
+          startIndex: 0,
+          endIndex: beamableNotes.length - 1,
+          noteCount: lastBeamableCount + beamableNotes.length
         });
+        hasBeam = true;
+      } else {
+        beamGroups.push({
+          startIndex: 0,
+          endIndex: beamableNotes.length - 1,
+          noteCount: beamableNotes.length
+        });
+        hasBeam = beamableNotes.length > 1;
       }
     }
-    ties.forEach((tie) => {
-      this.drawTie(svg, tie);
-    });
+    this.rhythmContext.lastBeamableNotes = beamableNotes;
+    return {
+      notes: beatNotes,
+      hasBeam,
+      beamGroups
+    };
   }
-  /**
-   * Draw a tie
-   */
-  drawTie(svg, tie) {
-    const tieElement = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const controlY = tie.startY - 5;
-    tieElement.setAttribute("d", `M ${tie.startX} ${tie.startY} Q ${(tie.startX + tie.endX) / 2} ${controlY} ${tie.endX} ${tie.endY}`);
-    tieElement.setAttribute("stroke", "#000");
-    tieElement.setAttribute("stroke-width", "1.5");
-    tieElement.setAttribute("fill", "none");
-    svg.appendChild(tieElement);
+  // ...existing code...
+};
+
+// src/renderer/constants.ts
+var SVG_NS = "http://www.w3.org/2000/svg";
+
+// src/renderer/MeasureRenderer.ts
+var MeasureRenderer = class {
+  constructor(measure, x, y, width) {
+    this.measure = measure;
+    this.x = x;
+    this.y = y;
+    this.width = width;
   }
-  /**
-   * Draw a single measure with chord, rhythm, and bar lines
-   */
-  drawMeasure(svg, measure, x, y, width, height, measureIndex, notePositions, grid) {
-    const leftBarX = x;
-    const rightBarX = x + width - 2;
+  drawMeasure(svg, measureIndex, notePositions, grid) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - 2;
     if (measureIndex === 0) {
-      this.drawBar(svg, leftBarX, y, height);
-    } else if (measure.isRepeatStart) {
-      this.drawBar(svg, leftBarX, y, height);
-      this.drawBarWithRepeat(svg, leftBarX, y, height, true);
+      this.drawBar(svg, leftBarX, this.y, 120);
+    } else if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);
     }
-    const staffLineY = y + 80;
-    const staffLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    staffLine.setAttribute("x1", (x + 10).toString());
+    const staffLineY = this.y + 80;
+    const staffLine = document.createElementNS(SVG_NS, "line");
+    staffLine.setAttribute("x1", (this.x + 10).toString());
     staffLine.setAttribute("y1", staffLineY.toString());
-    staffLine.setAttribute("x2", (x + width - 10).toString());
+    staffLine.setAttribute("x2", (this.x + this.width - 10).toString());
     staffLine.setAttribute("y2", staffLineY.toString());
     staffLine.setAttribute("stroke", "#000");
     staffLine.setAttribute("stroke-width", "1");
     svg.appendChild(staffLine);
-    const chordWidth = width / Math.max(measure.chords.length, 1);
-    measure.chords.forEach((chordData, chordIndex) => {
-      const chordX = x + chordIndex * chordWidth + 10;
-      const firstNoteX = this.drawRhythm(svg, chordData, chordX, staffLineY, chordWidth - 20, measureIndex, chordIndex, notePositions);
-      if (firstNoteX !== null && chordData.chord && chordData.chord.trim() !== "") {
-        const chordText = this.createText(chordData.chord, firstNoteX, y + 40, "24px", "bold");
-        chordText.setAttribute("text-anchor", "middle");
-        svg.appendChild(chordText);
-      }
+    const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
+    const segmentWidth = this.width / segments.length;
+    segments.forEach((segment, segmentIndex) => {
+      const segmentX = this.x + segmentIndex * segmentWidth + 10;
+      const beatsWidth = segmentWidth - 20;
+      const beatWidth = beatsWidth / segment.beats.length;
+      segment.beats.forEach((beat, beatIndex) => {
+        const beatX = segmentX + beatIndex * beatWidth;
+        const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions);
+        if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
+          const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, "22px", "bold");
+          chordText.setAttribute("text-anchor", "middle");
+          chordText.setAttribute("font-family", "Arial, sans-serif");
+          svg.appendChild(chordText);
+        }
+      });
     });
-    if (measure.isRepeatEnd) {
-      this.drawBarWithRepeat(svg, rightBarX, y, height, false);
-      this.drawBar(svg, rightBarX, y, height);
-      this.drawBar(svg, rightBarX + 6, y, height);
-    } else if (measure.hasBarLine || measureIndex === grid.measures.length - 1) {
-      this.drawBar(svg, rightBarX, y, height);
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+    } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
+      this.drawBar(svg, rightBarX, this.y, 120);
     }
   }
-  /**
-   * Draw a bar with repeat symbols - UNE barre supplémentaire avec points
-   */
-  drawBarWithRepeat(svg, x, y, height, isStart) {
-    const dotOffset = isStart ? 12 : -12;
-    const dot1Y = y + height * 0.35;
-    const dot2Y = y + height * 0.65;
-    [dot1Y, dot2Y].forEach((dotY) => {
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", (x + dotOffset).toString());
-      circle.setAttribute("cy", dotY.toString());
-      circle.setAttribute("r", "2");
-      circle.setAttribute("fill", "#000");
-      svg.appendChild(circle);
-    });
-  }
-  /**
-   * Draw a simple bar line
-   */
-  drawBar(svg, x, y, height) {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", x.toString());
-    line.setAttribute("y1", y.toString());
-    line.setAttribute("x2", x.toString());
-    line.setAttribute("y2", (y + height).toString());
-    line.setAttribute("stroke", "#000");
-    line.setAttribute("stroke-width", "1.5");
-    svg.appendChild(line);
-  }
-  /**
-   * Draw rhythm pattern for a chord and return the x position of the first note
-   */
-  drawRhythm(svg, chordData, x, staffLineY, width, measureIndex, chordIndex, notePositions) {
-    const beats = chordData.beats;
-    const beatWidth = beats.length > 0 ? width / beats.length : width;
+  drawRhythm(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions) {
+    const beats = [beat];
+    const beatWidth = width;
     let currentX = x;
     let firstNoteX = null;
-    beats.forEach((beat, beatIndex) => {
-      const firstNoteInBeatX = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions);
-      if (beatIndex === 0 && firstNoteInBeatX !== null) {
-        firstNoteX = firstNoteInBeatX;
-      }
-      currentX += beatWidth;
-    });
+    const first = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions);
+    if (first !== null) firstNoteX = first;
     return firstNoteX;
   }
-  /**
-   * Draw a single beat - handles both single notes and beamed groups
-   */
   drawBeat(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions) {
-    if (beat.notes.length === 1) {
-      const nv = beat.notes[0];
-      const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
-      notePositions.push({
-        x: noteX,
-        y: staffLineY,
-        measureIndex,
-        chordIndex,
-        beatIndex,
-        noteIndex: 0,
-        tied: nv.tied || false
-      });
-      return noteX;
-    } else {
+    if (!beat || beat.notes.length === 0) return null;
+    const hasBeamableNotes = beat.notes.some((n) => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
+    if (hasBeamableNotes || beat.notes.length > 1) {
       const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
       beat.notes.forEach((nv, noteIndex) => {
         const noteX = x + 10 + noteIndex * (width / beat.notes.length) + width / beat.notes.length / 2;
@@ -434,15 +406,25 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
           chordIndex,
           beatIndex,
           noteIndex,
-          tied: nv.tied || false
+          tied: !!(nv.tieStart || nv.tieEnd || nv.tieToVoid || nv.tieFromVoid)
         });
       });
       return firstNoteX;
+    } else {
+      const nv = beat.notes[0];
+      const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
+      notePositions.push({
+        x: noteX,
+        y: staffLineY,
+        measureIndex,
+        chordIndex,
+        beatIndex,
+        noteIndex: 0,
+        tied: !!(nv.tieStart || nv.tieEnd || nv.tieToVoid || nv.tieFromVoid)
+      });
+      return noteX;
     }
   }
-  /**
-   * Draw a single note with proper note heads for different durations
-   */
   drawSingleNote(svg, nv, x, staffLineY, width) {
     const centerX = x;
     if (nv.value === 1) {
@@ -453,18 +435,13 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     } else {
       this.drawSlash(svg, centerX, staffLineY);
       this.drawStem(svg, centerX, staffLineY, 25);
-      if (nv.value === 8) {
-        this.drawFlag(svg, centerX, staffLineY, 1);
-      } else if (nv.value === 16) {
-        this.drawFlag(svg, centerX, staffLineY, 2);
-      } else if (nv.value === 32) {
-        this.drawFlag(svg, centerX, staffLineY, 3);
-      } else if (nv.value === 64) {
-        this.drawFlag(svg, centerX, staffLineY, 4);
-      }
+      if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
+      else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
+      else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
+      else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
     }
     if (nv.dotted) {
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      const dot = document.createElementNS(SVG_NS, "circle");
       dot.setAttribute("cx", (centerX + 8).toString());
       dot.setAttribute("cy", staffLineY.toString());
       dot.setAttribute("r", "2");
@@ -473,34 +450,30 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     }
     return centerX;
   }
-  /**
-   * Draw a diamond note head for whole and half notes
-   */
   drawDiamondNoteHead(svg, x, y, hollow) {
     const diamondSize = 6;
-    const diamond = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    const points = [
-      [x, y - diamondSize],
-      [x + diamondSize, y],
-      [x, y + diamondSize],
-      [x - diamondSize, y]
-    ];
+    const diamond = document.createElementNS(SVG_NS, "polygon");
+    const points = [[x, y - diamondSize], [x + diamondSize, y], [x, y + diamondSize], [x - diamondSize, y]];
     diamond.setAttribute("points", points.map((p) => `${p[0]},${p[1]}`).join(" "));
     diamond.setAttribute("fill", hollow ? "white" : "black");
     diamond.setAttribute("stroke", "#000");
     diamond.setAttribute("stroke-width", "1");
     svg.appendChild(diamond);
   }
-  /**
-   * Draw a group of notes with proper beaming (avec ligatures)
-   */
   drawNoteGroup(svg, notesValues, x, staffLineY, width) {
     const noteCount = notesValues.length;
-    if (noteCount === 0)
-      return null;
+    if (noteCount === 0) return null;
     const hasSmallNotes = notesValues.some((nv) => nv.value >= 32);
     const noteSpacing = noteCount > 0 ? width / noteCount * (hasSmallNotes ? 1.2 : 1) : width;
     const stemHeight = 25;
+    if (noteCount === 1 && notesValues[0].value >= 8) {
+      const centerX = x;
+      this.drawSlash(svg, centerX, staffLineY);
+      const stem = this.drawStem(svg, centerX, staffLineY, stemHeight);
+      const value = notesValues[0].value;
+      this.drawFlag(svg, centerX, staffLineY, value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : value === 64 ? 4 : 0);
+      return centerX;
+    }
     const notes = [];
     for (let i = 0; i < noteCount; i++) {
       const nv = notesValues[i];
@@ -515,11 +488,20 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
       } else {
         this.drawSlash(svg, centerX, staffLineY);
         const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
+        const prevNote = i > 0 ? notesValues[i - 1] : null;
+        const nextNote = i < notesValues.length - 1 ? notesValues[i + 1] : null;
+        const needsFlag = nv.value >= 8 && (!prevNote || prevNote.value < 8) && (!nextNote || nextNote.value < 8);
+        if (needsFlag) {
+          if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
+          else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
+          else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
+          else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
+        }
         const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
         notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
       }
       if (nv.dotted) {
-        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        const dot = document.createElementNS(SVG_NS, "circle");
         dot.setAttribute("cx", (centerX + 8).toString());
         dot.setAttribute("cy", staffLineY.toString());
         dot.setAttribute("r", "2");
@@ -528,11 +510,9 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
       }
     }
     const beamedNotes = notes.filter((n) => n.beamCount > 0);
-    if (beamedNotes.length === 0)
-      return notes.length ? notes[0].centerX : null;
-    const maxBeamCount = beamedNotes.reduce((m, n) => Math.max(m, n.beamCount), 0);
-    if (maxBeamCount === 0)
-      return notes.length ? notes[0].centerX : null;
+    if (beamedNotes.length === 0) return notes.length ? notes[0].centerX : null;
+    const maxBeamCount = Math.max(...beamedNotes.map((n) => n.beamCount));
+    if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
     const beamGap = 5;
     const validStemBottoms = beamedNotes.map((n) => n.stemBottomY).filter((y) => y !== void 0);
     const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
@@ -548,7 +528,7 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
           const beamY = baseStemBottom - (level - 1) * beamGap;
           const startX = beamedNotes[segStartIndex].stemX;
           const endX = beamedNotes[segEnd].stemX;
-          const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          const beam = document.createElementNS(SVG_NS, "line");
           beam.setAttribute("x1", startX.toString());
           beam.setAttribute("y1", beamY.toString());
           beam.setAttribute("x2", endX.toString());
@@ -559,92 +539,12 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
           segStartIndex = null;
         }
       }
-      const stubLength = Math.max(8, noteSpacing * 0.4);
-      for (let i = 0; i < beamedNotes.length; i++) {
-        const n = beamedNotes[i];
-        const hasLevel = n.beamCount >= level;
-        if (!hasLevel)
-          continue;
-        const leftBeamCount = i - 1 >= 0 ? beamedNotes[i - 1].beamCount : 0;
-        const rightBeamCount = i + 1 < beamedNotes.length ? beamedNotes[i + 1].beamCount : 0;
-        const leftHasLevel = leftBeamCount >= level;
-        const rightHasLevel = rightBeamCount >= level;
-        if (leftHasLevel && rightHasLevel)
-          continue;
-        if (!leftHasLevel && !rightHasLevel) {
-          const beamY2 = baseStemBottom - (level - 1) * beamGap;
-          const stemX2 = n.stemX;
-          const leftNote = i > 0 ? beamedNotes[i - 1] : null;
-          const isAfterDottedStronger = leftNote && leftNote.nv.dotted && leftNote.nv.value < n.nv.value;
-          const rightNote = i < beamedNotes.length - 1 ? beamedNotes[i + 1] : null;
-          const isBeforeDottedWeaker = rightNote && rightNote.nv.dotted && n.nv.value < rightNote.nv.value;
-          if (isAfterDottedStronger && i > 0) {
-            const stubX = stemX2 - stubLength;
-            const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            beam.setAttribute("x1", stemX2.toString());
-            beam.setAttribute("y1", beamY2.toString());
-            beam.setAttribute("x2", stubX.toString());
-            beam.setAttribute("y2", beamY2.toString());
-            beam.setAttribute("stroke", "#000");
-            beam.setAttribute("stroke-width", "2");
-            svg.appendChild(beam);
-          } else if (i < beamedNotes.length - 1) {
-            const stubX = stemX2 + stubLength;
-            const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            beam.setAttribute("x1", stemX2.toString());
-            beam.setAttribute("y1", beamY2.toString());
-            beam.setAttribute("x2", stubX.toString());
-            beam.setAttribute("y2", beamY2.toString());
-            beam.setAttribute("stroke", "#000");
-            beam.setAttribute("stroke-width", "2");
-            svg.appendChild(beam);
-          } else if (i > 0) {
-            const stubX = stemX2 - stubLength;
-            const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            beam.setAttribute("x1", stemX2.toString());
-            beam.setAttribute("y1", beamY2.toString());
-            beam.setAttribute("x2", stubX.toString());
-            beam.setAttribute("y2", beamY2.toString());
-            beam.setAttribute("stroke", "#000");
-            beam.setAttribute("stroke-width", "2");
-            svg.appendChild(beam);
-          }
-          continue;
-        }
-        const beamY = baseStemBottom - (level - 1) * beamGap;
-        const stemX = n.stemX;
-        if (leftHasLevel && !rightHasLevel && i > 0) {
-          const stubX = stemX - stubLength;
-          const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
-          beam.setAttribute("x1", stemX.toString());
-          beam.setAttribute("y1", beamY.toString());
-          beam.setAttribute("x2", stubX.toString());
-          beam.setAttribute("y2", beamY.toString());
-          beam.setAttribute("stroke", "#000");
-          beam.setAttribute("stroke-width", "2");
-          svg.appendChild(beam);
-        }
-        if (!leftHasLevel && rightHasLevel && i < beamedNotes.length - 1) {
-          const stubX = stemX + stubLength;
-          const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
-          beam.setAttribute("x1", stemX.toString());
-          beam.setAttribute("y1", beamY.toString());
-          beam.setAttribute("x2", stubX.toString());
-          beam.setAttribute("y2", beamY.toString());
-          beam.setAttribute("stroke", "#000");
-          beam.setAttribute("stroke-width", "2");
-          svg.appendChild(beam);
-        }
-      }
     }
     return notes.length ? notes[0].centerX : null;
   }
-  /**
-   * Draw a slash at 45° angle
-   */
   drawSlash(svg, x, y) {
     const slashLength = 10;
-    const slash = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    const slash = document.createElementNS(SVG_NS, "line");
     slash.setAttribute("x1", (x + slashLength / 2).toString());
     slash.setAttribute("y1", (y - slashLength / 2).toString());
     slash.setAttribute("x2", (x - slashLength / 2).toString());
@@ -653,14 +553,11 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     slash.setAttribute("stroke-width", "3");
     svg.appendChild(slash);
   }
-  /**
-   * Draw a stem for a note
-   */
   drawStem(svg, x, y, height) {
     const slashLength = 10;
     const stemStartX = x - slashLength / 2 + 2;
     const stemStartY = y + slashLength / 2;
-    const stem = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    const stem = document.createElementNS(SVG_NS, "line");
     stem.setAttribute("x1", stemStartX.toString());
     stem.setAttribute("y1", stemStartY.toString());
     stem.setAttribute("x2", stemStartX.toString());
@@ -670,15 +567,12 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     svg.appendChild(stem);
     return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
   }
-  /**
-   * Draw flag(s) for a note
-   */
   drawFlag(svg, x, staffLineY, count) {
     const slashLength = 10;
     const stemStartX = x - slashLength / 2 + 2;
     const stemBottomY = staffLineY + slashLength / 2 + 25;
     for (let i = 0; i < count; i++) {
-      const flag = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const flag = document.createElementNS(SVG_NS, "path");
       const flagY = stemBottomY - i * 10;
       flag.setAttribute("d", `M ${stemStartX} ${flagY} Q ${stemStartX - 10} ${flagY - 5} ${stemStartX - 8} ${flagY - 12}`);
       flag.setAttribute("stroke", "#000");
@@ -687,11 +581,50 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
       svg.appendChild(flag);
     }
   }
-  /**
-   * Utility function to create text elements
-   */
+  drawBar(svg, x, y, height) {
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x1", x.toString());
+    line.setAttribute("y1", y.toString());
+    line.setAttribute("x2", x.toString());
+    line.setAttribute("y2", (y + height).toString());
+    line.setAttribute("stroke", "#000");
+    line.setAttribute("stroke-width", "1.5");
+    svg.appendChild(line);
+  }
+  drawBarWithRepeat(svg, x, y, height, isStart) {
+    this.drawDoubleBar(svg, x, y, height);
+    const dotOffset = isStart ? 12 : -12;
+    const dot1Y = y + height * 0.35;
+    const dot2Y = y + height * 0.65;
+    [dot1Y, dot2Y].forEach((dotY) => {
+      const circle = document.createElementNS(SVG_NS, "circle");
+      circle.setAttribute("cx", (x + dotOffset).toString());
+      circle.setAttribute("cy", dotY.toString());
+      circle.setAttribute("r", "2");
+      circle.setAttribute("fill", "#000");
+      svg.appendChild(circle);
+    });
+  }
+  drawDoubleBar(svg, x, y, height) {
+    const bar1 = document.createElementNS(SVG_NS, "line");
+    bar1.setAttribute("x1", x.toString());
+    bar1.setAttribute("y1", y.toString());
+    bar1.setAttribute("x2", x.toString());
+    bar1.setAttribute("y2", (y + height).toString());
+    bar1.setAttribute("stroke", "#000");
+    bar1.setAttribute("stroke-width", "1.5");
+    svg.appendChild(bar1);
+    const bar2 = document.createElementNS(SVG_NS, "line");
+    bar2.setAttribute("x1", (x + 6).toString());
+    bar2.setAttribute("y1", y.toString());
+    bar2.setAttribute("x2", (x + 6).toString());
+    bar2.setAttribute("y2", (y + height).toString());
+    bar2.setAttribute("stroke", "#000");
+    bar2.setAttribute("stroke-width", "1.5");
+    svg.appendChild(bar2);
+  }
   createText(text, x, y, size, weight = "normal") {
-    const textEl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    const textEl = document.createElementNS(SVG_NS, "text");
     textEl.setAttribute("x", x.toString());
     textEl.setAttribute("y", y.toString());
     textEl.setAttribute("font-family", "Arial, sans-serif");
@@ -701,8 +634,157 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     textEl.textContent = text;
     return textEl;
   }
-  onunload() {
-    console.log("Unloading Chord Grid plugin");
+};
+
+// src/renderer/SVGRenderer.ts
+var SVGRenderer = class {
+  render(grid) {
+    return this.createSVG(grid);
+  }
+  createSVG(grid) {
+    const measuresPerLine = 4;
+    const measureWidth = 200;
+    const measureHeight = 120;
+    let currentLine = 0;
+    let measuresInCurrentLine = 0;
+    const measurePositions = [];
+    let globalIndex = 0;
+    grid.measures.forEach((measure) => {
+      if (measure.isLineBreak) {
+        currentLine++;
+        measuresInCurrentLine = 0;
+        return;
+      }
+      if (measuresInCurrentLine >= measuresPerLine) {
+        currentLine++;
+        measuresInCurrentLine = 0;
+      }
+      measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++ });
+      measuresInCurrentLine++;
+    });
+    const lines = currentLine + 1;
+    const width = measuresPerLine * measureWidth + 60;
+    const height = lines * (measureHeight + 20) + 20;
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("xmlns", SVG_NS);
+    const bg = document.createElementNS(SVG_NS, "rect");
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(width));
+    bg.setAttribute("height", String(height));
+    bg.setAttribute("fill", "white");
+    svg.appendChild(bg);
+    const timeSig = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
+    const timeText = this.createText(timeSig, 10, 40, "18px", "bold");
+    svg.appendChild(timeText);
+    const notePositions = [];
+    measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2 }) => {
+      const x = posInLine * measureWidth + 40;
+      const y = lineIndex * (measureHeight + 20) + 20;
+      const mr = new MeasureRenderer(measure, x, y, measureWidth);
+      mr.drawMeasure(svg, globalIndex2, notePositions, grid);
+    });
+    this.detectAndDrawTies(svg, notePositions);
+    return svg;
+  }
+  createText(text, x, y, size, weight = "normal") {
+    const textEl = document.createElementNS(SVG_NS, "text");
+    textEl.setAttribute("x", String(x));
+    textEl.setAttribute("y", String(y));
+    textEl.setAttribute("font-family", "Arial, sans-serif");
+    textEl.setAttribute("font-size", size);
+    textEl.setAttribute("font-weight", weight);
+    textEl.setAttribute("fill", "#000");
+    textEl.textContent = text;
+    return textEl;
+  }
+  detectAndDrawTies(svg, notePositions) {
+    const ties = [];
+    for (let i = 0; i < notePositions.length - 1; i++) {
+      const current = notePositions[i];
+      const next = notePositions[i + 1];
+      if (current.tied && current.measureIndex === next.measureIndex) {
+        ties.push({
+          startX: current.x,
+          startY: current.y - 8,
+          endX: next.x,
+          endY: next.y - 8
+        });
+      }
+    }
+    for (let i = 0; i < notePositions.length; i++) {
+      const current = notePositions[i];
+      if (current.tied) {
+        const isLastInMeasure = !notePositions[i + 1] || notePositions[i + 1].measureIndex > current.measureIndex;
+        if (isLastInMeasure) {
+          for (let j = 0; j < notePositions.length; j++) {
+            const target = notePositions[j];
+            if (target.measureIndex === current.measureIndex + 1) {
+              ties.push({
+                startX: current.x,
+                startY: current.y - 8,
+                endX: target.x,
+                endY: target.y - 8,
+                isCrossMeasure: true
+              });
+              break;
+            }
+          }
+        }
+      }
+    }
+    for (const t of ties) {
+      const path = document.createElementNS(SVG_NS, "path");
+      const controlY = t.startY - (t.isCrossMeasure ? 15 : 5);
+      const midX = (t.startX + t.endX) / 2;
+      let d;
+      if (t.isCrossMeasure) {
+        d = `M ${t.startX} ${t.startY} C ${t.startX + 30} ${controlY}, ${t.endX - 30} ${controlY}, ${t.endX} ${t.endY}`;
+      } else {
+        d = `M ${t.startX} ${t.startY} Q ${midX} ${controlY} ${t.endX} ${t.endY}`;
+      }
+      path.setAttribute("d", d);
+      path.setAttribute("stroke", "#000");
+      path.setAttribute("stroke-width", "1.5");
+      path.setAttribute("fill", "none");
+      svg.appendChild(path);
+    }
   }
 };
-//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsibWFpbi50cyJdLAogICJzb3VyY2VzQ29udGVudCI6IFsiaW1wb3J0IHsgUGx1Z2luLCBNYXJrZG93blBvc3RQcm9jZXNzb3JDb250ZXh0IH0gZnJvbSAnb2JzaWRpYW4nO1xuXG4vLyBJbnRlcmZhY2UgZGVmaW5pdGlvbnMgZm9yIG91ciBkYXRhIHN0cnVjdHVyZXNcbmludGVyZmFjZSBOb3RlVmFsdWUge1xuICB2YWx1ZTogbnVtYmVyOyAgICAgICAgLy8gMSwyLDQsOCwxNiwzMi4uLlxuICBkb3R0ZWQ/OiBib29sZWFuOyAgICAgLy8gd2hldGhlciB0aGlzIHNwZWNpZmljIG5vdGUgaXMgZG90dGVkXG4gIHRpZWQ/OiBib29sZWFuOyAgICAgICAvLyB3aGV0aGVyIHRoaXMgbm90ZSBpcyB0aWVkIHRvIHRoZSBwcmV2aW91cyBvbmVcbn1cblxuaW50ZXJmYWNlIEJlYXQge1xuICBub3RlczogTm90ZVZhbHVlW107IC8vIExpc3Qgb2Ygcmh5dGhtaWMgdmFsdWVzICg4LCA0LCAyLCAxLCBldGMuKSB3aXRoIG9wdGlvbmFsIGRvdHRlZCBmbGFnXG59XG5cbmludGVyZmFjZSBDaG9yZEluTWVhc3VyZSB7XG4gIGNob3JkOiBzdHJpbmc7XG4gIGJlYXRzOiBCZWF0W107XG4gIHJhd1JoeXRobTogc3RyaW5nOyAvLyBTdG9yZSBvcmlnaW5hbCByaHl0aG0gc3RyaW5nIGZvciB0aWUgZGV0ZWN0aW9uXG59XG5cbmludGVyZmFjZSBNZWFzdXJlIHtcbiAgY2hvcmRzOiBDaG9yZEluTWVhc3VyZVtdO1xuICBpc1JlcGVhdFN0YXJ0PzogYm9vbGVhbjtcbiAgaXNSZXBlYXRFbmQ/OiBib29sZWFuO1xuICBoYXNCYXJMaW5lPzogYm9vbGVhbjtcbiAgaXNMaW5lQnJlYWs/OiBib29sZWFuO1xufVxuXG5pbnRlcmZhY2UgQ2hvcmRHcmlkIHtcbiAgdGltZVNpZ25hdHVyZTogc3RyaW5nO1xuICBtZWFzdXJlczogTWVhc3VyZVtdO1xufVxuXG5pbnRlcmZhY2UgVGllUG9zaXRpb24ge1xuICBzdGFydFg6IG51bWJlcjtcbiAgc3RhcnRZOiBudW1iZXI7XG4gIGVuZFg6IG51bWJlcjtcbiAgZW5kWTogbnVtYmVyO1xuICB0eXBlOiAnaW50ZXJuYWwnIHwgJ2Nyb3NzLW1lYXN1cmUnO1xufVxuXG5leHBvcnQgZGVmYXVsdCBjbGFzcyBDaG9yZEdyaWRQbHVnaW4gZXh0ZW5kcyBQbHVnaW4ge1xuICBhc3luYyBvbmxvYWQoKSB7XG4gICAgY29uc29sZS5sb2coJ0xvYWRpbmcgQ2hvcmQgR3JpZCBwbHVnaW4nKTtcblxuICAgIC8vIFJlZ2lzdGVyIG1hcmtkb3duIGNvZGUgYmxvY2sgcHJvY2Vzc29yIGZvciAnY2hvcmRncmlkJyBibG9ja3NcbiAgICB0aGlzLnJlZ2lzdGVyTWFya2Rvd25Db2RlQmxvY2tQcm9jZXNzb3IoJ2Nob3JkZ3JpZCcsIChzb3VyY2UsIGVsLCBjdHgpID0+IHtcbiAgICAgIHRoaXMucmVuZGVyQ2hvcmRHcmlkKHNvdXJjZSwgZWwpO1xuICAgIH0pO1xuICB9XG5cbiAgLyoqXG4gICAqIFBhcnNlIGNob3JkIGdyaWQgdGV4dCBpbnRvIHN0cnVjdHVyZWQgZGF0YVxuICAgKi9cbiAgcGFyc2VDaG9yZEdyaWQoc291cmNlOiBzdHJpbmcpOiBDaG9yZEdyaWQge1xuICAgIGNvbnN0IGxpbmVzID0gc291cmNlLnRyaW0oKS5zcGxpdCgnXFxuJyk7XG4gICAgbGV0IHRpbWVTaWduYXR1cmUgPSAnNC80JztcbiAgICBjb25zdCBtZWFzdXJlczogTWVhc3VyZVtdID0gW107XG5cbiAgICBmb3IgKGNvbnN0IGxpbmUgb2YgbGluZXMpIHtcbiAgICAgIGNvbnN0IHRyaW1tZWQgPSBsaW5lLnRyaW0oKTtcbiAgICAgIGlmICghdHJpbW1lZCkgY29udGludWU7XG5cbiAgICAgIC8vIFBhcnNlIHRpbWUgc2lnbmF0dXJlIChvbmx5IGZyb20gZmlyc3QgbGluZSlcbiAgICAgIGlmIChtZWFzdXJlcy5sZW5ndGggPT09IDApIHtcbiAgICAgICAgY29uc3QgdGltZVNpZ01hdGNoID0gdHJpbW1lZC5tYXRjaCgvXihcXGQrXFwvXFxkKykvKTtcbiAgICAgICAgaWYgKHRpbWVTaWdNYXRjaCkge1xuICAgICAgICAgIHRpbWVTaWduYXR1cmUgPSB0aW1lU2lnTWF0Y2hbMV07XG4gICAgICAgIH1cbiAgICAgIH1cblxuICAgICAgLy8gUGFyc2UgY2hvcmRzIGludG8gbWVhc3VyZXMgYmFzZWQgb24gYmFyIGxpbmVzXG4gICAgICBjb25zdCB0b2tlbnMgPSB0aGlzLnRva2VuaXplTGluZSh0cmltbWVkKTtcbiAgICAgIGxldCBjdXJyZW50TWVhc3VyZTogTWVhc3VyZSA9IHsgY2hvcmRzOiBbXSwgaGFzQmFyTGluZTogZmFsc2UgfTtcbiAgICAgIGxldCBpc1JlcGVhdFN0YXJ0ID0gZmFsc2U7XG4gICAgICBsZXQgaXNSZXBlYXRFbmQgPSBmYWxzZTtcblxuICAgICAgZm9yIChjb25zdCB0b2tlbiBvZiB0b2tlbnMpIHtcbiAgICAgICAgaWYgKHRva2VuLnR5cGUgPT09ICdyZXBlYXRTdGFydCcpIHtcbiAgICAgICAgICBpc1JlcGVhdFN0YXJ0ID0gdHJ1ZTtcbiAgICAgICAgfSBlbHNlIGlmICh0b2tlbi50eXBlID09PSAncmVwZWF0RW5kJykge1xuICAgICAgICAgIGlzUmVwZWF0RW5kID0gdHJ1ZTtcbiAgICAgICAgfSBlbHNlIGlmICh0b2tlbi50eXBlID09PSAnYmFyTGluZScpIHtcbiAgICAgICAgICAvLyBCYXIgbGluZSBtZWFucyB3ZSBmaW5hbGl6ZSB0aGUgY3VycmVudCBtZWFzdXJlIGFuZCBzdGFydCBhIG5ldyBvbmVcbiAgICAgICAgICBpZiAoY3VycmVudE1lYXN1cmUuY2hvcmRzLmxlbmd0aCA+IDApIHtcbiAgICAgICAgICAgIGN1cnJlbnRNZWFzdXJlLmhhc0JhckxpbmUgPSB0cnVlO1xuICAgICAgICAgICAgY3VycmVudE1lYXN1cmUuaXNSZXBlYXRFbmQgPSBpc1JlcGVhdEVuZDtcbiAgICAgICAgICAgIG1lYXN1cmVzLnB1c2goY3VycmVudE1lYXN1cmUpO1xuICAgICAgICAgICAgLy8gU3RhcnQgYSBuZXcgbWVhc3VyZVxuICAgICAgICAgICAgY3VycmVudE1lYXN1cmUgPSB7IFxuICAgICAgICAgICAgICBjaG9yZHM6IFtdLCBcbiAgICAgICAgICAgICAgaGFzQmFyTGluZTogZmFsc2UsXG4gICAgICAgICAgICAgIGlzUmVwZWF0U3RhcnQ6IGlzUmVwZWF0U3RhcnRcbiAgICAgICAgICAgIH07XG4gICAgICAgICAgICBpc1JlcGVhdEVuZCA9IGZhbHNlO1xuICAgICAgICAgICAgaXNSZXBlYXRTdGFydCA9IGZhbHNlO1xuICAgICAgICAgIH1cbiAgICAgICAgfSBlbHNlIGlmICh0b2tlbi50eXBlID09PSAnY2hvcmQnKSB7XG4gICAgICAgICAgLy8gQWRkIGNob3JkIHRvIGN1cnJlbnQgbWVhc3VyZVxuICAgICAgICAgIGN1cnJlbnRNZWFzdXJlLmNob3Jkcy5wdXNoKHtcbiAgICAgICAgICAgIGNob3JkOiB0b2tlbi5jaG9yZCEsXG4gICAgICAgICAgICBiZWF0czogdG9rZW4uYmVhdHMhLFxuICAgICAgICAgICAgcmF3Umh5dGhtOiB0b2tlbi5yaHl0aG0hXG4gICAgICAgICAgfSk7XG4gICAgICAgIH1cbiAgICAgIH1cblxuICAgICAgLy8gRG9uJ3QgZm9yZ2V0IHRoZSBsYXN0IG1lYXN1cmVcbiAgICAgIGlmIChjdXJyZW50TWVhc3VyZS5jaG9yZHMubGVuZ3RoID4gMCkge1xuICAgICAgICBjdXJyZW50TWVhc3VyZS5pc1JlcGVhdEVuZCA9IGlzUmVwZWF0RW5kO1xuICAgICAgICBtZWFzdXJlcy5wdXNoKGN1cnJlbnRNZWFzdXJlKTtcbiAgICAgIH1cblxuICAgICAgLy8gQXBwbHkgcmVwZWF0IHN0YXJ0IHRvIHRoZSBGSVJTVCBtZWFzdXJlIGlmIHdlIGhhdmUgb25lXG4gICAgICBpZiAobWVhc3VyZXMubGVuZ3RoID4gMCAmJiBpc1JlcGVhdFN0YXJ0KSB7XG4gICAgICAgIG1lYXN1cmVzWzBdLmlzUmVwZWF0U3RhcnQgPSB0cnVlO1xuICAgICAgfVxuXG4gICAgICAvLyBBZGQgbGluZSBicmVhayBtYXJrZXIgaWYgdGhlcmUgYXJlIG1vcmUgbGluZXNcbiAgICAgIGlmIChsaW5lcy5sZW5ndGggPiAxICYmIGxpbmUgIT09IGxpbmVzW2xpbmVzLmxlbmd0aCAtIDFdKSB7XG4gICAgICAgIG1lYXN1cmVzLnB1c2goeyBjaG9yZHM6IFtdLCBoYXNCYXJMaW5lOiBmYWxzZSwgaXNMaW5lQnJlYWs6IHRydWUgfSk7XG4gICAgICB9XG4gICAgfVxuXG4gICAgcmV0dXJuIHsgdGltZVNpZ25hdHVyZSwgbWVhc3VyZXMgfTtcbiAgfVxuXG4gIC8qKlxuICAgKiBUb2tlbml6ZSBhIGxpbmUgaW50byBtZWFuaW5nZnVsIHRva2VucyB3aXRoIHByb3BlciB0aWUgaGFuZGxpbmdcbiAgICovXG4gIHRva2VuaXplTGluZShsaW5lOiBzdHJpbmcpOiBBcnJheTx7dHlwZTogc3RyaW5nLCBjaG9yZD86IHN0cmluZywgYmVhdHM/OiBCZWF0W10sIHJoeXRobT86IHN0cmluZ30+IHtcbiAgICBjb25zdCB0b2tlbnM6IEFycmF5PHt0eXBlOiBzdHJpbmcsIGNob3JkPzogc3RyaW5nLCBiZWF0cz86IEJlYXRbXSwgcmh5dGhtPzogc3RyaW5nfT4gPSBbXTtcbiAgICBsZXQgcmVtYWluaW5nID0gbGluZS5yZXBsYWNlKC9eXFxkK1xcL1xcZCtcXHMqLywgJycpOyAvLyBSZW1vdmUgdGltZSBzaWduYXR1cmVcbiAgICBcbiAgICB3aGlsZSAocmVtYWluaW5nLmxlbmd0aCA+IDApIHtcbiAgICAgIHJlbWFpbmluZyA9IHJlbWFpbmluZy50cmltKCk7XG4gICAgICBcbiAgICAgIC8vIENoZWNrIGZvciByZXBlYXQgbWFya2Vyc1xuICAgICAgaWYgKHJlbWFpbmluZy5zdGFydHNXaXRoKCc6fHwnKSkge1xuICAgICAgICB0b2tlbnMucHVzaCh7IHR5cGU6ICdyZXBlYXRFbmQnIH0pO1xuICAgICAgICByZW1haW5pbmcgPSByZW1haW5pbmcuc3Vic3RyaW5nKDMpO1xuICAgICAgICBjb250aW51ZTtcbiAgICAgIH0gZWxzZSBpZiAocmVtYWluaW5nLnN0YXJ0c1dpdGgoJ3x8OicpKSB7XG4gICAgICAgIHRva2Vucy5wdXNoKHsgdHlwZTogJ3JlcGVhdFN0YXJ0JyB9KTtcbiAgICAgICAgcmVtYWluaW5nID0gcmVtYWluaW5nLnN1YnN0cmluZygzKTtcbiAgICAgICAgY29udGludWU7XG4gICAgICB9IGVsc2UgaWYgKHJlbWFpbmluZy5zdGFydHNXaXRoKCd8OicpKSB7XG4gICAgICAgIHRva2Vucy5wdXNoKHsgdHlwZTogJ3JlcGVhdFN0YXJ0JyB9KTtcbiAgICAgICAgcmVtYWluaW5nID0gcmVtYWluaW5nLnN1YnN0cmluZygyKTtcbiAgICAgICAgY29udGludWU7XG4gICAgICB9XG4gICAgICBcbiAgICAgIC8vIENoZWNrIGZvciBiYXIgbGluZXNcbiAgICAgIGlmIChyZW1haW5pbmcuc3RhcnRzV2l0aCgnfHwnKSkge1xuICAgICAgICB0b2tlbnMucHVzaCh7IHR5cGU6ICdiYXJMaW5lJyB9KTtcbiAgICAgICAgcmVtYWluaW5nID0gcmVtYWluaW5nLnN1YnN0cmluZygyKTtcbiAgICAgICAgY29udGludWU7XG4gICAgICB9IGVsc2UgaWYgKHJlbWFpbmluZy5zdGFydHNXaXRoKCd8JykpIHtcbiAgICAgICAgdG9rZW5zLnB1c2goeyB0eXBlOiAnYmFyTGluZScgfSk7XG4gICAgICAgIHJlbWFpbmluZyA9IHJlbWFpbmluZy5zdWJzdHJpbmcoMSk7XG4gICAgICAgIGNvbnRpbnVlO1xuICAgICAgfVxuICAgICAgXG4gICAgICAvLyBDT1JSRUNUSU9OIDogQWNjZXB0ZXIgbGVzIHJ5dGhtZXMgc2FucyBhY2NvcmQgWzQgNCA0IDRdXG4gICAgICAvLyBQYXR0ZXJuIDE6IEFjY29yZCBhdmVjIHJ5dGhtZSAtIENbNCA0IDQgNF1cbiAgICAgIGNvbnN0IGNob3JkV2l0aFJoeXRobU1hdGNoID0gcmVtYWluaW5nLm1hdGNoKC9eKFtBLUddWyNiXT8oPzptYWp8bWlufG18ZGltfGF1Z3xzdXN8WzAtOV0pKilcXFsoWzAtOS5fXFxzXSspXFxdLyk7XG4gICAgICBpZiAoY2hvcmRXaXRoUmh5dGhtTWF0Y2gpIHtcbiAgICAgICAgY29uc3QgY2hvcmQgPSBjaG9yZFdpdGhSaHl0aG1NYXRjaFsxXTtcbiAgICAgICAgY29uc3Qgcmh5dGhtID0gY2hvcmRXaXRoUmh5dGhtTWF0Y2hbMl07XG4gICAgICAgIFxuICAgICAgICAvLyBQYXJzZSByaHl0aG0gaW50byBiZWF0cyB3aXRoIHRpZSBkZXRlY3Rpb24gKG1cdTAwRTl0aG9kZSBleGlzdGFudGUpXG4gICAgICAgIGNvbnN0IGJlYXRzID0gdGhpcy5wYXJzZVJoeXRobShyaHl0aG0pO1xuICAgICAgICB0b2tlbnMucHVzaCh7IHR5cGU6ICdjaG9yZCcsIGNob3JkLCBiZWF0cywgcmh5dGhtIH0pO1xuICAgICAgICByZW1haW5pbmcgPSByZW1haW5pbmcuc3Vic3RyaW5nKGNob3JkV2l0aFJoeXRobU1hdGNoWzBdLmxlbmd0aCk7XG4gICAgICAgIGNvbnRpbnVlO1xuICAgICAgfVxuICAgICAgXG4gICAgICAvLyBDT1JSRUNUSU9OIDogUGF0dGVybiAyOiBSeXRobWUgc2V1bCAtIFs0IDQgNCA0XVxuICAgICAgY29uc3Qgcmh5dGhtT25seU1hdGNoID0gcmVtYWluaW5nLm1hdGNoKC9eXFxbKFswLTkuX1xcc10rKVxcXS8pO1xuICAgICAgaWYgKHJoeXRobU9ubHlNYXRjaCkge1xuICAgICAgICBjb25zdCByaHl0aG0gPSByaHl0aG1Pbmx5TWF0Y2hbMV07XG4gICAgICAgIC8vIFVUSUxJU0VSIExBIE1cdTAwQ0FNRSBNXHUwMEM5VEhPREUgcGFyc2VSaHl0aG0gcG91ciBsYSBjb2hcdTAwRTlyZW5jZVxuICAgICAgICBjb25zdCBiZWF0cyA9IHRoaXMucGFyc2VSaHl0aG0ocmh5dGhtKTtcbiAgICAgICAgdG9rZW5zLnB1c2goeyB0eXBlOiAnY2hvcmQnLCBjaG9yZDogJycsIGJlYXRzLCByaHl0aG0gfSk7XG4gICAgICAgIHJlbWFpbmluZyA9IHJlbWFpbmluZy5zdWJzdHJpbmcocmh5dGhtT25seU1hdGNoWzBdLmxlbmd0aCk7XG4gICAgICAgIGNvbnRpbnVlO1xuICAgICAgfVxuICAgICAgXG4gICAgICAvLyBTa2lwIHVua25vd24gY2hhcmFjdGVyc1xuICAgICAgcmVtYWluaW5nID0gcmVtYWluaW5nLnN1YnN0cmluZygxKTtcbiAgICB9XG4gICAgXG4gICAgcmV0dXJuIHRva2VucztcbiAgfVxuXG4gIC8qKlxuICAgKiBQYXJzZSByaHl0aG0gc3RyaW5nIGludG8gYmVhdHMgLSBWRVJTSU9OIE9SSUdJTkFMRSAoYXZlYyBsaWdhdHVyZXMpXG4gICAqL1xuICBwYXJzZVJoeXRobShyaHl0aG06IHN0cmluZyk6IEJlYXRbXSB7XG4gICAgY29uc3QgYmVhdHM6IEJlYXRbXSA9IFtdO1xuICAgIGNvbnN0IHJoeXRobVRva2VucyA9IHJoeXRobS5zcGxpdCgvXFxzKy8pLmZpbHRlcihyID0+IHIubGVuZ3RoID4gMCk7XG4gICAgXG4gICAgZm9yIChjb25zdCB0b2tlbiBvZiByaHl0aG1Ub2tlbnMpIHtcbiAgICAgIGNvbnN0IG5vdGVzOiBOb3RlVmFsdWVbXSA9IFtdO1xuICAgICAgbGV0IGkgPSAwO1xuICAgICAgbGV0IGlzVGllZCA9IGZhbHNlO1xuICAgICAgXG4gICAgICB3aGlsZSAoaSA8IHRva2VuLmxlbmd0aCkge1xuICAgICAgICBjb25zdCBjaCA9IHRva2VuW2ldO1xuICAgICAgICBcbiAgICAgICAgLy8gQ2hlY2sgZm9yIHRpZSBtYXJrZXIgYXQgc3RhcnQgb2YgdG9rZW5cbiAgICAgICAgaWYgKGNoID09PSAnXycgJiYgbm90ZXMubGVuZ3RoID09PSAwKSB7XG4gICAgICAgICAgaXNUaWVkID0gdHJ1ZTtcbiAgICAgICAgICBpKys7XG4gICAgICAgICAgY29udGludWU7XG4gICAgICAgIH1cbiAgICAgICAgXG4gICAgICAgIGNvbnN0IG5leHQgPSAob2Zmc2V0ID0gMSkgPT4gdG9rZW5baSArIG9mZnNldF0gfHwgJyc7XG5cbiAgICAgICAgbGV0IG5vdGVWYWx1ZTogbnVtYmVyIHwgbnVsbCA9IG51bGw7XG4gICAgICAgIGxldCBkb3R0ZWQgPSBmYWxzZTtcbiAgICAgICAgbGV0IGNoYXJzQ29uc3VtZWQgPSAwO1xuICAgICAgICBcbiAgICAgICAgLy8gcGFyc2UgNjRcbiAgICAgICAgaWYgKGNoID09PSAnNicgJiYgbmV4dCgxKSA9PT0gJzQnKSB7XG4gICAgICAgICAgbm90ZVZhbHVlID0gNjQ7XG4gICAgICAgICAgY2hhcnNDb25zdW1lZCA9IDI7XG4gICAgICAgICAgaWYgKHRva2VuW2krMl0gPT09ICcuJykge1xuICAgICAgICAgICAgZG90dGVkID0gdHJ1ZTtcbiAgICAgICAgICAgIGNoYXJzQ29uc3VtZWQgPSAzO1xuICAgICAgICAgIH1cbiAgICAgICAgfVxuICAgICAgICAvLyBwYXJzZSAzMlxuICAgICAgICBlbHNlIGlmIChjaCA9PT0gJzMnICYmIG5leHQoMSkgPT09ICcyJykge1xuICAgICAgICAgIG5vdGVWYWx1ZSA9IDMyO1xuICAgICAgICAgIGNoYXJzQ29uc3VtZWQgPSAyO1xuICAgICAgICAgIGlmICh0b2tlbltpKzJdID09PSAnLicpIHtcbiAgICAgICAgICAgIGRvdHRlZCA9IHRydWU7XG4gICAgICAgICAgICBjaGFyc0NvbnN1bWVkID0gMztcbiAgICAgICAgICB9XG4gICAgICAgIH1cbiAgICAgICAgLy8gcGFyc2UgMTZcbiAgICAgICAgZWxzZSBpZiAoY2ggPT09ICcxJyAmJiBuZXh0KDEpID09PSAnNicpIHtcbiAgICAgICAgICBub3RlVmFsdWUgPSAxNjtcbiAgICAgICAgICBjaGFyc0NvbnN1bWVkID0gMjtcbiAgICAgICAgICBpZiAodG9rZW5baSsyXSA9PT0gJy4nKSB7XG4gICAgICAgICAgICBkb3R0ZWQgPSB0cnVlO1xuICAgICAgICAgICAgY2hhcnNDb25zdW1lZCA9IDM7XG4gICAgICAgICAgfVxuICAgICAgICB9XG4gICAgICAgIC8vIHBhcnNlIHNpbmdsZS1kaWdpdCB2YWx1ZXM6IDgsNCwyLDFcbiAgICAgICAgZWxzZSBpZiAoY2ggPT09ICc4JyB8fCBjaCA9PT0gJzQnIHx8IGNoID09PSAnMicgfHwgY2ggPT09ICcxJykge1xuICAgICAgICAgIG5vdGVWYWx1ZSA9IHBhcnNlSW50KGNoLCAxMCk7XG4gICAgICAgICAgY2hhcnNDb25zdW1lZCA9IDE7XG4gICAgICAgICAgaWYgKHRva2VuW2krMV0gPT09ICcuJykge1xuICAgICAgICAgICAgZG90dGVkID0gdHJ1ZTtcbiAgICAgICAgICAgIGNoYXJzQ29uc3VtZWQgPSAyO1xuICAgICAgICAgIH1cbiAgICAgICAgfSBlbHNlIGlmIChjaCA9PT0gJ18nKSB7XG4gICAgICAgICAgLy8gSW50ZXJuYWwgdGllIG1hcmtlciAtIG1hcmsgdGhlIHByZXZpb3VzIG5vdGUgYXMgdGllZFxuICAgICAgICAgIGlmIChub3Rlcy5sZW5ndGggPiAwKSB7XG4gICAgICAgICAgICBub3Rlc1tub3Rlcy5sZW5ndGggLSAxXS50aWVkID0gdHJ1ZTtcbiAgICAgICAgICB9XG4gICAgICAgICAgaSsrO1xuICAgICAgICAgIGNvbnRpbnVlO1xuICAgICAgICB9IGVsc2Uge1xuICAgICAgICAgIC8vIHNraXAgdW5leHBlY3RlZCBjaGFyYWN0ZXJzXG4gICAgICAgICAgaSArPSAxO1xuICAgICAgICAgIGNvbnRpbnVlO1xuICAgICAgICB9XG4gICAgICAgIFxuICAgICAgICBpZiAobm90ZVZhbHVlICE9PSBudWxsKSB7XG4gICAgICAgICAgbm90ZXMucHVzaCh7IHZhbHVlOiBub3RlVmFsdWUsIGRvdHRlZCwgdGllZDogaXNUaWVkIH0pO1xuICAgICAgICAgIGlzVGllZCA9IGZhbHNlO1xuICAgICAgICAgIGkgKz0gY2hhcnNDb25zdW1lZDtcbiAgICAgICAgfVxuICAgICAgfVxuXG4gICAgICBpZiAobm90ZXMubGVuZ3RoID4gMCkge1xuICAgICAgICBiZWF0cy5wdXNoKHsgbm90ZXMgfSk7XG4gICAgICB9XG4gICAgfVxuICAgIFxuICAgIHJldHVybiBiZWF0cztcbiAgfVxuXG4gIC8qKlxuICAgKiBSZW5kZXIgY2hvcmQgZ3JpZCBmcm9tIHNvdXJjZSB0ZXh0IGludG8gY29udGFpbmVyIGVsZW1lbnRcbiAgICovXG4gIHJlbmRlckNob3JkR3JpZChzb3VyY2U6IHN0cmluZywgY29udGFpbmVyOiBIVE1MRWxlbWVudCkge1xuICAgIGNvbnN0IGdyaWQgPSB0aGlzLnBhcnNlQ2hvcmRHcmlkKHNvdXJjZSk7XG4gICAgXG4gICAgY29uc3Qgc3ZnID0gdGhpcy5jcmVhdGVTVkcoZ3JpZCk7XG4gICAgY29udGFpbmVyLmVtcHR5KCk7XG4gICAgY29udGFpbmVyLmFwcGVuZENoaWxkKHN2Zyk7XG4gIH1cblxuICAvKipcbiAgICogQ3JlYXRlIFNWRyBlbGVtZW50IGZvciB0aGUgZW50aXJlIGNob3JkIGdyaWRcbiAgICovXG4gIGNyZWF0ZVNWRyhncmlkOiBDaG9yZEdyaWQpOiBTVkdFbGVtZW50IHtcbiAgICBjb25zdCBtZWFzdXJlc1BlckxpbmUgPSA0O1xuICAgIGNvbnN0IG1lYXN1cmVXaWR0aCA9IDIwMDtcbiAgICBjb25zdCBtZWFzdXJlSGVpZ2h0ID0gMTIwO1xuICAgIFxuICAgIC8vIENhbGN1bGF0ZSBsaW5lcyBjb25zaWRlcmluZyBsaW5lIGJyZWFrc1xuICAgIGxldCBjdXJyZW50TGluZSA9IDA7XG4gICAgbGV0IG1lYXN1cmVzSW5DdXJyZW50TGluZSA9IDA7XG4gICAgY29uc3QgbWVhc3VyZVBvc2l0aW9uczoge21lYXN1cmU6IE1lYXN1cmUsIGxpbmVJbmRleDogbnVtYmVyLCBwb3NJbkxpbmU6IG51bWJlciwgZ2xvYmFsSW5kZXg6IG51bWJlcn1bXSA9IFtdO1xuICAgIGxldCBnbG9iYWxJbmRleCA9IDA7XG4gICAgXG4gICAgZ3JpZC5tZWFzdXJlcy5mb3JFYWNoKChtZWFzdXJlLCBpbmRleCkgPT4ge1xuICAgICAgaWYgKG1lYXN1cmUuaXNMaW5lQnJlYWspIHtcbiAgICAgICAgY3VycmVudExpbmUrKztcbiAgICAgICAgbWVhc3VyZXNJbkN1cnJlbnRMaW5lID0gMDtcbiAgICAgICAgcmV0dXJuO1xuICAgICAgfVxuICAgICAgXG4gICAgICBpZiAobWVhc3VyZXNJbkN1cnJlbnRMaW5lID49IG1lYXN1cmVzUGVyTGluZSkge1xuICAgICAgICBjdXJyZW50TGluZSsrO1xuICAgICAgICBtZWFzdXJlc0luQ3VycmVudExpbmUgPSAwO1xuICAgICAgfVxuICAgICAgXG4gICAgICBtZWFzdXJlUG9zaXRpb25zLnB1c2goe1xuICAgICAgICBtZWFzdXJlLFxuICAgICAgICBsaW5lSW5kZXg6IGN1cnJlbnRMaW5lLFxuICAgICAgICBwb3NJbkxpbmU6IG1lYXN1cmVzSW5DdXJyZW50TGluZSxcbiAgICAgICAgZ2xvYmFsSW5kZXg6IGdsb2JhbEluZGV4KytcbiAgICAgIH0pO1xuICAgICAgXG4gICAgICBtZWFzdXJlc0luQ3VycmVudExpbmUrKztcbiAgICB9KTtcblxuICAgIGNvbnN0IGxpbmVzID0gY3VycmVudExpbmUgKyAxO1xuICAgIGNvbnN0IHdpZHRoID0gbWVhc3VyZXNQZXJMaW5lICogbWVhc3VyZVdpZHRoICsgNjA7XG4gICAgY29uc3QgaGVpZ2h0ID0gbGluZXMgKiAobWVhc3VyZUhlaWdodCArIDIwKSArIDIwO1xuXG4gICAgY29uc3Qgc3ZnID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudE5TKCdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZycsICdzdmcnKTtcbiAgICBzdmcuc2V0QXR0cmlidXRlKCd3aWR0aCcsIHdpZHRoLnRvU3RyaW5nKCkpO1xuICAgIHN2Zy5zZXRBdHRyaWJ1dGUoJ2hlaWdodCcsIGhlaWdodC50b1N0cmluZygpKTtcbiAgICBzdmcuc2V0QXR0cmlidXRlKCd2aWV3Qm94JywgYDAgMCAke3dpZHRofSAke2hlaWdodH1gKTtcbiAgICBzdmcuc3R5bGUuYmFja2dyb3VuZCA9ICcjZmZmZmZmJztcblxuICAgIC8vIERyYXcgdGltZSBzaWduYXR1cmUgYXQgdGhlIGJlZ2lubmluZ1xuICAgIGNvbnN0IHRpbWVTaWdUZXh0ID0gdGhpcy5jcmVhdGVUZXh0KGdyaWQudGltZVNpZ25hdHVyZSwgMTAsIDQwLCAnMThweCcsICdib2xkJyk7XG4gICAgc3ZnLmFwcGVuZENoaWxkKHRpbWVTaWdUZXh0KTtcblxuICAgIC8vIFN0b3JlIG5vdGUgcG9zaXRpb25zIGZvciB0aWUgZGV0ZWN0aW9uXG4gICAgY29uc3Qgbm90ZVBvc2l0aW9uczoge3g6IG51bWJlciwgeTogbnVtYmVyLCBtZWFzdXJlSW5kZXg6IG51bWJlciwgY2hvcmRJbmRleDogbnVtYmVyLCBiZWF0SW5kZXg6IG51bWJlciwgbm90ZUluZGV4OiBudW1iZXIsIHRpZWQ6IGJvb2xlYW59W10gPSBbXTtcblxuICAgIC8vIERyYXcgYWxsIG1lYXN1cmVzIGFuZCBjb2xsZWN0IG5vdGUgcG9zaXRpb25zXG4gICAgbWVhc3VyZVBvc2l0aW9ucy5mb3JFYWNoKCh7bWVhc3VyZSwgbGluZUluZGV4LCBwb3NJbkxpbmUsIGdsb2JhbEluZGV4fSkgPT4ge1xuICAgICAgY29uc3QgeCA9IHBvc0luTGluZSAqIG1lYXN1cmVXaWR0aCArIDQwO1xuICAgICAgY29uc3QgeSA9IGxpbmVJbmRleCAqIChtZWFzdXJlSGVpZ2h0ICsgMjApICsgMjA7XG5cbiAgICAgIHRoaXMuZHJhd01lYXN1cmUoc3ZnLCBtZWFzdXJlLCB4LCB5LCBtZWFzdXJlV2lkdGgsIG1lYXN1cmVIZWlnaHQsIGdsb2JhbEluZGV4LCBub3RlUG9zaXRpb25zLCBncmlkKTtcbiAgICB9KTtcblxuICAgIC8vIERldGVjdCBhbmQgZHJhdyB0aWVzIGJhc2VkIG9uIG5vdGUgcG9zaXRpb25zXG4gICAgdGhpcy5kZXRlY3RBbmREcmF3VGllcyhzdmcsIG5vdGVQb3NpdGlvbnMsIGdyaWQpO1xuXG4gICAgcmV0dXJuIHN2ZztcbiAgfVxuXG4gIC8qKlxuICAgKiBEZXRlY3QgYW5kIGRyYXcgdGllcyBiYXNlZCBvbiBub3RlIHBvc2l0aW9ucyBhbmQgZ3JpZCBzdHJ1Y3R1cmVcbiAgICovXG4gIGRldGVjdEFuZERyYXdUaWVzKHN2ZzogU1ZHRWxlbWVudCwgbm90ZVBvc2l0aW9uczoge3g6IG51bWJlciwgeTogbnVtYmVyLCBtZWFzdXJlSW5kZXg6IG51bWJlciwgY2hvcmRJbmRleDogbnVtYmVyLCBiZWF0SW5kZXg6IG51bWJlciwgbm90ZUluZGV4OiBudW1iZXIsIHRpZWQ6IGJvb2xlYW59W10sIGdyaWQ6IENob3JkR3JpZCkge1xuICAgIGNvbnN0IHRpZXM6IFRpZVBvc2l0aW9uW10gPSBbXTtcblxuICAgIC8vIERldGVjdCBpbnRlcm5hbCB0aWVzICh3aXRoaW4gc2FtZSBtZWFzdXJlKVxuICAgIGZvciAobGV0IGkgPSAwOyBpIDwgbm90ZVBvc2l0aW9ucy5sZW5ndGggLSAxOyBpKyspIHtcbiAgICAgIGNvbnN0IGN1cnJlbnROb3RlID0gbm90ZVBvc2l0aW9uc1tpXTtcbiAgICAgIGNvbnN0IG5leHROb3RlID0gbm90ZVBvc2l0aW9uc1tpICsgMV07XG4gICAgICBcbiAgICAgIGlmIChjdXJyZW50Tm90ZS50aWVkICYmIFxuICAgICAgICAgIGN1cnJlbnROb3RlLm1lYXN1cmVJbmRleCA9PT0gbmV4dE5vdGUubWVhc3VyZUluZGV4ICYmXG4gICAgICAgICAgY3VycmVudE5vdGUuY2hvcmRJbmRleCA9PT0gbmV4dE5vdGUuY2hvcmRJbmRleCkge1xuICAgICAgICAvLyBJbnRlcm5hbCB0aWUgd2l0aGluIHNhbWUgY2hvcmRcbiAgICAgICAgdGllcy5wdXNoKHtcbiAgICAgICAgICBzdGFydFg6IGN1cnJlbnROb3RlLngsXG4gICAgICAgICAgc3RhcnRZOiBjdXJyZW50Tm90ZS55IC0gOCxcbiAgICAgICAgICBlbmRYOiBuZXh0Tm90ZS54LFxuICAgICAgICAgIGVuZFk6IG5leHROb3RlLnkgLSA4LFxuICAgICAgICAgIHR5cGU6ICdpbnRlcm5hbCdcbiAgICAgICAgfSk7XG4gICAgICB9XG4gICAgfVxuXG4gICAgLy8gRGV0ZWN0IGNyb3NzLW1lYXN1cmUgdGllc1xuICAgIGZvciAobGV0IGkgPSAwOyBpIDwgbm90ZVBvc2l0aW9ucy5sZW5ndGggLSAxOyBpKyspIHtcbiAgICAgIGNvbnN0IGN1cnJlbnROb3RlID0gbm90ZVBvc2l0aW9uc1tpXTtcbiAgICAgIGNvbnN0IG5leHROb3RlID0gbm90ZVBvc2l0aW9uc1tpICsgMV07XG4gICAgICBcbiAgICAgIGlmIChjdXJyZW50Tm90ZS50aWVkICYmIFxuICAgICAgICAgIGN1cnJlbnROb3RlLm1lYXN1cmVJbmRleCAhPT0gbmV4dE5vdGUubWVhc3VyZUluZGV4ICYmXG4gICAgICAgICAgbmV4dE5vdGUubWVhc3VyZUluZGV4ID09PSBjdXJyZW50Tm90ZS5tZWFzdXJlSW5kZXggKyAxKSB7XG4gICAgICAgIC8vIENyb3NzLW1lYXN1cmUgdGllXG4gICAgICAgIHRpZXMucHVzaCh7XG4gICAgICAgICAgc3RhcnRYOiBjdXJyZW50Tm90ZS54LFxuICAgICAgICAgIHN0YXJ0WTogY3VycmVudE5vdGUueSAtIDgsXG4gICAgICAgICAgZW5kWDogbmV4dE5vdGUueCxcbiAgICAgICAgICBlbmRZOiBuZXh0Tm90ZS55IC0gOCxcbiAgICAgICAgICB0eXBlOiAnY3Jvc3MtbWVhc3VyZSdcbiAgICAgICAgfSk7XG4gICAgICB9XG4gICAgfVxuXG4gICAgLy8gRHJhdyBhbGwgZGV0ZWN0ZWQgdGllc1xuICAgIHRpZXMuZm9yRWFjaCh0aWUgPT4ge1xuICAgICAgdGhpcy5kcmF3VGllKHN2ZywgdGllKTtcbiAgICB9KTtcbiAgfVxuXG4gIC8qKlxuICAgKiBEcmF3IGEgdGllXG4gICAqL1xuICBkcmF3VGllKHN2ZzogU1ZHRWxlbWVudCwgdGllOiBUaWVQb3NpdGlvbikge1xuICAgIGNvbnN0IHRpZUVsZW1lbnQgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50TlMoJ2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJywgJ3BhdGgnKTtcbiAgICBjb25zdCBjb250cm9sWSA9IHRpZS5zdGFydFkgLSA1O1xuICAgIFxuICAgIHRpZUVsZW1lbnQuc2V0QXR0cmlidXRlKCdkJywgYE0gJHt0aWUuc3RhcnRYfSAke3RpZS5zdGFydFl9IFEgJHsodGllLnN0YXJ0WCArIHRpZS5lbmRYKSAvIDJ9ICR7Y29udHJvbFl9ICR7dGllLmVuZFh9ICR7dGllLmVuZFl9YCk7XG4gICAgdGllRWxlbWVudC5zZXRBdHRyaWJ1dGUoJ3N0cm9rZScsICcjMDAwJyk7XG4gICAgdGllRWxlbWVudC5zZXRBdHRyaWJ1dGUoJ3N0cm9rZS13aWR0aCcsICcxLjUnKTtcbiAgICB0aWVFbGVtZW50LnNldEF0dHJpYnV0ZSgnZmlsbCcsICdub25lJyk7XG4gICAgc3ZnLmFwcGVuZENoaWxkKHRpZUVsZW1lbnQpO1xuICB9XG5cbiAgLyoqXG4gICAqIERyYXcgYSBzaW5nbGUgbWVhc3VyZSB3aXRoIGNob3JkLCByaHl0aG0sIGFuZCBiYXIgbGluZXNcbiAgICovXG4gIGRyYXdNZWFzdXJlKHN2ZzogU1ZHRWxlbWVudCwgbWVhc3VyZTogTWVhc3VyZSwgeDogbnVtYmVyLCB5OiBudW1iZXIsIHdpZHRoOiBudW1iZXIsIGhlaWdodDogbnVtYmVyLCBtZWFzdXJlSW5kZXg6IG51bWJlciwgbm90ZVBvc2l0aW9uczoge3g6IG51bWJlciwgeTogbnVtYmVyLCBtZWFzdXJlSW5kZXg6IG51bWJlciwgY2hvcmRJbmRleDogbnVtYmVyLCBiZWF0SW5kZXg6IG51bWJlciwgbm90ZUluZGV4OiBudW1iZXIsIHRpZWQ6IGJvb2xlYW59W10sIGdyaWQ6IENob3JkR3JpZCkge1xuICAgIGNvbnN0IGxlZnRCYXJYID0geDtcbiAgICBjb25zdCByaWdodEJhclggPSB4ICsgd2lkdGggLSAyO1xuXG4gICAgLy8gQkFSUkUgR0FVQ0hFXG4gICAgaWYgKG1lYXN1cmVJbmRleCA9PT0gMCkge1xuICAgICAgdGhpcy5kcmF3QmFyKHN2ZywgbGVmdEJhclgsIHksIGhlaWdodCk7XG4gICAgfSBlbHNlIGlmIChtZWFzdXJlLmlzUmVwZWF0U3RhcnQpIHtcbiAgICAgIHRoaXMuZHJhd0JhcihzdmcsIGxlZnRCYXJYLCB5LCBoZWlnaHQpO1xuICAgICAgdGhpcy5kcmF3QmFyV2l0aFJlcGVhdChzdmcsIGxlZnRCYXJYLCB5LCBoZWlnaHQsIHRydWUpO1xuICAgIH1cblxuICAgIC8vIERyYXcgc2luZ2xlIHN0YWZmIGxpbmVcbiAgICBjb25zdCBzdGFmZkxpbmVZID0geSArIDgwO1xuICAgIGNvbnN0IHN0YWZmTGluZSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnbGluZScpO1xuICAgIHN0YWZmTGluZS5zZXRBdHRyaWJ1dGUoJ3gxJywgKHggKyAxMCkudG9TdHJpbmcoKSk7XG4gICAgc3RhZmZMaW5lLnNldEF0dHJpYnV0ZSgneTEnLCBzdGFmZkxpbmVZLnRvU3RyaW5nKCkpO1xuICAgIHN0YWZmTGluZS5zZXRBdHRyaWJ1dGUoJ3gyJywgKHggKyB3aWR0aCAtIDEwKS50b1N0cmluZygpKTtcbiAgICBzdGFmZkxpbmUuc2V0QXR0cmlidXRlKCd5MicsIHN0YWZmTGluZVkudG9TdHJpbmcoKSk7XG4gICAgc3RhZmZMaW5lLnNldEF0dHJpYnV0ZSgnc3Ryb2tlJywgJyMwMDAnKTtcbiAgICBzdGFmZkxpbmUuc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMScpO1xuICAgIHN2Zy5hcHBlbmRDaGlsZChzdGFmZkxpbmUpO1xuXG4gICAgLy8gRHJhdyBhbGwgY2hvcmRzIGluIHRoZSBtZWFzdXJlXG4gICAgY29uc3QgY2hvcmRXaWR0aCA9IHdpZHRoIC8gTWF0aC5tYXgobWVhc3VyZS5jaG9yZHMubGVuZ3RoLCAxKTtcbiAgICBcbiAgICBtZWFzdXJlLmNob3Jkcy5mb3JFYWNoKChjaG9yZERhdGEsIGNob3JkSW5kZXgpID0+IHtcbiAgICAgIGNvbnN0IGNob3JkWCA9IHggKyAoY2hvcmRJbmRleCAqIGNob3JkV2lkdGgpICsgMTA7XG4gICAgICBcbiAgICAgIGNvbnN0IGZpcnN0Tm90ZVggPSB0aGlzLmRyYXdSaHl0aG0oc3ZnLCBjaG9yZERhdGEsIGNob3JkWCwgc3RhZmZMaW5lWSwgY2hvcmRXaWR0aCAtIDIwLCBtZWFzdXJlSW5kZXgsIGNob3JkSW5kZXgsIG5vdGVQb3NpdGlvbnMpO1xuXG4gICAgICAvLyBDT1JSRUNUSU9OIDogTmUgZGVzc2luZXIgbGUgbm9tIGQnYWNjb3JkIHF1ZSBzJ2lsIG4nZXN0IHBhcyB2aWRlXG4gICAgICBpZiAoZmlyc3ROb3RlWCAhPT0gbnVsbCAmJiBjaG9yZERhdGEuY2hvcmQgJiYgY2hvcmREYXRhLmNob3JkLnRyaW0oKSAhPT0gJycpIHtcbiAgICAgICAgY29uc3QgY2hvcmRUZXh0ID0gdGhpcy5jcmVhdGVUZXh0KGNob3JkRGF0YS5jaG9yZCwgZmlyc3ROb3RlWCwgeSArIDQwLCAnMjRweCcsICdib2xkJyk7XG4gICAgICAgIGNob3JkVGV4dC5zZXRBdHRyaWJ1dGUoJ3RleHQtYW5jaG9yJywgJ21pZGRsZScpO1xuICAgICAgICBzdmcuYXBwZW5kQ2hpbGQoY2hvcmRUZXh0KTtcbiAgICAgIH1cbiAgICB9KTtcblxuICAgIC8vIEJBUlJFIERST0lURVxuICAgIGlmIChtZWFzdXJlLmlzUmVwZWF0RW5kKSB7XG4gICAgICB0aGlzLmRyYXdCYXJXaXRoUmVwZWF0KHN2ZywgcmlnaHRCYXJYLCB5LCBoZWlnaHQsIGZhbHNlKTtcbiAgICAgIHRoaXMuZHJhd0JhcihzdmcsIHJpZ2h0QmFyWCwgeSwgaGVpZ2h0KTtcbiAgICAgIHRoaXMuZHJhd0JhcihzdmcsIHJpZ2h0QmFyWCArIDYsIHksIGhlaWdodCk7XG4gICAgfSBlbHNlIGlmIChtZWFzdXJlLmhhc0JhckxpbmUgfHwgbWVhc3VyZUluZGV4ID09PSBncmlkLm1lYXN1cmVzLmxlbmd0aCAtIDEpIHtcbiAgICAgIHRoaXMuZHJhd0JhcihzdmcsIHJpZ2h0QmFyWCwgeSwgaGVpZ2h0KTtcbiAgICB9XG4gIH1cblxuICAvKipcbiAgICogRHJhdyBhIGJhciB3aXRoIHJlcGVhdCBzeW1ib2xzIC0gVU5FIGJhcnJlIHN1cHBsXHUwMEU5bWVudGFpcmUgYXZlYyBwb2ludHNcbiAgICovXG4gIGRyYXdCYXJXaXRoUmVwZWF0KHN2ZzogU1ZHRWxlbWVudCwgeDogbnVtYmVyLCB5OiBudW1iZXIsIGhlaWdodDogbnVtYmVyLCBpc1N0YXJ0OiBib29sZWFuKSB7XG4gICAgLy8gUG9pbnRzIHNldWxlbWVudCAobGEgYmFycmUgZXN0IGRlc3Npblx1MDBFOWUgc1x1MDBFOXBhclx1MDBFOW1lbnQpXG4gICAgY29uc3QgZG90T2Zmc2V0ID0gaXNTdGFydCA/IDEyIDogLTEyO1xuICAgIGNvbnN0IGRvdDFZID0geSArIGhlaWdodCAqIDAuMzU7XG4gICAgY29uc3QgZG90MlkgPSB5ICsgaGVpZ2h0ICogMC42NTtcblxuICAgIFtkb3QxWSwgZG90MlldLmZvckVhY2goZG90WSA9PiB7XG4gICAgICBjb25zdCBjaXJjbGUgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50TlMoJ2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJywgJ2NpcmNsZScpO1xuICAgICAgY2lyY2xlLnNldEF0dHJpYnV0ZSgnY3gnLCAoeCArIGRvdE9mZnNldCkudG9TdHJpbmcoKSk7XG4gICAgICBjaXJjbGUuc2V0QXR0cmlidXRlKCdjeScsIGRvdFkudG9TdHJpbmcoKSk7XG4gICAgICBjaXJjbGUuc2V0QXR0cmlidXRlKCdyJywgJzInKTtcbiAgICAgIGNpcmNsZS5zZXRBdHRyaWJ1dGUoJ2ZpbGwnLCAnIzAwMCcpO1xuICAgICAgc3ZnLmFwcGVuZENoaWxkKGNpcmNsZSk7XG4gICAgfSk7XG4gIH1cblxuICAvKipcbiAgICogRHJhdyBhIHNpbXBsZSBiYXIgbGluZVxuICAgKi9cbiAgZHJhd0Jhcihzdmc6IFNWR0VsZW1lbnQsIHg6IG51bWJlciwgeTogbnVtYmVyLCBoZWlnaHQ6IG51bWJlcikge1xuICAgIGNvbnN0IGxpbmUgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50TlMoJ2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJywgJ2xpbmUnKTtcbiAgICBsaW5lLnNldEF0dHJpYnV0ZSgneDEnLCB4LnRvU3RyaW5nKCkpO1xuICAgIGxpbmUuc2V0QXR0cmlidXRlKCd5MScsIHkudG9TdHJpbmcoKSk7XG4gICAgbGluZS5zZXRBdHRyaWJ1dGUoJ3gyJywgeC50b1N0cmluZygpKTtcbiAgICBsaW5lLnNldEF0dHJpYnV0ZSgneTInLCAoeSArIGhlaWdodCkudG9TdHJpbmcoKSk7XG4gICAgbGluZS5zZXRBdHRyaWJ1dGUoJ3N0cm9rZScsICcjMDAwJyk7XG4gICAgbGluZS5zZXRBdHRyaWJ1dGUoJ3N0cm9rZS13aWR0aCcsICcxLjUnKTtcbiAgICBzdmcuYXBwZW5kQ2hpbGQobGluZSk7XG4gIH1cblxuICAvKipcbiAgICogRHJhdyByaHl0aG0gcGF0dGVybiBmb3IgYSBjaG9yZCBhbmQgcmV0dXJuIHRoZSB4IHBvc2l0aW9uIG9mIHRoZSBmaXJzdCBub3RlXG4gICAqL1xuICBkcmF3Umh5dGhtKHN2ZzogU1ZHRWxlbWVudCwgY2hvcmREYXRhOiBDaG9yZEluTWVhc3VyZSwgeDogbnVtYmVyLCBzdGFmZkxpbmVZOiBudW1iZXIsIHdpZHRoOiBudW1iZXIsIG1lYXN1cmVJbmRleDogbnVtYmVyLCBjaG9yZEluZGV4OiBudW1iZXIsIG5vdGVQb3NpdGlvbnM6IHt4OiBudW1iZXIsIHk6IG51bWJlciwgbWVhc3VyZUluZGV4OiBudW1iZXIsIGNob3JkSW5kZXg6IG51bWJlciwgYmVhdEluZGV4OiBudW1iZXIsIG5vdGVJbmRleDogbnVtYmVyLCB0aWVkOiBib29sZWFufVtdKTogbnVtYmVyIHwgbnVsbCB7XG4gICAgY29uc3QgYmVhdHMgPSBjaG9yZERhdGEuYmVhdHM7XG4gICAgY29uc3QgYmVhdFdpZHRoID0gYmVhdHMubGVuZ3RoID4gMCA/IHdpZHRoIC8gYmVhdHMubGVuZ3RoIDogd2lkdGg7XG4gICAgbGV0IGN1cnJlbnRYID0geDtcbiAgICBsZXQgZmlyc3ROb3RlWDogbnVtYmVyIHwgbnVsbCA9IG51bGw7XG5cbiAgICBiZWF0cy5mb3JFYWNoKChiZWF0LCBiZWF0SW5kZXgpID0+IHtcbiAgICAgIGNvbnN0IGZpcnN0Tm90ZUluQmVhdFggPSB0aGlzLmRyYXdCZWF0KHN2ZywgYmVhdCwgY3VycmVudFgsIHN0YWZmTGluZVksIGJlYXRXaWR0aCwgbWVhc3VyZUluZGV4LCBjaG9yZEluZGV4LCBiZWF0SW5kZXgsIG5vdGVQb3NpdGlvbnMpO1xuICAgICAgXG4gICAgICBpZiAoYmVhdEluZGV4ID09PSAwICYmIGZpcnN0Tm90ZUluQmVhdFggIT09IG51bGwpIHtcbiAgICAgICAgZmlyc3ROb3RlWCA9IGZpcnN0Tm90ZUluQmVhdFg7XG4gICAgICB9XG4gICAgICBcbiAgICAgIGN1cnJlbnRYICs9IGJlYXRXaWR0aDtcbiAgICB9KTtcblxuICAgIHJldHVybiBmaXJzdE5vdGVYO1xuICB9XG5cbiAgLyoqXG4gICAqIERyYXcgYSBzaW5nbGUgYmVhdCAtIGhhbmRsZXMgYm90aCBzaW5nbGUgbm90ZXMgYW5kIGJlYW1lZCBncm91cHNcbiAgICovXG4gIGRyYXdCZWF0KHN2ZzogU1ZHRWxlbWVudCwgYmVhdDogQmVhdCwgeDogbnVtYmVyLCBzdGFmZkxpbmVZOiBudW1iZXIsIHdpZHRoOiBudW1iZXIsIG1lYXN1cmVJbmRleDogbnVtYmVyLCBjaG9yZEluZGV4OiBudW1iZXIsIGJlYXRJbmRleDogbnVtYmVyLCBub3RlUG9zaXRpb25zOiB7eDogbnVtYmVyLCB5OiBudW1iZXIsIG1lYXN1cmVJbmRleDogbnVtYmVyLCBjaG9yZEluZGV4OiBudW1iZXIsIGJlYXRJbmRleDogbnVtYmVyLCBub3RlSW5kZXg6IG51bWJlciwgdGllZDogYm9vbGVhbn1bXSk6IG51bWJlciB8IG51bGwge1xuICAgIGlmIChiZWF0Lm5vdGVzLmxlbmd0aCA9PT0gMSkge1xuICAgICAgY29uc3QgbnYgPSBiZWF0Lm5vdGVzWzBdO1xuICAgICAgY29uc3Qgbm90ZVggPSB0aGlzLmRyYXdTaW5nbGVOb3RlKHN2ZywgbnYsIHggKyAxMCwgc3RhZmZMaW5lWSwgd2lkdGgpO1xuICAgICAgXG4gICAgICBub3RlUG9zaXRpb25zLnB1c2goe1xuICAgICAgICB4OiBub3RlWCxcbiAgICAgICAgeTogc3RhZmZMaW5lWSxcbiAgICAgICAgbWVhc3VyZUluZGV4LFxuICAgICAgICBjaG9yZEluZGV4LFxuICAgICAgICBiZWF0SW5kZXgsXG4gICAgICAgIG5vdGVJbmRleDogMCxcbiAgICAgICAgdGllZDogbnYudGllZCB8fCBmYWxzZVxuICAgICAgfSk7XG4gICAgICBcbiAgICAgIHJldHVybiBub3RlWDtcbiAgICB9IGVsc2Uge1xuICAgICAgY29uc3QgZmlyc3ROb3RlWCA9IHRoaXMuZHJhd05vdGVHcm91cChzdmcsIGJlYXQubm90ZXMsIHggKyAxMCwgc3RhZmZMaW5lWSwgd2lkdGgpO1xuICAgICAgXG4gICAgICBiZWF0Lm5vdGVzLmZvckVhY2goKG52LCBub3RlSW5kZXgpID0+IHtcbiAgICAgICAgY29uc3Qgbm90ZVggPSB4ICsgMTAgKyAobm90ZUluZGV4ICogKHdpZHRoIC8gYmVhdC5ub3Rlcy5sZW5ndGgpKSArICh3aWR0aCAvIGJlYXQubm90ZXMubGVuZ3RoKSAvIDI7XG4gICAgICAgIG5vdGVQb3NpdGlvbnMucHVzaCh7XG4gICAgICAgICAgeDogbm90ZVgsXG4gICAgICAgICAgeTogc3RhZmZMaW5lWSxcbiAgICAgICAgICBtZWFzdXJlSW5kZXgsXG4gICAgICAgICAgY2hvcmRJbmRleCxcbiAgICAgICAgICBiZWF0SW5kZXgsXG4gICAgICAgICAgbm90ZUluZGV4LFxuICAgICAgICAgIHRpZWQ6IG52LnRpZWQgfHwgZmFsc2VcbiAgICAgICAgfSk7XG4gICAgICB9KTtcbiAgICAgIFxuICAgICAgcmV0dXJuIGZpcnN0Tm90ZVg7XG4gICAgfVxuICB9XG5cbiAgLyoqXG4gICAqIERyYXcgYSBzaW5nbGUgbm90ZSB3aXRoIHByb3BlciBub3RlIGhlYWRzIGZvciBkaWZmZXJlbnQgZHVyYXRpb25zXG4gICAqL1xuICBkcmF3U2luZ2xlTm90ZShzdmc6IFNWR0VsZW1lbnQsIG52OiBOb3RlVmFsdWUsIHg6IG51bWJlciwgc3RhZmZMaW5lWTogbnVtYmVyLCB3aWR0aDogbnVtYmVyKTogbnVtYmVyIHtcbiAgICBjb25zdCBjZW50ZXJYID0geDtcblxuICAgIGlmIChudi52YWx1ZSA9PT0gMSkge1xuICAgICAgdGhpcy5kcmF3RGlhbW9uZE5vdGVIZWFkKHN2ZywgY2VudGVyWCwgc3RhZmZMaW5lWSwgdHJ1ZSk7XG4gICAgfSBlbHNlIGlmIChudi52YWx1ZSA9PT0gMikge1xuICAgICAgdGhpcy5kcmF3RGlhbW9uZE5vdGVIZWFkKHN2ZywgY2VudGVyWCwgc3RhZmZMaW5lWSwgdHJ1ZSk7XG4gICAgICB0aGlzLmRyYXdTdGVtKHN2ZywgY2VudGVyWCwgc3RhZmZMaW5lWSwgMjUpO1xuICAgIH0gZWxzZSB7XG4gICAgICB0aGlzLmRyYXdTbGFzaChzdmcsIGNlbnRlclgsIHN0YWZmTGluZVkpO1xuICAgICAgdGhpcy5kcmF3U3RlbShzdmcsIGNlbnRlclgsIHN0YWZmTGluZVksIDI1KTtcblxuICAgICAgaWYgKG52LnZhbHVlID09PSA4KSB7XG4gICAgICAgIHRoaXMuZHJhd0ZsYWcoc3ZnLCBjZW50ZXJYLCBzdGFmZkxpbmVZLCAxKTtcbiAgICAgIH0gZWxzZSBpZiAobnYudmFsdWUgPT09IDE2KSB7XG4gICAgICAgIHRoaXMuZHJhd0ZsYWcoc3ZnLCBjZW50ZXJYLCBzdGFmZkxpbmVZLCAyKTtcbiAgICAgIH0gZWxzZSBpZiAobnYudmFsdWUgPT09IDMyKSB7XG4gICAgICAgIHRoaXMuZHJhd0ZsYWcoc3ZnLCBjZW50ZXJYLCBzdGFmZkxpbmVZLCAzKTtcbiAgICAgIH0gZWxzZSBpZiAobnYudmFsdWUgPT09IDY0KSB7XG4gICAgICAgIHRoaXMuZHJhd0ZsYWcoc3ZnLCBjZW50ZXJYLCBzdGFmZkxpbmVZLCA0KTtcbiAgICAgIH1cbiAgICB9XG5cbiAgICBpZiAobnYuZG90dGVkKSB7XG4gICAgICBjb25zdCBkb3QgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50TlMoJ2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJywgJ2NpcmNsZScpO1xuICAgICAgZG90LnNldEF0dHJpYnV0ZSgnY3gnLCAoY2VudGVyWCArIDgpLnRvU3RyaW5nKCkpO1xuICAgICAgZG90LnNldEF0dHJpYnV0ZSgnY3knLCAoc3RhZmZMaW5lWSkudG9TdHJpbmcoKSk7XG4gICAgICBkb3Quc2V0QXR0cmlidXRlKCdyJywgJzInKTtcbiAgICAgIGRvdC5zZXRBdHRyaWJ1dGUoJ2ZpbGwnLCAnIzAwMCcpO1xuICAgICAgc3ZnLmFwcGVuZENoaWxkKGRvdCk7XG4gICAgfVxuXG4gICAgcmV0dXJuIGNlbnRlclg7XG4gIH1cblxuICAvKipcbiAgICogRHJhdyBhIGRpYW1vbmQgbm90ZSBoZWFkIGZvciB3aG9sZSBhbmQgaGFsZiBub3Rlc1xuICAgKi9cbiAgZHJhd0RpYW1vbmROb3RlSGVhZChzdmc6IFNWR0VsZW1lbnQsIHg6IG51bWJlciwgeTogbnVtYmVyLCBob2xsb3c6IGJvb2xlYW4pIHtcbiAgICBjb25zdCBkaWFtb25kU2l6ZSA9IDY7XG4gICAgXG4gICAgY29uc3QgZGlhbW9uZCA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAncG9seWdvbicpO1xuICAgIGNvbnN0IHBvaW50cyA9IFtcbiAgICAgIFt4LCB5IC0gZGlhbW9uZFNpemVdLFxuICAgICAgW3ggKyBkaWFtb25kU2l6ZSwgeV0sXG4gICAgICBbeCwgeSArIGRpYW1vbmRTaXplXSxcbiAgICAgIFt4IC0gZGlhbW9uZFNpemUsIHldXG4gICAgXTtcbiAgICBcbiAgICBkaWFtb25kLnNldEF0dHJpYnV0ZSgncG9pbnRzJywgcG9pbnRzLm1hcChwID0+IGAke3BbMF19LCR7cFsxXX1gKS5qb2luKCcgJykpO1xuICAgIGRpYW1vbmQuc2V0QXR0cmlidXRlKCdmaWxsJywgaG9sbG93ID8gJ3doaXRlJyA6ICdibGFjaycpO1xuICAgIGRpYW1vbmQuc2V0QXR0cmlidXRlKCdzdHJva2UnLCAnIzAwMCcpO1xuICAgIGRpYW1vbmQuc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMScpO1xuICAgIHN2Zy5hcHBlbmRDaGlsZChkaWFtb25kKTtcbiAgfVxuXG4gIC8qKlxuICAgKiBEcmF3IGEgZ3JvdXAgb2Ygbm90ZXMgd2l0aCBwcm9wZXIgYmVhbWluZyAoYXZlYyBsaWdhdHVyZXMpXG4gICAqL1xuICBkcmF3Tm90ZUdyb3VwKHN2ZzogU1ZHRWxlbWVudCwgbm90ZXNWYWx1ZXM6IE5vdGVWYWx1ZVtdLCB4OiBudW1iZXIsIHN0YWZmTGluZVk6IG51bWJlciwgd2lkdGg6IG51bWJlcik6IG51bWJlciB8IG51bGwge1xuICAgIGNvbnN0IG5vdGVDb3VudCA9IG5vdGVzVmFsdWVzLmxlbmd0aDtcbiAgICBpZiAobm90ZUNvdW50ID09PSAwKSByZXR1cm4gbnVsbDtcbiAgICBcbiAgICBjb25zdCBoYXNTbWFsbE5vdGVzID0gbm90ZXNWYWx1ZXMuc29tZShudiA9PiBudi52YWx1ZSA+PSAzMik7XG4gICAgY29uc3Qgbm90ZVNwYWNpbmcgPSBub3RlQ291bnQgPiAwID8gKHdpZHRoIC8gbm90ZUNvdW50KSAqIChoYXNTbWFsbE5vdGVzID8gMS4yIDogMSkgOiB3aWR0aDtcbiAgICBjb25zdCBzdGVtSGVpZ2h0ID0gMjU7XG5cbiAgICBjb25zdCBub3RlczogeyBudjogTm90ZVZhbHVlOyBiZWFtQ291bnQ6IG51bWJlcjsgY2VudGVyWDogbnVtYmVyOyBzdGVtWD86IG51bWJlcjsgc3RlbVRvcFk/OiBudW1iZXI7IHN0ZW1Cb3R0b21ZPzogbnVtYmVyIH1bXSA9IFtdO1xuXG4gICAgZm9yIChsZXQgaSA9IDA7IGkgPCBub3RlQ291bnQ7IGkrKykge1xuICAgICAgY29uc3QgbnYgPSBub3Rlc1ZhbHVlc1tpXTtcbiAgICAgIGNvbnN0IGNlbnRlclggPSB4ICsgaSAqIG5vdGVTcGFjaW5nO1xuICAgICAgXG4gICAgICBpZiAobnYudmFsdWUgPT09IDEpIHtcbiAgICAgICAgdGhpcy5kcmF3RGlhbW9uZE5vdGVIZWFkKHN2ZywgY2VudGVyWCwgc3RhZmZMaW5lWSwgdHJ1ZSk7XG4gICAgICAgIG5vdGVzLnB1c2goeyBudiwgYmVhbUNvdW50OiAwLCBjZW50ZXJYIH0pO1xuICAgICAgfSBlbHNlIGlmIChudi52YWx1ZSA9PT0gMikge1xuICAgICAgICB0aGlzLmRyYXdEaWFtb25kTm90ZUhlYWQoc3ZnLCBjZW50ZXJYLCBzdGFmZkxpbmVZLCB0cnVlKTtcbiAgICAgICAgY29uc3Qgc3RlbUluZm8gPSB0aGlzLmRyYXdTdGVtKHN2ZywgY2VudGVyWCwgc3RhZmZMaW5lWSwgc3RlbUhlaWdodCk7XG4gICAgICAgIG5vdGVzLnB1c2goeyBudiwgYmVhbUNvdW50OiAwLCBjZW50ZXJYLCBzdGVtWDogc3RlbUluZm8ueCwgc3RlbVRvcFk6IHN0ZW1JbmZvLnRvcFksIHN0ZW1Cb3R0b21ZOiBzdGVtSW5mby5ib3R0b21ZIH0pO1xuICAgICAgfSBlbHNlIHtcbiAgICAgICAgdGhpcy5kcmF3U2xhc2goc3ZnLCBjZW50ZXJYLCBzdGFmZkxpbmVZKTtcbiAgICAgICAgY29uc3Qgc3RlbUluZm8gPSB0aGlzLmRyYXdTdGVtKHN2ZywgY2VudGVyWCwgc3RhZmZMaW5lWSwgc3RlbUhlaWdodCk7XG4gICAgICAgIGNvbnN0IGJlYW1Db3VudCA9IG52LnZhbHVlID09PSA4ID8gMSA6IG52LnZhbHVlID09PSAxNiA/IDIgOiBudi52YWx1ZSA9PT0gMzIgPyAzIDogbnYudmFsdWUgPT09IDY0ID8gNCA6IDA7XG4gICAgICAgIG5vdGVzLnB1c2goeyBudiwgYmVhbUNvdW50LCBjZW50ZXJYLCBzdGVtWDogc3RlbUluZm8ueCwgc3RlbVRvcFk6IHN0ZW1JbmZvLnRvcFksIHN0ZW1Cb3R0b21ZOiBzdGVtSW5mby5ib3R0b21ZIH0pO1xuICAgICAgfVxuXG4gICAgICBpZiAobnYuZG90dGVkKSB7XG4gICAgICAgIGNvbnN0IGRvdCA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnY2lyY2xlJyk7XG4gICAgICAgIGRvdC5zZXRBdHRyaWJ1dGUoJ2N4JywgKGNlbnRlclggKyA4KS50b1N0cmluZygpKTtcbiAgICAgICAgZG90LnNldEF0dHJpYnV0ZSgnY3knLCAoc3RhZmZMaW5lWSkudG9TdHJpbmcoKSk7XG4gICAgICAgIGRvdC5zZXRBdHRyaWJ1dGUoJ3InLCAnMicpO1xuICAgICAgICBkb3Quc2V0QXR0cmlidXRlKCdmaWxsJywgJyMwMDAnKTtcbiAgICAgICAgc3ZnLmFwcGVuZENoaWxkKGRvdCk7XG4gICAgICB9XG4gICAgfVxuXG4gICAgLy8gQmVhbWluZyBsb2dpYyBhdmVjIGdlc3Rpb24gZGVzIGxpZ2F0dXJlc1xuICAgIGNvbnN0IGJlYW1lZE5vdGVzID0gbm90ZXMuZmlsdGVyKG4gPT4gbi5iZWFtQ291bnQgPiAwKTtcbiAgICBpZiAoYmVhbWVkTm90ZXMubGVuZ3RoID09PSAwKSByZXR1cm4gbm90ZXMubGVuZ3RoID8gbm90ZXNbMF0uY2VudGVyWCA6IG51bGw7XG5cbiAgICBjb25zdCBtYXhCZWFtQ291bnQgPSBiZWFtZWROb3Rlcy5yZWR1Y2UoKG0sIG4pID0+IE1hdGgubWF4KG0sIG4uYmVhbUNvdW50KSwgMCk7XG4gICAgaWYgKG1heEJlYW1Db3VudCA9PT0gMCkgcmV0dXJuIG5vdGVzLmxlbmd0aCA/IG5vdGVzWzBdLmNlbnRlclggOiBudWxsO1xuXG4gICAgY29uc3QgYmVhbUdhcCA9IDU7XG4gICAgY29uc3QgdmFsaWRTdGVtQm90dG9tcyA9IGJlYW1lZE5vdGVzLm1hcChuID0+IG4uc3RlbUJvdHRvbVkpLmZpbHRlcih5ID0+IHkgIT09IHVuZGVmaW5lZCkgYXMgbnVtYmVyW107XG4gICAgY29uc3QgYmFzZVN0ZW1Cb3R0b20gPSB2YWxpZFN0ZW1Cb3R0b21zLmxlbmd0aCA+IDAgPyBNYXRoLm1pbiguLi52YWxpZFN0ZW1Cb3R0b21zKSA6IHN0YWZmTGluZVkgKyAzMDtcblxuICAgIGZvciAobGV0IGxldmVsID0gMTsgbGV2ZWwgPD0gbWF4QmVhbUNvdW50OyBsZXZlbCsrKSB7XG4gICAgICBsZXQgc2VnU3RhcnRJbmRleDogbnVtYmVyIHwgbnVsbCA9IG51bGw7XG5cbiAgICAgIGZvciAobGV0IGkgPSAwOyBpIDwgYmVhbWVkTm90ZXMubGVuZ3RoOyBpKyspIHtcbiAgICAgICAgY29uc3QgbiA9IGJlYW1lZE5vdGVzW2ldO1xuICAgICAgICBjb25zdCBhY3RpdmUgPSBuLmJlYW1Db3VudCA+PSBsZXZlbDtcblxuICAgICAgICBpZiAoYWN0aXZlICYmIHNlZ1N0YXJ0SW5kZXggPT09IG51bGwpIHtcbiAgICAgICAgICBzZWdTdGFydEluZGV4ID0gaTtcbiAgICAgICAgfSBlbHNlIGlmICgoIWFjdGl2ZSB8fCBpID09PSBiZWFtZWROb3Rlcy5sZW5ndGggLSAxKSAmJiBzZWdTdGFydEluZGV4ICE9PSBudWxsKSB7XG4gICAgICAgICAgY29uc3Qgc2VnRW5kID0gKGFjdGl2ZSAmJiBpID09PSBiZWFtZWROb3Rlcy5sZW5ndGggLSAxKSA/IGkgOiBpIC0gMTtcbiAgICAgICAgICBjb25zdCBiZWFtWSA9IGJhc2VTdGVtQm90dG9tIC0gKGxldmVsIC0gMSkgKiBiZWFtR2FwO1xuXG4gICAgICAgICAgY29uc3Qgc3RhcnRYID0gYmVhbWVkTm90ZXNbc2VnU3RhcnRJbmRleF0uc3RlbVghO1xuICAgICAgICAgIGNvbnN0IGVuZFggPSBiZWFtZWROb3Rlc1tzZWdFbmRdLnN0ZW1YITtcbiAgICAgICAgICBjb25zdCBiZWFtID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudE5TKCdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZycsICdsaW5lJyk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3gxJywgc3RhcnRYLnRvU3RyaW5nKCkpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd5MScsIGJlYW1ZLnRvU3RyaW5nKCkpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd4MicsIGVuZFgudG9TdHJpbmcoKSk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3kyJywgYmVhbVkudG9TdHJpbmcoKSk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3N0cm9rZScsICcjMDAwJyk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3N0cm9rZS13aWR0aCcsICcyJyk7XG4gICAgICAgICAgc3ZnLmFwcGVuZENoaWxkKGJlYW0pO1xuXG4gICAgICAgICAgc2VnU3RhcnRJbmRleCA9IG51bGw7XG4gICAgICAgIH1cbiAgICAgIH1cblxuICAgICAgY29uc3Qgc3R1Ykxlbmd0aCA9IE1hdGgubWF4KDgsIG5vdGVTcGFjaW5nICogMC40KTtcbiAgICAgIFxuICAgICAgZm9yIChsZXQgaSA9IDA7IGkgPCBiZWFtZWROb3Rlcy5sZW5ndGg7IGkrKykge1xuICAgICAgICBjb25zdCBuID0gYmVhbWVkTm90ZXNbaV07XG4gICAgICAgIGNvbnN0IGhhc0xldmVsID0gbi5iZWFtQ291bnQgPj0gbGV2ZWw7XG4gICAgICAgIFxuICAgICAgICBpZiAoIWhhc0xldmVsKSBjb250aW51ZTtcbiAgICAgICAgXG4gICAgICAgIGNvbnN0IGxlZnRCZWFtQ291bnQgPSAoaSAtIDEgPj0gMCkgPyBiZWFtZWROb3Rlc1tpIC0gMV0uYmVhbUNvdW50IDogMDtcbiAgICAgICAgY29uc3QgcmlnaHRCZWFtQ291bnQgPSAoaSArIDEgPCBiZWFtZWROb3Rlcy5sZW5ndGgpID8gYmVhbWVkTm90ZXNbaSArIDFdLmJlYW1Db3VudCA6IDA7XG4gICAgICAgIFxuICAgICAgICBjb25zdCBsZWZ0SGFzTGV2ZWwgPSBsZWZ0QmVhbUNvdW50ID49IGxldmVsO1xuICAgICAgICBjb25zdCByaWdodEhhc0xldmVsID0gcmlnaHRCZWFtQ291bnQgPj0gbGV2ZWw7XG4gICAgICAgIFxuICAgICAgICBpZiAobGVmdEhhc0xldmVsICYmIHJpZ2h0SGFzTGV2ZWwpIGNvbnRpbnVlO1xuICAgICAgICBcbiAgICAgICAgaWYgKCFsZWZ0SGFzTGV2ZWwgJiYgIXJpZ2h0SGFzTGV2ZWwpIHtcbiAgICAgICAgICBjb25zdCBiZWFtWSA9IGJhc2VTdGVtQm90dG9tIC0gKGxldmVsIC0gMSkgKiBiZWFtR2FwO1xuICAgICAgICAgIGNvbnN0IHN0ZW1YID0gbi5zdGVtWCE7XG4gICAgICAgICAgXG4gICAgICAgICAgY29uc3QgbGVmdE5vdGUgPSBpID4gMCA/IGJlYW1lZE5vdGVzW2kgLSAxXSA6IG51bGw7XG4gICAgICAgICAgY29uc3QgaXNBZnRlckRvdHRlZFN0cm9uZ2VyID0gbGVmdE5vdGUgJiYgbGVmdE5vdGUubnYuZG90dGVkICYmIGxlZnROb3RlLm52LnZhbHVlIDwgbi5udi52YWx1ZTtcbiAgICAgICAgICBcbiAgICAgICAgICBjb25zdCByaWdodE5vdGUgPSBpIDwgYmVhbWVkTm90ZXMubGVuZ3RoIC0gMSA/IGJlYW1lZE5vdGVzW2kgKyAxXSA6IG51bGw7XG4gICAgICAgICAgY29uc3QgaXNCZWZvcmVEb3R0ZWRXZWFrZXIgPSByaWdodE5vdGUgJiYgcmlnaHROb3RlLm52LmRvdHRlZCAmJiBuLm52LnZhbHVlIDwgcmlnaHROb3RlLm52LnZhbHVlO1xuICAgICAgICAgIFxuICAgICAgICAgIGlmIChpc0FmdGVyRG90dGVkU3Ryb25nZXIgJiYgaSA+IDApIHtcbiAgICAgICAgICAgIGNvbnN0IHN0dWJYID0gc3RlbVggLSBzdHViTGVuZ3RoO1xuICAgICAgICAgICAgY29uc3QgYmVhbSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnbGluZScpO1xuICAgICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3gxJywgc3RlbVgudG9TdHJpbmcoKSk7XG4gICAgICAgICAgICBiZWFtLnNldEF0dHJpYnV0ZSgneTEnLCBiZWFtWS50b1N0cmluZygpKTtcbiAgICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd4MicsIHN0dWJYLnRvU3RyaW5nKCkpO1xuICAgICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3kyJywgYmVhbVkudG9TdHJpbmcoKSk7XG4gICAgICAgICAgICBiZWFtLnNldEF0dHJpYnV0ZSgnc3Ryb2tlJywgJyMwMDAnKTtcbiAgICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMicpO1xuICAgICAgICAgICAgc3ZnLmFwcGVuZENoaWxkKGJlYW0pO1xuICAgICAgICAgIH0gZWxzZSBpZiAoaSA8IGJlYW1lZE5vdGVzLmxlbmd0aCAtIDEpIHtcbiAgICAgICAgICAgIGNvbnN0IHN0dWJYID0gc3RlbVggKyBzdHViTGVuZ3RoO1xuICAgICAgICAgICAgY29uc3QgYmVhbSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnbGluZScpO1xuICAgICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3gxJywgc3RlbVgudG9TdHJpbmcoKSk7XG4gICAgICAgICAgICBiZWFtLnNldEF0dHJpYnV0ZSgneTEnLCBiZWFtWS50b1N0cmluZygpKTtcbiAgICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd4MicsIHN0dWJYLnRvU3RyaW5nKCkpO1xuICAgICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3kyJywgYmVhbVkudG9TdHJpbmcoKSk7XG4gICAgICAgICAgICBiZWFtLnNldEF0dHJpYnV0ZSgnc3Ryb2tlJywgJyMwMDAnKTtcbiAgICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMicpO1xuICAgICAgICAgICAgc3ZnLmFwcGVuZENoaWxkKGJlYW0pO1xuICAgICAgICAgIH0gZWxzZSBpZiAoaSA+IDApIHtcbiAgICAgICAgICAgIGNvbnN0IHN0dWJYID0gc3RlbVggLSBzdHViTGVuZ3RoO1xuICAgICAgICAgICAgY29uc3QgYmVhbSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnbGluZScpO1xuICAgICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3gxJywgc3RlbVgudG9TdHJpbmcoKSk7XG4gICAgICAgICAgICBiZWFtLnNldEF0dHJpYnV0ZSgneTEnLCBiZWFtWS50b1N0cmluZygpKTtcbiAgICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd4MicsIHN0dWJYLnRvU3RyaW5nKCkpO1xuICAgICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3kyJywgYmVhbVkudG9TdHJpbmcoKSk7XG4gICAgICAgICAgICBiZWFtLnNldEF0dHJpYnV0ZSgnc3Ryb2tlJywgJyMwMDAnKTtcbiAgICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMicpO1xuICAgICAgICAgICAgc3ZnLmFwcGVuZENoaWxkKGJlYW0pO1xuICAgICAgICAgIH1cbiAgICAgICAgICBjb250aW51ZTtcbiAgICAgICAgfVxuICAgICAgICBcbiAgICAgICAgY29uc3QgYmVhbVkgPSBiYXNlU3RlbUJvdHRvbSAtIChsZXZlbCAtIDEpICogYmVhbUdhcDtcbiAgICAgICAgY29uc3Qgc3RlbVggPSBuLnN0ZW1YITtcbiAgICAgICAgXG4gICAgICAgIGlmIChsZWZ0SGFzTGV2ZWwgJiYgIXJpZ2h0SGFzTGV2ZWwgJiYgaSA+IDApIHtcbiAgICAgICAgICBjb25zdCBzdHViWCA9IHN0ZW1YIC0gc3R1Ykxlbmd0aDtcbiAgICAgICAgICBjb25zdCBiZWFtID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudE5TKCdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZycsICdsaW5lJyk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3gxJywgc3RlbVgudG9TdHJpbmcoKSk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3kxJywgYmVhbVkudG9TdHJpbmcoKSk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3gyJywgc3R1YlgudG9TdHJpbmcoKSk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3kyJywgYmVhbVkudG9TdHJpbmcoKSk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3N0cm9rZScsICcjMDAwJyk7XG4gICAgICAgICAgYmVhbS5zZXRBdHRyaWJ1dGUoJ3N0cm9rZS13aWR0aCcsICcyJyk7XG4gICAgICAgICAgc3ZnLmFwcGVuZENoaWxkKGJlYW0pO1xuICAgICAgICB9XG4gICAgICAgIFxuICAgICAgICBpZiAoIWxlZnRIYXNMZXZlbCAmJiByaWdodEhhc0xldmVsICYmIGkgPCBiZWFtZWROb3Rlcy5sZW5ndGggLSAxKSB7XG4gICAgICAgICAgY29uc3Qgc3R1YlggPSBzdGVtWCArIHN0dWJMZW5ndGg7XG4gICAgICAgICAgY29uc3QgYmVhbSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnbGluZScpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd4MScsIHN0ZW1YLnRvU3RyaW5nKCkpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd5MScsIGJlYW1ZLnRvU3RyaW5nKCkpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd4MicsIHN0dWJYLnRvU3RyaW5nKCkpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCd5MicsIGJlYW1ZLnRvU3RyaW5nKCkpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCdzdHJva2UnLCAnIzAwMCcpO1xuICAgICAgICAgIGJlYW0uc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMicpO1xuICAgICAgICAgIHN2Zy5hcHBlbmRDaGlsZChiZWFtKTtcbiAgICAgICAgfVxuICAgICAgfVxuICAgIH1cblxuICAgIHJldHVybiBub3Rlcy5sZW5ndGggPyBub3Rlc1swXS5jZW50ZXJYIDogbnVsbDtcbiAgfVxuXG4gIC8qKlxuICAgKiBEcmF3IGEgc2xhc2ggYXQgNDVcdTAwQjAgYW5nbGVcbiAgICovXG4gIGRyYXdTbGFzaChzdmc6IFNWR0VsZW1lbnQsIHg6IG51bWJlciwgeTogbnVtYmVyKSB7XG4gICAgY29uc3Qgc2xhc2hMZW5ndGggPSAxMDtcbiAgICBjb25zdCBzbGFzaCA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnROUygnaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnLCAnbGluZScpO1xuICAgIHNsYXNoLnNldEF0dHJpYnV0ZSgneDEnLCAoeCArIHNsYXNoTGVuZ3RoLzIpLnRvU3RyaW5nKCkpO1xuICAgIHNsYXNoLnNldEF0dHJpYnV0ZSgneTEnLCAoeSAtIHNsYXNoTGVuZ3RoLzIpLnRvU3RyaW5nKCkpO1xuICAgIHNsYXNoLnNldEF0dHJpYnV0ZSgneDInLCAoeCAtIHNsYXNoTGVuZ3RoLzIpLnRvU3RyaW5nKCkpO1xuICAgIHNsYXNoLnNldEF0dHJpYnV0ZSgneTInLCAoeSArIHNsYXNoTGVuZ3RoLzIpLnRvU3RyaW5nKCkpO1xuICAgIHNsYXNoLnNldEF0dHJpYnV0ZSgnc3Ryb2tlJywgJyMwMDAnKTtcbiAgICBzbGFzaC5zZXRBdHRyaWJ1dGUoJ3N0cm9rZS13aWR0aCcsICczJyk7XG4gICAgc3ZnLmFwcGVuZENoaWxkKHNsYXNoKTtcbiAgfVxuXG4gIC8qKlxuICAgKiBEcmF3IGEgc3RlbSBmb3IgYSBub3RlXG4gICAqL1xuICBkcmF3U3RlbShzdmc6IFNWR0VsZW1lbnQsIHg6IG51bWJlciwgeTogbnVtYmVyLCBoZWlnaHQ6IG51bWJlcik6IHt4OiBudW1iZXIsIHRvcFk6IG51bWJlciwgYm90dG9tWTogbnVtYmVyfSB7XG4gICAgY29uc3Qgc2xhc2hMZW5ndGggPSAxMDtcbiAgICBjb25zdCBzdGVtU3RhcnRYID0geCAtIHNsYXNoTGVuZ3RoLzIgKyAyO1xuICAgIGNvbnN0IHN0ZW1TdGFydFkgPSB5ICsgc2xhc2hMZW5ndGgvMjtcbiAgICBcbiAgICBjb25zdCBzdGVtID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudE5TKCdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZycsICdsaW5lJyk7XG4gICAgc3RlbS5zZXRBdHRyaWJ1dGUoJ3gxJywgc3RlbVN0YXJ0WC50b1N0cmluZygpKTtcbiAgICBzdGVtLnNldEF0dHJpYnV0ZSgneTEnLCBzdGVtU3RhcnRZLnRvU3RyaW5nKCkpO1xuICAgIHN0ZW0uc2V0QXR0cmlidXRlKCd4MicsIHN0ZW1TdGFydFgudG9TdHJpbmcoKSk7XG4gICAgc3RlbS5zZXRBdHRyaWJ1dGUoJ3kyJywgKHN0ZW1TdGFydFkgKyBoZWlnaHQpLnRvU3RyaW5nKCkpO1xuICAgIHN0ZW0uc2V0QXR0cmlidXRlKCdzdHJva2UnLCAnIzAwMCcpO1xuICAgIHN0ZW0uc2V0QXR0cmlidXRlKCdzdHJva2Utd2lkdGgnLCAnMicpO1xuICAgIHN2Zy5hcHBlbmRDaGlsZChzdGVtKTtcblxuICAgIHJldHVybiB7IHg6IHN0ZW1TdGFydFgsIHRvcFk6IHN0ZW1TdGFydFksIGJvdHRvbVk6IHN0ZW1TdGFydFkgKyBoZWlnaHQgfTtcbiAgfVxuXG4gIC8qKlxuICAgKiBEcmF3IGZsYWcocykgZm9yIGEgbm90ZVxuICAgKi9cbiAgZHJhd0ZsYWcoc3ZnOiBTVkdFbGVtZW50LCB4OiBudW1iZXIsIHN0YWZmTGluZVk6IG51bWJlciwgY291bnQ6IG51bWJlcikge1xuICAgIGNvbnN0IHNsYXNoTGVuZ3RoID0gMTA7XG4gICAgY29uc3Qgc3RlbVN0YXJ0WCA9IHggLSBzbGFzaExlbmd0aC8yICsgMjtcbiAgICBjb25zdCBzdGVtQm90dG9tWSA9IHN0YWZmTGluZVkgKyBzbGFzaExlbmd0aC8yICsgMjU7XG5cbiAgICBmb3IgKGxldCBpID0gMDsgaSA8IGNvdW50OyBpKyspIHtcbiAgICAgIGNvbnN0IGZsYWcgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50TlMoJ2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJywgJ3BhdGgnKTtcbiAgICAgIGNvbnN0IGZsYWdZID0gc3RlbUJvdHRvbVkgLSBpICogMTA7XG4gICAgICBcbiAgICAgIGZsYWcuc2V0QXR0cmlidXRlKCdkJywgYE0gJHtzdGVtU3RhcnRYfSAke2ZsYWdZfSBRICR7c3RlbVN0YXJ0WCAtIDEwfSAke2ZsYWdZIC0gNX0gJHtzdGVtU3RhcnRYIC0gOH0gJHtmbGFnWSAtIDEyfWApO1xuICAgICAgZmxhZy5zZXRBdHRyaWJ1dGUoJ3N0cm9rZScsICcjMDAwJyk7XG4gICAgICBmbGFnLnNldEF0dHJpYnV0ZSgnc3Ryb2tlLXdpZHRoJywgJzInKTtcbiAgICAgIGZsYWcuc2V0QXR0cmlidXRlKCdmaWxsJywgJ25vbmUnKTtcbiAgICAgIHN2Zy5hcHBlbmRDaGlsZChmbGFnKTtcbiAgICB9XG4gIH1cblxuICAvKipcbiAgICogVXRpbGl0eSBmdW5jdGlvbiB0byBjcmVhdGUgdGV4dCBlbGVtZW50c1xuICAgKi9cbiAgY3JlYXRlVGV4dCh0ZXh0OiBzdHJpbmcsIHg6IG51bWJlciwgeTogbnVtYmVyLCBzaXplOiBzdHJpbmcsIHdlaWdodDogc3RyaW5nID0gJ25vcm1hbCcpOiBTVkdUZXh0RWxlbWVudCB7XG4gICAgY29uc3QgdGV4dEVsID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudE5TKCdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZycsICd0ZXh0Jyk7XG4gICAgdGV4dEVsLnNldEF0dHJpYnV0ZSgneCcsIHgudG9TdHJpbmcoKSk7XG4gICAgdGV4dEVsLnNldEF0dHJpYnV0ZSgneScsIHkudG9TdHJpbmcoKSk7XG4gICAgdGV4dEVsLnNldEF0dHJpYnV0ZSgnZm9udC1mYW1pbHknLCAnQXJpYWwsIHNhbnMtc2VyaWYnKTtcbiAgICB0ZXh0RWwuc2V0QXR0cmlidXRlKCdmb250LXNpemUnLCBzaXplKTtcbiAgICB0ZXh0RWwuc2V0QXR0cmlidXRlKCdmb250LXdlaWdodCcsIHdlaWdodCk7XG4gICAgdGV4dEVsLnNldEF0dHJpYnV0ZSgnZmlsbCcsICcjMDAwJyk7XG4gICAgdGV4dEVsLnRleHRDb250ZW50ID0gdGV4dDtcbiAgICByZXR1cm4gdGV4dEVsO1xuICB9XG5cbiAgb251bmxvYWQoKSB7XG4gICAgY29uc29sZS5sb2coJ1VubG9hZGluZyBDaG9yZCBHcmlkIHBsdWdpbicpO1xuICB9XG59Il0sCiAgIm1hcHBpbmdzIjogIjs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7O0FBQUE7QUFBQTtBQUFB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
+
+// main.ts
+var ChordGridPlugin = class extends import_obsidian.Plugin {
+  async onload() {
+    console.log("Loading Chord Grid Plugin");
+    this.registerMarkdownCodeBlockProcessor(
+      "chordgrid",
+      (source, el, ctx) => {
+        var _a;
+        try {
+          const parser = new ChordGridParser();
+          const result = parser.parse(source);
+          const grid = result.grid;
+          if (result.errors && result.errors.length > 0) {
+            const pre = el.createEl("pre", { cls: "chord-grid-error" });
+            pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
+          }
+          const renderer = new SVGRenderer();
+          const svg = renderer.render(grid);
+          el.appendChild(svg);
+        } catch (err) {
+          const error = err;
+          el.createEl("pre", {
+            text: `Erreur: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,
+            cls: "chord-grid-error"
+          });
+        }
+      }
+    );
+  }
+  onunload() {
+    console.log("Unloading Chord Grid Plugin");
+  }
+};
