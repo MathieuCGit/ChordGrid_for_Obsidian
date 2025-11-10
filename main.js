@@ -77,7 +77,7 @@ var ChordGridParser = class {
         });
       }
     }
-    return { grid, errors };
+    return { grid, errors, measures: allMeasures };
   }
   parseLine(line, isFirstLine) {
     if (isFirstLine) {
@@ -91,27 +91,24 @@ var ChordGridParser = class {
     const parts = [];
     while ((m = re.exec(line)) !== null) {
       const sep = m[0];
-      const text = line.slice(lastIndex, m.index).trim();
+      const text = line.slice(lastIndex, m.index);
       parts.push({ sep: null, text });
       parts.push({ sep, text: "" });
       lastIndex = re.lastIndex;
     }
-    const trailing = line.slice(lastIndex).trim();
+    const trailing = line.slice(lastIndex);
     if (trailing.length > 0) parts.push({ sep: null, text: trailing });
     let currentText = "";
     for (const p of parts) {
       if (p.sep === null) {
-        if (p.text) {
-          if (currentText.length > 0) currentText += " ";
-          currentText += p.text;
-        }
+        currentText += p.text || "";
       } else {
-        tokens.push({ bar: p.sep, content: currentText.trim() });
+        tokens.push({ bar: p.sep, content: currentText });
         currentText = "";
       }
     }
-    if (currentText.trim().length > 0) {
-      tokens.push({ bar: "|", content: currentText.trim() });
+    if (currentText.length > 0 && currentText.trim().length > 0) {
+      tokens.push({ bar: "|", content: currentText });
     }
     const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
@@ -129,19 +126,31 @@ var ChordGridParser = class {
       const isLastMeasureOfLine = ti === nonEmptyTokens.length - 1;
       const chordSegments = [];
       while ((m2 = segmentRe.exec(text)) !== null) {
-        const leadingSpace = m2[1] || "";
+        const leadingSpaceCapture = m2[1] || "";
         const chord = (m2[2] || "").trim();
         const rhythm = (m2[3] || "").trim();
         const sourceText = m2[0];
         if (!firstChord && chord) firstChord = chord;
         anySource += (anySource ? " " : "") + sourceText;
         if (rhythm.length > 0) {
-          const hasSignificantSpace = leadingSpace.length > 0;
+          let hasSignificantSpace = false;
+          const chordLetter = /[A-G]/.exec(text);
+          if (chordLetter && typeof chordLetter.index === "number") {
+            const charBeforeLetter = chordLetter.index > 0 ? text.charAt(chordLetter.index - 1) : null;
+            hasSignificantSpace = charBeforeLetter === " " || charBeforeLetter === "	";
+            console.log(`D\xE9tection accord:`, {
+              letter: chordLetter[0],
+              position: chordLetter.index,
+              charBefore: charBeforeLetter,
+              hasSpace: hasSignificantSpace
+            });
+          }
           const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
           chordSegments.push({
             chord,
             // utiliser l'accord actuel
-            beats: parsedBeats
+            beats: parsedBeats,
+            leadingSpace: hasSignificantSpace
           });
           beats.push(...parsedBeats);
         }
@@ -200,7 +209,6 @@ var BeamAndTieAnalyzer = class {
   }
   analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
     var _a, _b, _c;
-    this.rhythmContext.lastGroupHasSpace = hasSignificantSpace;
     const beats = [];
     let currentBeat = [];
     let i = 0;
@@ -246,6 +254,7 @@ var BeamAndTieAnalyzer = class {
     if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));
     }
+    this.rhythmContext.lastGroupHasSpace = hasSignificantSpace;
     return beats;
   }
   markTieToVoid(notes) {
@@ -305,12 +314,12 @@ var BeamAndTieAnalyzer = class {
     const beamableNotes = beatNotes.filter((n) => n.value >= 8 && !n.isRest);
     if (beamableNotes.length > 0) {
       const hasIncomingTie = beamableNotes[0].tieEnd || beamableNotes[0].tieFromVoid;
-      if (!this.rhythmContext.lastGroupHasSpace && hasIncomingTie) {
-        const lastBeamableCount = this.rhythmContext.lastBeamableNotes.length;
+      const prevBeamableCount = this.rhythmContext.lastBeamableNotes.length;
+      if (!this.rhythmContext.lastGroupHasSpace && (hasIncomingTie || prevBeamableCount > 0)) {
         beamGroups.push({
           startIndex: 0,
           endIndex: beamableNotes.length - 1,
-          noteCount: lastBeamableCount + beamableNotes.length
+          noteCount: prevBeamableCount + beamableNotes.length
         });
         hasBeam = true;
       } else {
@@ -361,11 +370,25 @@ var MeasureRenderer = class {
     staffLine.setAttribute("stroke-width", "1");
     svg.appendChild(staffLine);
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
-    const segmentWidth = this.width / segments.length;
-    segments.forEach((segment, segmentIndex) => {
-      const segmentX = this.x + segmentIndex * segmentWidth + 10;
-      const beatsWidth = segmentWidth - 20;
-      const beatWidth = beatsWidth / segment.beats.length;
+    const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
+    const separatorWidth = 12;
+    const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + (idx > 0 && seg.leadingSpace ? 1 : 0), 0);
+    const innerPaddingPerSegment = 20;
+    const totalInnerPadding = innerPaddingPerSegment * segments.length;
+    const totalSeparatorPixels = separatorsCount * separatorWidth;
+    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
+    const beatCellWidth = availableForBeatCells / totalBeats;
+    let currentX = this.x;
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+      const segment = segments[segmentIndex];
+      if (segmentIndex > 0 && segment.leadingSpace) {
+        currentX += separatorWidth;
+      }
+      const segBeatCount = segment.beats.length || 1;
+      const segmentWidth = segBeatCount * beatCellWidth + innerPaddingPerSegment;
+      const segmentX = currentX + 10;
+      const beatsWidth = segmentWidth - innerPaddingPerSegment;
+      const beatWidth = beatsWidth / segBeatCount;
       segment.beats.forEach((beat, beatIndex) => {
         const beatX = segmentX + beatIndex * beatWidth;
         const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions);
@@ -376,7 +399,8 @@ var MeasureRenderer = class {
           svg.appendChild(chordText);
         }
       });
-    });
+      currentX += segmentWidth;
+    }
     if (this.measure.isRepeatEnd) {
       this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
     } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
@@ -395,32 +419,79 @@ var MeasureRenderer = class {
   drawBeat(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions) {
     if (!beat || beat.notes.length === 0) return null;
     const hasBeamableNotes = beat.notes.some((n) => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
-    if (hasBeamableNotes || beat.notes.length > 1) {
+    if (hasBeamableNotes && beat.notes.length > 1) {
       const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
+      const noteCount = beat.notes.length;
+      const hasSmallNotes = beat.notes.some((nv) => nv.value >= 32);
+      const noteSpacing = noteCount > 0 ? width / noteCount * (hasSmallNotes ? 1.2 : 1) : width;
       beat.notes.forEach((nv, noteIndex) => {
-        const noteX = x + 10 + noteIndex * (width / beat.notes.length) + width / beat.notes.length / 2;
+        const noteX = x + 10 + noteIndex * noteSpacing + noteSpacing / 2;
+        let headLeftX;
+        let headRightX;
+        if (nv.value === 1 || nv.value === 2) {
+          const diamondSize = 6;
+          headLeftX = noteX - diamondSize;
+          headRightX = noteX + diamondSize;
+        } else {
+          const slashHalf = 10 / 2;
+          headLeftX = noteX - slashHalf;
+          headRightX = noteX + slashHalf;
+        }
+        const hasStem = nv.value >= 2;
+        const stemTopY = hasStem ? staffLineY + 5 : void 0;
+        const stemBottomY = hasStem ? staffLineY + 30 : void 0;
         notePositions.push({
           x: noteX,
           y: staffLineY,
+          headLeftX,
+          headRightX,
           measureIndex,
           chordIndex,
           beatIndex,
           noteIndex,
-          tied: !!(nv.tieStart || nv.tieEnd || nv.tieToVoid || nv.tieFromVoid)
+          tieStart: !!nv.tieStart,
+          tieEnd: !!nv.tieEnd,
+          tieToVoid: !!nv.tieToVoid,
+          tieFromVoid: !!nv.tieFromVoid,
+          globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
+          stemTopY,
+          stemBottomY
         });
       });
       return firstNoteX;
     } else {
       const nv = beat.notes[0];
       const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
+      let headLeftX;
+      let headRightX;
+      if (nv.value === 1 || nv.value === 2) {
+        const diamondSize = 6;
+        headLeftX = noteX - diamondSize;
+        headRightX = noteX + diamondSize;
+      } else {
+        const slashHalf = 10 / 2;
+        headLeftX = noteX - slashHalf;
+        headRightX = noteX + slashHalf;
+      }
+      const hasStem = nv.value >= 2;
+      const stemTopY = hasStem ? staffLineY + 5 : void 0;
+      const stemBottomY = hasStem ? staffLineY + 30 : void 0;
       notePositions.push({
         x: noteX,
         y: staffLineY,
+        headLeftX,
+        headRightX,
         measureIndex,
         chordIndex,
         beatIndex,
         noteIndex: 0,
-        tied: !!(nv.tieStart || nv.tieEnd || nv.tieToVoid || nv.tieFromVoid)
+        tieStart: !!nv.tieStart,
+        tieEnd: !!nv.tieEnd,
+        tieToVoid: !!nv.tieToVoid,
+        tieFromVoid: !!nv.tieFromVoid,
+        globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100,
+        stemTopY,
+        stemBottomY
       });
       return noteX;
     }
@@ -467,7 +538,7 @@ var MeasureRenderer = class {
     const noteSpacing = noteCount > 0 ? width / noteCount * (hasSmallNotes ? 1.2 : 1) : width;
     const stemHeight = 25;
     if (noteCount === 1 && notesValues[0].value >= 8) {
-      const centerX = x;
+      const centerX = x + noteSpacing / 2;
       this.drawSlash(svg, centerX, staffLineY);
       const stem = this.drawStem(svg, centerX, staffLineY, stemHeight);
       const value = notesValues[0].value;
@@ -477,7 +548,7 @@ var MeasureRenderer = class {
     const notes = [];
     for (let i = 0; i < noteCount; i++) {
       const nv = notesValues[i];
-      const centerX = x + i * noteSpacing;
+      const centerX = x + i * noteSpacing + noteSpacing / 2;
       if (nv.value === 1) {
         this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
         notes.push({ nv, beamCount: 0, centerX });
@@ -636,6 +707,33 @@ var MeasureRenderer = class {
   }
 };
 
+// src/utils/TieManager.ts
+var TieManager = class {
+  constructor() {
+    // pending ties saved when a tie continues beyond the rendered area (e.g. line break)
+    __publicField(this, "pending", []);
+  }
+  addPendingTie(measureIndex, x, y) {
+    this.pending.push({ measureIndex, x, y });
+  }
+  /**
+   * Try to resolve a pending tie for a note that begins from void (tieFromVoid).
+   * Returns the pending tie (and removes it) or null.
+   */
+  resolvePendingFor(measureIndex) {
+    for (let i = 0; i < this.pending.length; i++) {
+      if (this.pending[i].measureIndex < measureIndex) {
+        const p = this.pending.splice(i, 1)[0];
+        return p;
+      }
+    }
+    return null;
+  }
+  clearPending() {
+    this.pending = [];
+  }
+};
+
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
   render(grid) {
@@ -681,13 +779,14 @@ var SVGRenderer = class {
     const timeText = this.createText(timeSig, 10, 40, "18px", "bold");
     svg.appendChild(timeText);
     const notePositions = [];
+    const tieManager = new TieManager();
     measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2 }) => {
       const x = posInLine * measureWidth + 40;
       const y = lineIndex * (measureHeight + 20) + 20;
       const mr = new MeasureRenderer(measure, x, y, measureWidth);
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
     });
-    this.detectAndDrawTies(svg, notePositions);
+    this.detectAndDrawTies(svg, notePositions, width, tieManager);
     return svg;
   }
   createText(text, x, y, size, weight = "normal") {
@@ -701,56 +800,112 @@ var SVGRenderer = class {
     textEl.textContent = text;
     return textEl;
   }
-  detectAndDrawTies(svg, notePositions) {
-    const ties = [];
-    for (let i = 0; i < notePositions.length - 1; i++) {
-      const current = notePositions[i];
-      const next = notePositions[i + 1];
-      if (current.tied && current.measureIndex === next.measureIndex) {
-        ties.push({
-          startX: current.x,
-          startY: current.y - 8,
-          endX: next.x,
-          endY: next.y - 8
-        });
-      }
-    }
-    for (let i = 0; i < notePositions.length; i++) {
-      const current = notePositions[i];
-      if (current.tied) {
-        const isLastInMeasure = !notePositions[i + 1] || notePositions[i + 1].measureIndex > current.measureIndex;
-        if (isLastInMeasure) {
-          for (let j = 0; j < notePositions.length; j++) {
-            const target = notePositions[j];
-            if (target.measureIndex === current.measureIndex + 1) {
-              ties.push({
-                startX: current.x,
-                startY: current.y - 8,
-                endX: target.x,
-                endY: target.y - 8,
-                isCrossMeasure: true
-              });
-              break;
-            }
-          }
-        }
-      }
-    }
-    for (const t of ties) {
+  detectAndDrawTies(svg, notePositions, svgWidth, tieManager) {
+    const matched = /* @__PURE__ */ new Set();
+    const drawCurve = (startX, startY, endX, endY, isCross) => {
       const path = document.createElementNS(SVG_NS, "path");
-      const controlY = t.startY - (t.isCrossMeasure ? 15 : 5);
-      const midX = (t.startX + t.endX) / 2;
-      let d;
-      if (t.isCrossMeasure) {
-        d = `M ${t.startX} ${t.startY} C ${t.startX + 30} ${controlY}, ${t.endX - 30} ${controlY}, ${t.endX} ${t.endY}`;
-      } else {
-        d = `M ${t.startX} ${t.startY} Q ${midX} ${controlY} ${t.endX} ${t.endY}`;
-      }
+      const dx = Math.abs(endX - startX);
+      const baseAmp = Math.min(40, Math.max(8, dx / 6));
+      const controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      const midX = (startX + endX) / 2;
+      const d = `M ${startX} ${startY} Q ${midX} ${controlY} ${endX} ${endY}`;
       path.setAttribute("d", d);
       path.setAttribute("stroke", "#000");
       path.setAttribute("stroke-width", "1.5");
       path.setAttribute("fill", "none");
       svg.appendChild(path);
+    };
+    const drawHalfToMargin = (startX, startY, svgW) => {
+      const marginX = svgW - 16;
+      drawCurve(startX, startY, marginX, startY, true);
+      return { x: marginX, y: startY };
+    };
+    for (let i = 0; i < notePositions.length; i++) {
+      if (matched.has(i)) continue;
+      const cur = notePositions[i];
+      const startX = cur.headRightX !== void 0 ? cur.headRightX : cur.x;
+      let startY;
+      if (cur.headRightX !== void 0) {
+        const half = Math.abs(cur.headRightX - cur.x);
+        startY = half >= 6 ? cur.y : cur.y - half;
+      } else {
+        startY = cur.y - 8;
+      }
+      if (cur.tieStart) {
+        let found = -1;
+        for (let j = i + 1; j < notePositions.length; j++) {
+          if (matched.has(j)) continue;
+          const cand = notePositions[j];
+          if (cand.tieEnd) {
+            found = j;
+            break;
+          }
+        }
+        if (found >= 0) {
+          const tgt = notePositions[found];
+          const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
+          let endY;
+          if (tgt.headLeftX !== void 0) {
+            const halfT = Math.abs(tgt.headLeftX - tgt.x);
+            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+          } else {
+            endY = tgt.y - 8;
+          }
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex);
+          matched.add(i);
+          matched.add(found);
+          continue;
+        }
+        let foundFromVoid = -1;
+        for (let j = i + 1; j < notePositions.length; j++) {
+          if (matched.has(j)) continue;
+          const cand = notePositions[j];
+          if (cand.tieFromVoid) {
+            foundFromVoid = j;
+            break;
+          }
+        }
+        if (foundFromVoid >= 0) {
+          const tgt = notePositions[foundFromVoid];
+          const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
+          let endY;
+          if (tgt.headLeftX !== void 0) {
+            const halfT = Math.abs(tgt.headLeftX - tgt.x);
+            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+          } else {
+            endY = tgt.y - 8;
+          }
+          drawCurve(startX, startY, endX, endY, true);
+          matched.add(i);
+          matched.add(foundFromVoid);
+          continue;
+        }
+        if (cur.tieToVoid) {
+          const pending = drawHalfToMargin(startX, startY, svgWidth);
+          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
+          matched.add(i);
+          continue;
+        }
+      }
+      if (cur.tieFromVoid && !matched.has(i)) {
+        const pending = tieManager.resolvePendingFor(cur.measureIndex);
+        let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
+        let endY;
+        if (cur.headLeftX !== void 0) {
+          const half = Math.abs(cur.headLeftX - cur.x);
+          endY = half >= 6 ? cur.y : cur.y + half;
+        } else {
+          endY = cur.y - 8;
+        }
+        if (pending) {
+          drawCurve(pending.x, pending.y, endX, endY, true);
+          matched.add(i);
+        } else {
+          const leftMarginX = 16;
+          drawCurve(leftMarginX, endY, endX, endY, true);
+          matched.add(i);
+        }
+      }
     }
   }
 };

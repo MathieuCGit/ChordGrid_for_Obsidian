@@ -21,12 +21,17 @@ export class NoteRenderer {
     // group.startIndex et group.endIndex sont les VRAIS indices dans beat.notes
     const notes = this.beat.notes.slice(group.startIndex, group.endIndex + 1);
     const startX = this.x + group.startIndex * spacing;
+    const endX = this.x + group.endIndex * spacing;
     
     console.log(`Dessiner ligature du groupe:`, {
       startIndex: group.startIndex,
       endIndex: group.endIndex,
       notes: notes.map(n => ({ value: n.value, isRest: n.isRest })),
-      startX
+      startX,
+      endX,
+      width: endX - startX,
+      x: this.x,
+      spacing
     });
     
     // Calculer le nombre de ligatures nécessaires
@@ -39,6 +44,12 @@ export class NoteRenderer {
   
   render(svg: SVGElement) {
     const noteSpacing = 20;
+    
+    console.log('Rendu beat:', {
+      notes: this.beat.notes.map(n => ({ value: n.value, isRest: n.isRest })),
+      hasBeam: this.beat.hasBeam,
+      beamGroups: this.beat.beamGroups
+    });
     
     // Dessiner toutes les notes/silences
     this.beat.notes.forEach((element, i) => {
@@ -76,11 +87,8 @@ export class NoteRenderer {
       console.log(`Traiter groupe de ligature:`, group);
       this.drawBeamGroup(svg, group, noteSpacing);
     }
-    
-    // Dessiner les liaisons
-    this.drawTies(svg, noteSpacing);
   }
-  
+
   private isInBeamGroup(noteIndex: number): boolean {
     return this.beat.beamGroups.some(group => 
       noteIndex >= group.startIndex && 
@@ -157,27 +165,6 @@ export class NoteRenderer {
       path.setAttribute('stroke-width', '1.5');
       path.setAttribute('fill', 'none');
       svg.appendChild(path);
-    }
-  }
-
-  private drawTies(svg: SVGElement, spacing: number) {
-    const notes = this.beat.notes;
-    for (let i = 0; i < notes.length - 1; i++) {
-      const current = notes[i];
-      const next = notes[i + 1];
-      if (current.tieStart && next.tieEnd) {
-        const startX = this.x + i * spacing;
-        const endX = this.x + (i + 1) * spacing;
-        const y = this.y + this.NOTE_Y;
-        
-        const path = document.createElementNS(SVG_NS, 'path');
-        const controlY = y - 10;  // Match main_2025 tie curve height
-        path.setAttribute('d', `M ${startX} ${y} Q ${(startX + endX)/2} ${controlY} ${endX} ${y}`);
-        path.setAttribute('stroke', '#000');
-        path.setAttribute('stroke-width', '1.5');
-        path.setAttribute('fill', 'none');
-        svg.appendChild(path);
-      }
     }
   }
 }

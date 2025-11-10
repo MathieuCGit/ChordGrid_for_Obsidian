@@ -17,9 +17,9 @@ export interface NoteElement {
   tieEnd: boolean;
   tieToVoid: boolean;
   tieFromVoid: boolean;
-  // Pour les liaisons inter-mesures
+  // For cross-measure ties
   tieInfo?: TieInfo;
-  // position and length are parser/runtime hints (optional)
+  // parser/runtime hints (optional)
   position?: number;
   length?: number;
 }
@@ -47,6 +47,8 @@ export enum BarlineType {
 export interface ChordSegment {
   chord: string;
   beats: Beat[];
+  /** If true, there was a visible space before this segment in the source text */
+  leadingSpace?: boolean;
 }
 
 export interface Measure {
@@ -54,9 +56,7 @@ export interface Measure {
   chord: string;
   barline: BarlineType;
   lineBreakAfter: boolean;
-  // multiple chord segments in a measure (optional)
-  chordSegments?: ChordSegment[];
-  // optional original source text for error reporting
+  chordSegments: ChordSegment[];
   source?: string;
 }
 
@@ -84,4 +84,5 @@ export interface ValidationError {
 export interface ParseResult {
   grid: ChordGrid;
   errors: ValidationError[];
+  measures: Measure[];
 }

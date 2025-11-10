@@ -77,7 +77,7 @@ export class ChordGridParser {
       }
     }
 
-    return { grid, errors };
+    return { grid, errors, measures: allMeasures };
   }
   
   private parseLine(line: string, isFirstLine: boolean): Measure[] {
@@ -98,32 +98,31 @@ export class ChordGridParser {
     const parts: {sep: string | null, text: string}[] = [];
     while ((m = re.exec(line)) !== null) {
       const sep = m[0];
-      const text = line.slice(lastIndex, m.index).trim();
+      // preserve original spacing inside the measure content (do not trim)
+      const text = line.slice(lastIndex, m.index);
       parts.push({sep: null, text});
       parts.push({sep, text: ''});
       lastIndex = re.lastIndex;
     }
-    // trailing
-    const trailing = line.slice(lastIndex).trim();
+    // trailing (preserve spacing)
+    const trailing = line.slice(lastIndex);
     if (trailing.length > 0) parts.push({sep: null, text: trailing});
 
-    // Build measure tokens by merging text then following bar
+    // Build measure tokens by concatenating raw text pieces (preserve internal spaces)
     let currentText = '';
     for (const p of parts) {
       if (p.sep === null) {
-        if (p.text) {
-          if (currentText.length > 0) currentText += ' ';
-          currentText += p.text;
-        }
+        // append raw text (may include spaces) without injecting extra spaces
+        currentText += p.text || '';
       } else {
-        // separator encountered -> emit measure with this barline
-        tokens.push({bar: p.sep, content: currentText.trim()});
+        // separator encountered -> emit measure with this barline (keep raw content)
+        tokens.push({bar: p.sep, content: currentText});
         currentText = '';
       }
     }
     // any remaining content without trailing bar -> assume single barline |
-    if (currentText.trim().length > 0) {
-      tokens.push({bar: '|', content: currentText.trim()});
+    if (currentText.length > 0 && currentText.trim().length > 0) {
+      tokens.push({bar: '|', content: currentText});
     }
 
     // Helper: parse a single measure text like "Am[88 4 4 88]"
@@ -156,7 +155,7 @@ export class ChordGridParser {
 
       const chordSegments: ChordSegment[] = [];
       while ((m2 = segmentRe.exec(text)) !== null) {
-        const leadingSpace = m2[1] || '';
+        const leadingSpaceCapture = m2[1] || '';
         const chord = (m2[2] || '').trim();
         const rhythm = (m2[3] || '').trim();
         const sourceText = m2[0];
@@ -164,13 +163,34 @@ export class ChordGridParser {
         anySource += (anySource ? ' ' : '') + sourceText;
 
         if (rhythm.length > 0) {
-          const hasSignificantSpace = leadingSpace.length > 0;
+          // Determine whether there is a SPACE character immediately before the
+          // chord label in the original measure text. This is stricter than
+          // relying on the captured leading whitespace because tokenization
+          // may alter surrounding spacing; we want to know if the chord
+          // letter (A..G or any non-space token) is preceded by a space.
+          let hasSignificantSpace = false;
+          
+          // Vérifier si on a une lettre d'accord (A-G)
+          const chordLetter = /[A-G]/.exec(text);
+          if (chordLetter && typeof chordLetter.index === 'number') {
+            // Vérifier si le caractère juste avant la lettre est un espace
+            const charBeforeLetter = chordLetter.index > 0 ? text.charAt(chordLetter.index - 1) : null;
+            hasSignificantSpace = charBeforeLetter === ' ' || charBeforeLetter === '\t';
+            console.log(`Détection accord:`, {
+              letter: chordLetter[0],
+              position: chordLetter.index,
+              charBefore: charBeforeLetter,
+              hasSpace: hasSignificantSpace
+            });
+          }
+
           const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
           
           // Créer un segment pour chaque groupe accord/rythme
           chordSegments.push({
             chord: chord,  // utiliser l'accord actuel
-            beats: parsedBeats
+            beats: parsedBeats,
+            leadingSpace: hasSignificantSpace
           });
           
           beats.push(...parsedBeats); // garder la compatibilité avec le reste du code
@@ -254,10 +274,12 @@ class BeamAndTieAnalyzer {
     isLastMeasureOfLine: boolean,
     hasSignificantSpace: boolean = false
   ): Beat[] {
-    // Mettre à jour le contexte des espaces
-    this.rhythmContext.lastGroupHasSpace = hasSignificantSpace;
-  const beats: Beat[] = [];
-  let currentBeat: NoteElement[] = [];
+    // NOTE: we should NOT overwrite lastGroupHasSpace here because the
+    // continuity decision in createBeat must use the *previous* group's
+    // spacing flag. We'll update lastGroupHasSpace at the end of this
+    // function so the next group can observe it.
+    const beats: Beat[] = [];
+    let currentBeat: NoteElement[] = [];
     let i = 0;
     
     while (i < rhythmStr.length) {
@@ -317,8 +339,12 @@ class BeamAndTieAnalyzer {
       if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));
     }
-    
-    return beats;
+
+      // Now update the context to reflect whether THIS group had a leading space
+      // so that the next call to analyzeRhythmGroup will see the correct value.
+      this.rhythmContext.lastGroupHasSpace = hasSignificantSpace;
+
+      return beats;
   }
   
   private markTieToVoid(notes: NoteElement[]) {
@@ -396,13 +422,16 @@ class BeamAndTieAnalyzer {
       const hasIncomingTie = beamableNotes[0].tieEnd || beamableNotes[0].tieFromVoid;
       
       // Les espaces significatifs forcent une rupture de groupe
-      if (!this.rhythmContext.lastGroupHasSpace && hasIncomingTie) {
+      // Si le groupe courant est collé au précédent (lastGroupHasSpace === false)
+      // et que le précédent contenait des notes beameables, on doit continuer la ligature
+      // même sans underscore explicite (règle: si pas d'espace avant une note, liaisons s'appliquent pour notes >4).
+      const prevBeamableCount = this.rhythmContext.lastBeamableNotes.length;
+      if (!this.rhythmContext.lastGroupHasSpace && (hasIncomingTie || prevBeamableCount > 0)) {
         // Continuer le groupe précédent
-        const lastBeamableCount = this.rhythmContext.lastBeamableNotes.length;
         beamGroups.push({
           startIndex: 0,
           endIndex: beamableNotes.length - 1,
-          noteCount: lastBeamableCount + beamableNotes.length
+          noteCount: prevBeamableCount + beamableNotes.length
         });
         hasBeam = true;
       } else {

@@ -4,11 +4,19 @@ import { SVG_NS } from './constants';
 interface NotePosition {
     x: number;
     y: number;
+    headLeftX?: number;
+    headRightX?: number;
     measureIndex: number;
     chordIndex: number;
     beatIndex: number;
     noteIndex: number;
-    tied: boolean;
+    tieStart?: boolean;
+    tieEnd?: boolean;
+        globalTimeIndex?: number; // Updated to match Note_Element interface
+    tieToVoid?: boolean;
+    tieFromVoid?: boolean;
+    stemTopY?: number;
+    stemBottomY?: number;
 }
 
 interface BeamNote {
@@ -49,17 +57,40 @@ export class MeasureRenderer {
         svg.appendChild(staffLine);
 
         const segments: ChordSegment[] = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
-        const segmentWidth = this.width / segments.length;
-        
-        segments.forEach((segment: ChordSegment, segmentIndex: number) => {
-            const segmentX = this.x + (segmentIndex * segmentWidth) + 10;
-            const beatsWidth = segmentWidth - 20;
-            const beatWidth = beatsWidth / segment.beats.length;
-            
+
+        // Layout segments: allocate widths proportional to number of beats, but
+        // insert a visible separator when a segment has leadingSpace=true.
+        const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
+        const separatorWidth = 12; // px gap when source had a space
+        const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + ((idx > 0 && seg.leadingSpace) ? 1 : 0), 0);
+
+        const innerPaddingPerSegment = 20; // preserves previous +/-10 per side
+        const totalInnerPadding = innerPaddingPerSegment * segments.length;
+        const totalSeparatorPixels = separatorsCount * separatorWidth;
+
+        const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
+        const beatCellWidth = availableForBeatCells / totalBeats;
+
+        // iterate segments and place beats
+        let currentX = this.x; // segment left
+        for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+            const segment = segments[segmentIndex];
+
+            // if this segment has a leading space (and it's not the first), insert separator gap
+            if (segmentIndex > 0 && segment.leadingSpace) {
+                currentX += separatorWidth;
+            }
+
+            const segBeatCount = segment.beats.length || 1;
+            const segmentWidth = segBeatCount * beatCellWidth + innerPaddingPerSegment;
+            const segmentX = currentX + 10; // inner left padding
+            const beatsWidth = segmentWidth - innerPaddingPerSegment;
+            const beatWidth = beatsWidth / segBeatCount;
+
             segment.beats.forEach((beat: Beat, beatIndex: number) => {
                 const beatX = segmentX + (beatIndex * beatWidth);
                 const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions);
-                
+
                 if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
                     const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, '22px', 'bold');
                     chordText.setAttribute('text-anchor', 'middle');
@@ -67,7 +98,9 @@ export class MeasureRenderer {
                     svg.appendChild(chordText);
                 }
             });
-        });
+
+            currentX += segmentWidth;
+        }
 
         if ((this.measure as any).isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
@@ -110,35 +143,85 @@ export class MeasureRenderer {
         notePositions: NotePosition[]
     ): number | null {
         if (!beat || beat.notes.length === 0) return null;
-        
+
         const hasBeamableNotes = beat.notes.some(n => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
-        
-        if (hasBeamableNotes || beat.notes.length > 1) {
+
+        if (hasBeamableNotes && beat.notes.length > 1) {
             const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
+            const noteCount = beat.notes.length;
+            const hasSmallNotes = beat.notes.some(nv => nv.value >= 32);
+            const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
             beat.notes.forEach((nv, noteIndex) => {
-                const noteX = x + 10 + (noteIndex * (width / beat.notes.length)) + (width / beat.notes.length) / 2;
+                const noteX = x + 10 + noteIndex * noteSpacing + noteSpacing / 2;
+                let headLeftX: number;
+                let headRightX: number;
+                if (nv.value === 1 || nv.value === 2) {
+                    const diamondSize = 6;
+                    headLeftX = noteX - diamondSize;
+                    headRightX = noteX + diamondSize;
+                } else {
+                    const slashHalf = 10 / 2; // matches drawSlash
+                    headLeftX = noteX - slashHalf;
+                    headRightX = noteX + slashHalf;
+                }
+                // estimate stem extents when a stem exists (value >= 2)
+                const hasStem = nv.value >= 2;
+                const stemTopY = hasStem ? staffLineY + 5 : undefined;
+                const stemBottomY = hasStem ? staffLineY + 30 : undefined;
+
                 notePositions.push({
                     x: noteX,
                     y: staffLineY,
+                    headLeftX,
+                    headRightX,
                     measureIndex,
                     chordIndex,
                     beatIndex,
                     noteIndex,
-                    tied: !!(nv.tieStart || nv.tieEnd || nv.tieToVoid || nv.tieFromVoid)
+                    tieStart: !!nv.tieStart,
+                    tieEnd: !!nv.tieEnd,
+                    tieToVoid: !!nv.tieToVoid,
+                    tieFromVoid: !!nv.tieFromVoid,
+                    globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
+                    stemTopY,
+                    stemBottomY
                 });
             });
             return firstNoteX;
         } else {
             const nv = beat.notes[0];
             const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
+            let headLeftX: number;
+            let headRightX: number;
+            if (nv.value === 1 || nv.value === 2) {
+                const diamondSize = 6;
+                headLeftX = noteX - diamondSize;
+                headRightX = noteX + diamondSize;
+            } else {
+                const slashHalf = 10 / 2;
+                headLeftX = noteX - slashHalf;
+                headRightX = noteX + slashHalf;
+            }
+            const hasStem = nv.value >= 2;
+            const stemTopY = hasStem ? staffLineY + 5 : undefined;
+            const stemBottomY = hasStem ? staffLineY + 30 : undefined;
+
             notePositions.push({
                 x: noteX,
                 y: staffLineY,
+                headLeftX,
+                headRightX,
                 measureIndex,
                 chordIndex,
                 beatIndex,
                 noteIndex: 0,
-                tied: !!(nv.tieStart || nv.tieEnd || nv.tieToVoid || nv.tieFromVoid)
+                tieStart: !!nv.tieStart,
+                tieEnd: !!nv.tieEnd,
+                tieToVoid: !!nv.tieToVoid,
+                tieFromVoid: !!nv.tieFromVoid,
+                globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100,
+                stemTopY,
+                stemBottomY
             });
             return noteX;
         }
@@ -191,7 +274,7 @@ export class MeasureRenderer {
         const stemHeight = 25;
         
         if (noteCount === 1 && notesValues[0].value >= 8) {
-            const centerX = x;
+            const centerX = x + noteSpacing / 2;
             this.drawSlash(svg, centerX, staffLineY);
             const stem = this.drawStem(svg, centerX, staffLineY, stemHeight);
             const value = notesValues[0].value;
@@ -202,7 +285,7 @@ export class MeasureRenderer {
         const notes: BeamNote[] = [];
         for (let i = 0; i < noteCount; i++) {
             const nv = notesValues[i];
-            const centerX = x + i * noteSpacing;
+            const centerX = x + i * noteSpacing + noteSpacing / 2;
             if (nv.value === 1) {
                 this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
                 notes.push({ nv, beamCount: 0, centerX });

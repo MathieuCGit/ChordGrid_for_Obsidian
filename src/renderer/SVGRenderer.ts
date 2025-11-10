@@ -1,6 +1,7 @@
 import { ChordGrid } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
 import { SVG_NS } from './constants';
+import { TieManager } from '../utils/TieManager';
 
 export class SVGRenderer {
   render(grid: ChordGrid): SVGElement {
@@ -58,7 +59,8 @@ export class SVGRenderer {
     const timeText = this.createText(timeSig, 10, 40, '18px', 'bold');
     svg.appendChild(timeText);
 
-    const notePositions: {x:number,y:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tied:boolean}[] = [];
+  const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
+  const tieManager = new TieManager();
 
     measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex}) => {
       const x = posInLine * measureWidth + 40;
@@ -67,8 +69,8 @@ export class SVGRenderer {
       mr.drawMeasure(svg, globalIndex, notePositions, grid);
     });
 
-    // draw ties using collected notePositions
-    this.detectAndDrawTies(svg, notePositions);
+  // draw ties using collected notePositions and the TieManager for cross-line ties
+  this.detectAndDrawTies(svg, notePositions, width, tieManager);
 
     return svg;
   }
@@ -85,68 +87,130 @@ export class SVGRenderer {
     return textEl;
   }
 
-  private detectAndDrawTies(svg: SVGElement, notePositions: {x:number,y:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tied:boolean}[]) {
-    const ties: {startX:number,startY:number,endX:number,endY:number,isCrossMeasure?:boolean}[] = [];
+  private detectAndDrawTies(
+    svg: SVGElement,
+    notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[],
+    svgWidth: number,
+    tieManager: TieManager
+  ) {
+    const matched = new Set<number>();
 
-    // 1. Liaisons intra-mesure
-    for (let i = 0; i < notePositions.length - 1; i++) {
-      const current = notePositions[i];
-      const next = notePositions[i+1];
-      if (current.tied && current.measureIndex === next.measureIndex) {
-        // Même mesure - lier les notes adjacentes
-        ties.push({ 
-          startX: current.x, 
-          startY: current.y - 8, 
-          endX: next.x, 
-          endY: next.y - 8 
-        });
-      }
-    }
-
-    // 2. Liaisons inter-mesures
-    for (let i = 0; i < notePositions.length; i++) {
-      const current = notePositions[i];
-      // Chercher la dernière note d'une mesure avec tieStart
-      if (current.tied) {
-        const isLastInMeasure = !notePositions[i+1] || notePositions[i+1].measureIndex > current.measureIndex;
-        if (isLastInMeasure) {
-          // Chercher la première note de la mesure suivante
-          for (let j = 0; j < notePositions.length; j++) {
-            const target = notePositions[j];
-            if (target.measureIndex === current.measureIndex + 1) {
-              // Première note de la mesure suivante
-              ties.push({ 
-                startX: current.x, 
-                startY: current.y - 8,
-                endX: target.x, 
-                endY: target.y - 8,
-                isCrossMeasure: true 
-              });
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Dessiner toutes les liaisons
-    for (const t of ties) {
+    const drawCurve = (startX: number, startY: number, endX: number, endY: number, isCross: boolean) => {
       const path = document.createElementNS(SVG_NS, 'path');
-      const controlY = t.startY - (t.isCrossMeasure ? 15 : 5); // Plus haute pour les liaisons inter-mesures
-      const midX = (t.startX + t.endX) / 2;
-      let d;
-      if (t.isCrossMeasure) {
-        // Liaison inter-mesure : courbe plus ample
-        d = `M ${t.startX} ${t.startY} C ${t.startX + 30} ${controlY}, ${t.endX - 30} ${controlY}, ${t.endX} ${t.endY}`;
-      } else {
-        // Liaison intra-mesure : courbe simple
-        d = `M ${t.startX} ${t.startY} Q ${midX} ${controlY} ${t.endX} ${t.endY}`;
-      }
+      const dx = Math.abs(endX - startX);
+      const baseAmp = Math.min(40, Math.max(8, dx / 6));
+      const controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      const midX = (startX + endX) / 2;
+      const d = `M ${startX} ${startY} Q ${midX} ${controlY} ${endX} ${endY}`;
       path.setAttribute('d', d);
       path.setAttribute('stroke', '#000');
       path.setAttribute('stroke-width', '1.5');
       path.setAttribute('fill', 'none');
       svg.appendChild(path);
+    };
+
+    const drawHalfToMargin = (startX: number, startY: number, svgW: number) => {
+      const marginX = svgW - 16;
+      drawCurve(startX, startY, marginX, startY, true);
+      return { x: marginX, y: startY };
+    };
+
+    // Primary pass: match each tieStart to the next available tieEnd (temporal order)
+    for (let i = 0; i < notePositions.length; i++) {
+      if (matched.has(i)) continue;
+      const cur = notePositions[i];
+
+      // compute visual anchor points (prefer head bounds when available)
+      const startX = (cur.headRightX !== undefined) ? cur.headRightX : cur.x;
+      let startY: number;
+      if (cur.headRightX !== undefined) {
+        const half = Math.abs(cur.headRightX - cur.x);
+        // diamond heads have horizontal left/right at center Y (half >=6), slash heads have tilted endpoints
+        startY = half >= 6 ? cur.y : cur.y - half;
+      } else {
+        startY = cur.y - 8;
+      }
+
+      if (cur.tieStart) {
+        // search for a direct tieEnd after i
+        let found = -1;
+        for (let j = i + 1; j < notePositions.length; j++) {
+          if (matched.has(j)) continue;
+          const cand = notePositions[j];
+          if (cand.tieEnd) { found = j; break; }
+        }
+
+        if (found >= 0) {
+          const tgt = notePositions[found];
+          const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
+          let endY: number;
+          if (tgt.headLeftX !== undefined) {
+            const halfT = Math.abs(tgt.headLeftX - tgt.x);
+            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+          } else {
+            endY = tgt.y - 8;
+          }
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex);
+          matched.add(i);
+          matched.add(found);
+          continue;
+        }
+
+        // no direct tieEnd found -> search for a tieFromVoid later (continuation)
+        let foundFromVoid = -1;
+        for (let j = i + 1; j < notePositions.length; j++) {
+          if (matched.has(j)) continue;
+          const cand = notePositions[j];
+          if (cand.tieFromVoid) { foundFromVoid = j; break; }
+        }
+
+        if (foundFromVoid >= 0) {
+          const tgt = notePositions[foundFromVoid];
+          const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
+          let endY: number;
+          if (tgt.headLeftX !== undefined) {
+            const halfT = Math.abs(tgt.headLeftX - tgt.x);
+            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+          } else {
+            endY = tgt.y - 8;
+          }
+          drawCurve(startX, startY, endX, endY, true);
+          matched.add(i);
+          matched.add(foundFromVoid);
+          continue;
+        }
+
+        // still no match: if this ties-to-void, draw half-tie to margin and register pending
+        if (cur.tieToVoid) {
+          const pending = drawHalfToMargin(startX, startY, svgWidth);
+          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
+          matched.add(i);
+          continue;
+        }
+      }
+
+      // If this note marks the start of a tie from the previous line
+      if (cur.tieFromVoid && !matched.has(i)) {
+        const pending = tieManager.resolvePendingFor(cur.measureIndex);
+        let endX = (cur.headLeftX !== undefined) ? cur.headLeftX : cur.x;
+        let endY: number;
+        if (cur.headLeftX !== undefined) {
+          const half = Math.abs(cur.headLeftX - cur.x);
+          endY = half >= 6 ? cur.y : cur.y + half;
+        } else {
+          endY = cur.y - 8;
+        }
+
+        if (pending) {
+          drawCurve(pending.x, pending.y, endX, endY, true);
+          matched.add(i);
+        } else {
+          // nothing to resolve: draw a short half-tie from left margin into the note
+          const leftMarginX = 16;
+          drawCurve(leftMarginX, endY, endX, endY, true);
+          matched.add(i);
+        }
+      }
     }
   }
 }

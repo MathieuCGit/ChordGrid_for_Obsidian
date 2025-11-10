@@ -1,50 +1,27 @@
-class TieManager {
-  private pendingTies: Map<string, TieInfo> = new Map();
-  
-  interface TieInfo {
-    note: Note;
-    measureIndex: number;
-    lineIndex: number;
-    isToVoid: boolean;
+export class TieManager {
+  // pending ties saved when a tie continues beyond the rendered area (e.g. line break)
+  private pending: Array<{ measureIndex: number; x: number; y: number }> = [];
+
+  addPendingTie(measureIndex: number, x: number, y: number) {
+    this.pending.push({ measureIndex, x, y });
   }
-  
+
   /**
-   * Traite une mesure et gère les liaisons cross-ligne
+   * Try to resolve a pending tie for a note that begins from void (tieFromVoid).
+   * Returns the pending tie (and removes it) or null.
    */
-  processMeasure(
-    measure: Measure, 
-    measureIndex: number, 
-    lineIndex: number,
-    isLastInLine: boolean
-  ) {
-    const firstBeat = measure.beats[0];
-    const lastBeat = measure.beats[measure.beats.length - 1];
-    
-    // Vérifier liaison entrante depuis le vide
-    if (firstBeat?.notes[0]?.tieFromVoid) {
-      const key = `line-${lineIndex - 1}`;
-      const tieInfo = this.pendingTies.get(key);
-      
-      if (tieInfo?.isToVoid) {
-        // Confirmer que la liaison cross-ligne est complète
-        console.log(`Liaison cross-ligne complétée: ligne ${lineIndex - 1} → ${lineIndex}`);
+  resolvePendingFor(measureIndex: number) {
+    // find the earliest pending tie whose measureIndex is strictly less than the given one
+    for (let i = 0; i < this.pending.length; i++) {
+      if (this.pending[i].measureIndex < measureIndex) {
+        const p = this.pending.splice(i, 1)[0];
+        return p;
       }
     }
-    
-    // Enregistrer liaison sortante vers le vide
-    if (lastBeat?.notes[lastBeat.notes.length - 1]?.tieToVoid) {
-      const key = `line-${lineIndex}`;
-      this.pendingTies.set(key, {
-        note: lastBeat.notes[lastBeat.notes.length - 1],
-        measureIndex,
-        lineIndex,
-        isToVoid: true
-      });
-    }
-    
-    // Nettoyer les liaisons résolues
-    if (isLastInLine) {
-      this.pendingTies.delete(`line-${lineIndex - 1}`);
-    }
+    return null;
+  }
+
+  clearPending() {
+    this.pending = [];
   }
 }
