@@ -27,6 +27,8 @@
  * ```
  */
 
+import { DebugLogger } from './DebugLogger';
+
 /**
  * Gestionnaire de liaisons entre mesures et lignes.
  */
@@ -44,7 +46,9 @@ export class TieManager {
    * @param y - Position Y de la fin de la liaison
    */
   addPendingTie(measureIndex: number, x: number, y: number) {
+    DebugLogger.log('📌 Adding pending tie', { measureIndex, x, y });
     this.pending.push({ measureIndex, x, y });
+    DebugLogger.log('Current pending ties', { count: this.pending.length, pending: this.pending });
   }
 
   /**
@@ -57,13 +61,18 @@ export class TieManager {
    * @returns La liaison en attente (et la retire de la liste) ou null si aucune
    */
   resolvePendingFor(measureIndex: number) {
+    DebugLogger.log('🔍 Resolving pending tie for measure', { measureIndex, availablePending: this.pending });
+    
     // find the earliest pending tie whose measureIndex is strictly less than the given one
     for (let i = 0; i < this.pending.length; i++) {
       if (this.pending[i].measureIndex < measureIndex) {
         const p = this.pending.splice(i, 1)[0];
+        DebugLogger.log('✅ Resolved pending tie', { resolved: p, remaining: this.pending.length });
         return p;
       }
     }
+    
+    DebugLogger.warn('No pending tie found for measure', { measureIndex });
     return null;
   }
 

@@ -131,14 +131,27 @@ chord-grid/
 - ✅ Time signature support
 - ✅ 4 measures per line (automatic)
 - ✅ Dynamic measure width
+- ✅ **Inline Debug Logger** (v1.1.0) - collapsible debug panel in notes
+- ✅ **Fixed beam rendering** for complex rhythmic patterns with dotted notes
+
+## Debugging
+
+The plugin includes a built-in debug logger that displays detailed information directly in your notes. Click on "🐛 Debug Logs" above any chord grid to see:
+
+- Parsing steps and results
+- Layout calculations
+- Beam detection and rendering
+- Tie detection and matching
+- Note positions and properties
+
+For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
 
 ## Current Limitations
 
-- No support for rests
+- Beams not yet connected across chord segments without spacing (e.g., `[8]G[8]`)
 - No support for dynamics or articulations
 - No export to other formats
- - Dynamics, articulations, tuplets and grace notes are not yet supported (planned)
- - Export to other formats is not implemented
+- Dynamics, articulations, tuplets and grace notes are not yet supported (planned)
 
 ## License
 

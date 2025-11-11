@@ -22,6 +22,7 @@
 
 import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { SVG_NS } from './constants';
+import { DebugLogger } from '../utils/DebugLogger';
 
 /**
  * Position d'une note dans le SVG avec métadonnées pour les liaisons.
@@ -201,9 +202,26 @@ export class MeasureRenderer {
     ): number | null {
         if (!beat || beat.notes.length === 0) return null;
 
+        DebugLogger.log(`🎼 Drawing beat ${beatIndex}`, {
+            measureIndex,
+            chordIndex,
+            beatIndex,
+            notesCount: beat.notes.length,
+            notes: beat.notes.map(n => ({ value: n.value, isRest: n.isRest })),
+            hasBeam: beat.hasBeam,
+            beamGroups: beat.beamGroups
+        });
+
         const hasBeamableNotes = beat.notes.some(n => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
 
+        DebugLogger.log(`Beam detection`, {
+            hasBeamableNotes,
+            multipleNotes: beat.notes.length > 1,
+            willDrawGroup: hasBeamableNotes && beat.notes.length > 1
+        });
+
         if (hasBeamableNotes && beat.notes.length > 1) {
+            DebugLogger.log(`✅ Drawing note group with beams`);
             const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
             const noteCount = beat.notes.length;
             const hasSmallNotes = beat.notes.some(nv => nv.value >= 32);
@@ -326,6 +344,15 @@ export class MeasureRenderer {
     private drawNoteGroup(svg: SVGElement, notesValues: NoteElement[], x: number, staffLineY: number, width: number): number | null {
         const noteCount = notesValues.length;
         if (noteCount === 0) return null;
+        
+        DebugLogger.log('🎨 drawNoteGroup called', {
+            noteCount,
+            notes: notesValues.map(n => ({ value: n.value, dotted: n.dotted, isRest: n.isRest })),
+            x,
+            staffLineY,
+            width
+        });
+        
         const hasSmallNotes = notesValues.some(nv => nv.value >= 32);
         const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
         const stemHeight = 25;
@@ -379,35 +406,127 @@ export class MeasureRenderer {
         }
 
         const beamedNotes = notes.filter(n => n.beamCount > 0);
+        
+        DebugLogger.log('🎵 Notes prepared for beaming', {
+            totalNotes: notes.length,
+            beamedNotesCount: beamedNotes.length,
+            beamedNotes: beamedNotes.map(n => ({ 
+                value: n.nv.value, 
+                beamCount: n.beamCount, 
+                centerX: n.centerX,
+                stemX: n.stemX,
+                stemBottomY: n.stemBottomY
+            }))
+        });
+        
         if (beamedNotes.length === 0) return notes.length ? notes[0].centerX : null;
 
         const maxBeamCount = Math.max(...beamedNotes.map(n => n.beamCount));
         if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
 
+        DebugLogger.log('🔨 Starting beam drawing', { maxBeamCount });
+
         const beamGap = 5;
         const validStemBottoms = beamedNotes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
         const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
 
+        DebugLogger.log('Beam baseline calculated', { baseStemBottom, validStemBottoms });
+
         for (let level = 1; level <= maxBeamCount; level++) {
+            DebugLogger.log(`Drawing beam level ${level}`);
             let segStartIndex: number | null = null;
-            for (let i = 0; i < beamedNotes.length; i++) {
-                const n = beamedNotes[i];
-                const active = n.beamCount >= level;
+            
+            for (let i = 0; i <= beamedNotes.length; i++) {
+                // On va jusqu'à beamedNotes.length pour forcer le traitement du dernier segment
+                const n = i < beamedNotes.length ? beamedNotes[i] : null;
+                const active = n ? n.beamCount >= level : false;
+                
                 if (active && segStartIndex === null) {
+                    // Début d'un nouveau segment
                     segStartIndex = i;
-                } else if ((!active || i === beamedNotes.length - 1) && segStartIndex !== null) {
-                    const segEnd = (active && i === beamedNotes.length - 1) ? i : i - 1;
+                } else if (!active && segStartIndex !== null) {
+                    // Fin d'un segment (la note courante n'est pas active)
+                    const segEnd = i - 1;
                     const beamY = baseStemBottom - (level - 1) * beamGap;
                     const startX = beamedNotes[segStartIndex].stemX!;
                     const endX = beamedNotes[segEnd].stemX!;
-                    const beam = document.createElementNS(SVG_NS, 'line');
-                    beam.setAttribute('x1', startX.toString());
-                    beam.setAttribute('y1', beamY.toString());
-                    beam.setAttribute('x2', endX.toString());
-                    beam.setAttribute('y2', beamY.toString());
-                    beam.setAttribute('stroke', '#000');
-                    beam.setAttribute('stroke-width', '2');
-                    svg.appendChild(beam);
+                    
+                    // Si c'est une note isolée (segment d'une seule note), dessiner un beamlet (demi-barre)
+                    if (segStartIndex === segEnd) {
+                        const beamletLength = 8; // longueur de la demi-barre
+                        
+                        // Règle musicale pour les beamlets :
+                        // - Si la note précédente est pointée → cette note complète le groupe → beamlet vers la GAUCHE
+                        // - Si la note suivante est pointée → cette note démarre le groupe → beamlet vers la DROITE
+                        // - Sinon : première moitié du groupe → DROITE, seconde moitié → GAUCHE
+                        
+                        const currentNote = beamedNotes[segStartIndex].nv;
+                        const prevNote = segStartIndex > 0 ? beamedNotes[segStartIndex - 1].nv : null;
+                        const nextNote = segStartIndex < beamedNotes.length - 1 ? beamedNotes[segStartIndex + 1].nv : null;
+                        
+                        let beamletEndX: number;
+                        let direction: string;
+                        
+                        if (prevNote && prevNote.dotted) {
+                            // Note précédente pointée → beamlet vers la gauche (fin de groupe)
+                            beamletEndX = startX - beamletLength;
+                            direction = 'left (after dotted note)';
+                        } else if (nextNote && nextNote.dotted) {
+                            // Note suivante pointée → beamlet vers la droite (début de groupe)
+                            beamletEndX = startX + beamletLength;
+                            direction = 'right (before dotted note)';
+                        } else {
+                            // Règle par défaut : pointer vers le centre du groupe
+                            const groupCenter = (beamedNotes.length - 1) / 2;
+                            const isInFirstHalf = segStartIndex < groupCenter;
+                            
+                            if (isInFirstHalf) {
+                                beamletEndX = startX + beamletLength;
+                                direction = 'right (first half)';
+                            } else {
+                                beamletEndX = startX - beamletLength;
+                                direction = 'left (second half)';
+                            }
+                        }
+                        
+                        DebugLogger.log(`✏️ Drawing beamlet (partial beam)`, {
+                            level,
+                            from: { x: startX, y: beamY },
+                            to: { x: beamletEndX, y: beamY },
+                            noteIndex: segStartIndex,
+                            direction,
+                            prevDotted: prevNote?.dotted,
+                            nextDotted: nextNote?.dotted
+                        });
+                        
+                        const beamlet = document.createElementNS(SVG_NS, 'line');
+                        beamlet.setAttribute('x1', startX.toString());
+                        beamlet.setAttribute('y1', beamY.toString());
+                        beamlet.setAttribute('x2', beamletEndX.toString());
+                        beamlet.setAttribute('y2', beamY.toString());
+                        beamlet.setAttribute('stroke', '#000');
+                        beamlet.setAttribute('stroke-width', '2');
+                        svg.appendChild(beamlet);
+                    } else {
+                        // Segment normal avec plusieurs notes
+                        DebugLogger.log(`✏️ Drawing beam segment`, {
+                            level,
+                            from: { x: startX, y: beamY },
+                            to: { x: endX, y: beamY },
+                            segStartIndex,
+                            segEnd
+                        });
+                        
+                        const beam = document.createElementNS(SVG_NS, 'line');
+                        beam.setAttribute('x1', startX.toString());
+                        beam.setAttribute('y1', beamY.toString());
+                        beam.setAttribute('x2', endX.toString());
+                        beam.setAttribute('y2', beamY.toString());
+                        beam.setAttribute('stroke', '#000');
+                        beam.setAttribute('stroke-width', '2');
+                        svg.appendChild(beam);
+                    }
+                    
                     segStartIndex = null;
                 }
             }

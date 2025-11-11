@@ -365,6 +365,99 @@ var BeamAndTieAnalyzer = class {
 // src/renderer/constants.ts
 var SVG_NS = "http://www.w3.org/2000/svg";
 
+// src/utils/DebugLogger.ts
+var DebugLogger = class {
+  // Limite pour éviter trop de logs
+  /**
+   * Active ou désactive le logging.
+   */
+  static setEnabled(enabled) {
+    this.enabled = enabled;
+  }
+  /**
+   * Initialise le conteneur de logs pour un bloc de code donné.
+   */
+  static init(parentElement) {
+    this.logs = [];
+    this.logContainer = parentElement.createEl("details", { cls: "chord-grid-debug" });
+    const summary = this.logContainer.createEl("summary");
+    summary.setText("\u{1F41B} Debug Logs");
+    const logContent = this.logContainer.createEl("pre", {
+      cls: "chord-grid-debug-content"
+    });
+    logContent.style.cssText = `
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Consolas', 'Monaco', monospace;
+    `;
+    return this.logContainer;
+  }
+  /**
+   * Enregistre un message de log.
+   */
+  static log(message, data) {
+    if (!this.enabled) return;
+    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+    const logMessage = data ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}` : `[${timestamp}] ${message}`;
+    this.logs.push(logMessage);
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+    console.log(`[ChordGrid] ${message}`, data);
+    this.render();
+  }
+  /**
+   * Enregistre un message d'erreur.
+   */
+  static error(message, error) {
+    if (!this.enabled) return;
+    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+    const errorMessage = error ? `[${timestamp}] \u274C ERROR: ${message}: ${error.message || JSON.stringify(error)}` : `[${timestamp}] \u274C ERROR: ${message}`;
+    this.logs.push(errorMessage);
+    console.error(`[ChordGrid] ${message}`, error);
+    this.render();
+  }
+  /**
+   * Enregistre un message d'avertissement.
+   */
+  static warn(message, data) {
+    if (!this.enabled) return;
+    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+    const warnMessage = data ? `[${timestamp}] \u26A0\uFE0F WARN: ${message}: ${JSON.stringify(data, null, 2)}` : `[${timestamp}] \u26A0\uFE0F WARN: ${message}`;
+    this.logs.push(warnMessage);
+    console.warn(`[ChordGrid] ${message}`, data);
+    this.render();
+  }
+  /**
+   * Met à jour l'affichage des logs.
+   */
+  static render() {
+    if (!this.logContainer) return;
+    const logContent = this.logContainer.querySelector(".chord-grid-debug-content");
+    if (logContent) {
+      logContent.textContent = this.logs.join("\n");
+      logContent.scrollTop = logContent.scrollHeight;
+    }
+  }
+  /**
+   * Efface tous les logs.
+   */
+  static clear() {
+    this.logs = [];
+    this.render();
+  }
+};
+__publicField(DebugLogger, "enabled", true);
+__publicField(DebugLogger, "logContainer", null);
+__publicField(DebugLogger, "logs", []);
+__publicField(DebugLogger, "maxLogs", 50);
+
 // src/renderer/MeasureRenderer.ts
 var MeasureRenderer = class {
   /**
@@ -462,8 +555,23 @@ var MeasureRenderer = class {
   }
   drawBeat(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions) {
     if (!beat || beat.notes.length === 0) return null;
+    DebugLogger.log(`\u{1F3BC} Drawing beat ${beatIndex}`, {
+      measureIndex,
+      chordIndex,
+      beatIndex,
+      notesCount: beat.notes.length,
+      notes: beat.notes.map((n) => ({ value: n.value, isRest: n.isRest })),
+      hasBeam: beat.hasBeam,
+      beamGroups: beat.beamGroups
+    });
     const hasBeamableNotes = beat.notes.some((n) => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
+    DebugLogger.log(`Beam detection`, {
+      hasBeamableNotes,
+      multipleNotes: beat.notes.length > 1,
+      willDrawGroup: hasBeamableNotes && beat.notes.length > 1
+    });
     if (hasBeamableNotes && beat.notes.length > 1) {
+      DebugLogger.log(`\u2705 Drawing note group with beams`);
       const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
       const noteCount = beat.notes.length;
       const hasSmallNotes = beat.notes.some((nv) => nv.value >= 32);
@@ -578,6 +686,13 @@ var MeasureRenderer = class {
   drawNoteGroup(svg, notesValues, x, staffLineY, width) {
     const noteCount = notesValues.length;
     if (noteCount === 0) return null;
+    DebugLogger.log("\u{1F3A8} drawNoteGroup called", {
+      noteCount,
+      notes: notesValues.map((n) => ({ value: n.value, dotted: n.dotted, isRest: n.isRest })),
+      x,
+      staffLineY,
+      width
+    });
     const hasSmallNotes = notesValues.some((nv) => nv.value >= 32);
     const noteSpacing = noteCount > 0 ? width / noteCount * (hasSmallNotes ? 1.2 : 1) : width;
     const stemHeight = 25;
@@ -625,32 +740,96 @@ var MeasureRenderer = class {
       }
     }
     const beamedNotes = notes.filter((n) => n.beamCount > 0);
+    DebugLogger.log("\u{1F3B5} Notes prepared for beaming", {
+      totalNotes: notes.length,
+      beamedNotesCount: beamedNotes.length,
+      beamedNotes: beamedNotes.map((n) => ({
+        value: n.nv.value,
+        beamCount: n.beamCount,
+        centerX: n.centerX,
+        stemX: n.stemX,
+        stemBottomY: n.stemBottomY
+      }))
+    });
     if (beamedNotes.length === 0) return notes.length ? notes[0].centerX : null;
     const maxBeamCount = Math.max(...beamedNotes.map((n) => n.beamCount));
     if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
+    DebugLogger.log("\u{1F528} Starting beam drawing", { maxBeamCount });
     const beamGap = 5;
     const validStemBottoms = beamedNotes.map((n) => n.stemBottomY).filter((y) => y !== void 0);
     const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
+    DebugLogger.log("Beam baseline calculated", { baseStemBottom, validStemBottoms });
     for (let level = 1; level <= maxBeamCount; level++) {
+      DebugLogger.log(`Drawing beam level ${level}`);
       let segStartIndex = null;
-      for (let i = 0; i < beamedNotes.length; i++) {
-        const n = beamedNotes[i];
-        const active = n.beamCount >= level;
+      for (let i = 0; i <= beamedNotes.length; i++) {
+        const n = i < beamedNotes.length ? beamedNotes[i] : null;
+        const active = n ? n.beamCount >= level : false;
         if (active && segStartIndex === null) {
           segStartIndex = i;
-        } else if ((!active || i === beamedNotes.length - 1) && segStartIndex !== null) {
-          const segEnd = active && i === beamedNotes.length - 1 ? i : i - 1;
+        } else if (!active && segStartIndex !== null) {
+          const segEnd = i - 1;
           const beamY = baseStemBottom - (level - 1) * beamGap;
           const startX = beamedNotes[segStartIndex].stemX;
           const endX = beamedNotes[segEnd].stemX;
-          const beam = document.createElementNS(SVG_NS, "line");
-          beam.setAttribute("x1", startX.toString());
-          beam.setAttribute("y1", beamY.toString());
-          beam.setAttribute("x2", endX.toString());
-          beam.setAttribute("y2", beamY.toString());
-          beam.setAttribute("stroke", "#000");
-          beam.setAttribute("stroke-width", "2");
-          svg.appendChild(beam);
+          if (segStartIndex === segEnd) {
+            const beamletLength = 8;
+            const currentNote = beamedNotes[segStartIndex].nv;
+            const prevNote = segStartIndex > 0 ? beamedNotes[segStartIndex - 1].nv : null;
+            const nextNote = segStartIndex < beamedNotes.length - 1 ? beamedNotes[segStartIndex + 1].nv : null;
+            let beamletEndX;
+            let direction;
+            if (prevNote && prevNote.dotted) {
+              beamletEndX = startX - beamletLength;
+              direction = "left (after dotted note)";
+            } else if (nextNote && nextNote.dotted) {
+              beamletEndX = startX + beamletLength;
+              direction = "right (before dotted note)";
+            } else {
+              const groupCenter = (beamedNotes.length - 1) / 2;
+              const isInFirstHalf = segStartIndex < groupCenter;
+              if (isInFirstHalf) {
+                beamletEndX = startX + beamletLength;
+                direction = "right (first half)";
+              } else {
+                beamletEndX = startX - beamletLength;
+                direction = "left (second half)";
+              }
+            }
+            DebugLogger.log(`\u270F\uFE0F Drawing beamlet (partial beam)`, {
+              level,
+              from: { x: startX, y: beamY },
+              to: { x: beamletEndX, y: beamY },
+              noteIndex: segStartIndex,
+              direction,
+              prevDotted: prevNote == null ? void 0 : prevNote.dotted,
+              nextDotted: nextNote == null ? void 0 : nextNote.dotted
+            });
+            const beamlet = document.createElementNS(SVG_NS, "line");
+            beamlet.setAttribute("x1", startX.toString());
+            beamlet.setAttribute("y1", beamY.toString());
+            beamlet.setAttribute("x2", beamletEndX.toString());
+            beamlet.setAttribute("y2", beamY.toString());
+            beamlet.setAttribute("stroke", "#000");
+            beamlet.setAttribute("stroke-width", "2");
+            svg.appendChild(beamlet);
+          } else {
+            DebugLogger.log(`\u270F\uFE0F Drawing beam segment`, {
+              level,
+              from: { x: startX, y: beamY },
+              to: { x: endX, y: beamY },
+              segStartIndex,
+              segEnd
+            });
+            const beam = document.createElementNS(SVG_NS, "line");
+            beam.setAttribute("x1", startX.toString());
+            beam.setAttribute("y1", beamY.toString());
+            beam.setAttribute("x2", endX.toString());
+            beam.setAttribute("y2", beamY.toString());
+            beam.setAttribute("stroke", "#000");
+            beam.setAttribute("stroke-width", "2");
+            svg.appendChild(beam);
+          }
           segStartIndex = null;
         }
       }
@@ -767,7 +946,9 @@ var TieManager = class {
    * @param y - Position Y de la fin de la liaison
    */
   addPendingTie(measureIndex, x, y) {
+    DebugLogger.log("\u{1F4CC} Adding pending tie", { measureIndex, x, y });
     this.pending.push({ measureIndex, x, y });
+    DebugLogger.log("Current pending ties", { count: this.pending.length, pending: this.pending });
   }
   /**
    * Tente de résoudre une liaison en attente pour une note commençant par "from void".
@@ -779,12 +960,15 @@ var TieManager = class {
    * @returns La liaison en attente (et la retire de la liste) ou null si aucune
    */
   resolvePendingFor(measureIndex) {
+    DebugLogger.log("\u{1F50D} Resolving pending tie for measure", { measureIndex, availablePending: this.pending });
     for (let i = 0; i < this.pending.length; i++) {
       if (this.pending[i].measureIndex < measureIndex) {
         const p = this.pending.splice(i, 1)[0];
+        DebugLogger.log("\u2705 Resolved pending tie", { resolved: p, remaining: this.pending.length });
         return p;
       }
     }
+    DebugLogger.warn("No pending tie found for measure", { measureIndex });
     return null;
   }
   /**
@@ -812,22 +996,33 @@ var SVGRenderer = class {
     const measuresPerLine = 4;
     const measureWidth = 200;
     const measureHeight = 120;
+    DebugLogger.log("\u{1F4D0} Creating SVG layout", {
+      measuresPerLine,
+      measureWidth,
+      measureHeight
+    });
     let currentLine = 0;
     let measuresInCurrentLine = 0;
     const measurePositions = [];
     let globalIndex = 0;
     grid.measures.forEach((measure) => {
       if (measure.isLineBreak) {
+        DebugLogger.log("\u21B5 Line break detected");
         currentLine++;
         measuresInCurrentLine = 0;
         return;
       }
       if (measuresInCurrentLine >= measuresPerLine) {
+        DebugLogger.log(`\u21B5 Auto line break (${measuresInCurrentLine} measures)`);
         currentLine++;
         measuresInCurrentLine = 0;
       }
       measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++ });
       measuresInCurrentLine++;
+    });
+    DebugLogger.log("\u{1F4CA} Layout calculated", {
+      totalLines: currentLine + 1,
+      totalMeasures: measurePositions.length
     });
     const lines = currentLine + 1;
     const width = measuresPerLine * measureWidth + 60;
@@ -849,12 +1044,14 @@ var SVGRenderer = class {
     svg.appendChild(timeText);
     const notePositions = [];
     const tieManager = new TieManager();
+    DebugLogger.log("\u{1F3BC} Rendering measures");
     measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2 }) => {
       const x = posInLine * measureWidth + 40;
       const y = lineIndex * (measureHeight + 20) + 20;
       const mr = new MeasureRenderer(measure, x, y, measureWidth);
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
     });
+    DebugLogger.log("\u{1F3B5} Note positions collected", { count: notePositions.length });
     this.detectAndDrawTies(svg, notePositions, width, tieManager);
     return svg;
   }
@@ -895,8 +1092,30 @@ var SVGRenderer = class {
    * @param tieManager - Gestionnaire de liaisons entre lignes
    */
   detectAndDrawTies(svg, notePositions, svgWidth, tieManager) {
+    DebugLogger.log("\u{1F517} Starting tie detection and drawing");
     const matched = /* @__PURE__ */ new Set();
+    const tieNotes = notePositions.filter((n) => n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
+    DebugLogger.log("Notes with tie markers", {
+      count: tieNotes.length,
+      details: tieNotes.map((n, idx) => ({
+        index: notePositions.indexOf(n),
+        measure: n.measureIndex,
+        chord: n.chordIndex,
+        beat: n.beatIndex,
+        note: n.noteIndex,
+        tieStart: n.tieStart,
+        tieEnd: n.tieEnd,
+        tieToVoid: n.tieToVoid,
+        tieFromVoid: n.tieFromVoid,
+        position: { x: n.x, y: n.y }
+      }))
+    });
     const drawCurve = (startX, startY, endX, endY, isCross) => {
+      DebugLogger.log("Drawing tie curve", {
+        from: { x: startX, y: startY },
+        to: { x: endX, y: endY },
+        crossMeasure: isCross
+      });
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
@@ -911,9 +1130,14 @@ var SVGRenderer = class {
     };
     const drawHalfToMargin = (startX, startY, svgW) => {
       const marginX = svgW - 16;
+      DebugLogger.log("Drawing half-tie to margin (tieToVoid)", {
+        from: { x: startX, y: startY },
+        toMargin: marginX
+      });
       drawCurve(startX, startY, marginX, startY, true);
       return { x: marginX, y: startY };
     };
+    DebugLogger.log("\u{1F50D} Primary pass: matching tieStart -> tieEnd");
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
@@ -926,6 +1150,11 @@ var SVGRenderer = class {
         startY = cur.y - 8;
       }
       if (cur.tieStart) {
+        DebugLogger.log(`Found tieStart at index ${i}`, {
+          measure: cur.measureIndex,
+          chord: cur.chordIndex,
+          beat: cur.beatIndex
+        });
         let found = -1;
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
@@ -936,6 +1165,7 @@ var SVGRenderer = class {
           }
         }
         if (found >= 0) {
+          DebugLogger.log(`\u2705 Matched tieStart[${i}] -> tieEnd[${found}]`);
           const tgt = notePositions[found];
           const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
           let endY;
@@ -950,6 +1180,7 @@ var SVGRenderer = class {
           matched.add(found);
           continue;
         }
+        DebugLogger.log(`No direct tieEnd found for tieStart[${i}], searching for tieFromVoid`);
         let foundFromVoid = -1;
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
@@ -960,6 +1191,7 @@ var SVGRenderer = class {
           }
         }
         if (foundFromVoid >= 0) {
+          DebugLogger.log(`\u2705 Matched tieStart[${i}] -> tieFromVoid[${foundFromVoid}]`);
           const tgt = notePositions[foundFromVoid];
           const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
           let endY;
@@ -974,14 +1206,20 @@ var SVGRenderer = class {
           matched.add(foundFromVoid);
           continue;
         }
+        DebugLogger.log(`No tieFromVoid found, checking tieToVoid flag`);
         if (cur.tieToVoid) {
+          DebugLogger.log(`Drawing tieToVoid for index ${i}`);
           const pending = drawHalfToMargin(startX, startY, svgWidth);
           tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
           continue;
         }
+        DebugLogger.warn(`tieStart[${i}] has no match and no tieToVoid flag`);
       }
       if (cur.tieFromVoid && !matched.has(i)) {
+        DebugLogger.log(`Found tieFromVoid at index ${i}`, {
+          measure: cur.measureIndex
+        });
         const pending = tieManager.resolvePendingFor(cur.measureIndex);
         let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
         let endY;
@@ -992,15 +1230,21 @@ var SVGRenderer = class {
           endY = cur.y - 8;
         }
         if (pending) {
+          DebugLogger.log(`\u2705 Resolved pending tie for tieFromVoid[${i}]`, pending);
           drawCurve(pending.x, pending.y, endX, endY, true);
           matched.add(i);
         } else {
+          DebugLogger.log(`\u26A0\uFE0F No pending tie found, drawing from left margin`);
           const leftMarginX = 16;
           drawCurve(leftMarginX, endY, endX, endY, true);
           matched.add(i);
         }
       }
     }
+    DebugLogger.log("\u{1F517} Tie detection completed", {
+      totalMatched: matched.size,
+      totalNotes: notePositions.length
+    });
   }
 };
 
@@ -1025,17 +1269,27 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
       (source, el, ctx) => {
         var _a;
         try {
+          DebugLogger.init(el);
+          DebugLogger.log("\u{1F3B5} Parsing chord grid", { source: source.substring(0, 100) + "..." });
           const parser = new ChordGridParser();
           const result = parser.parse(source);
           const grid = result.grid;
+          DebugLogger.log("\u2705 Parsing completed", {
+            measuresCount: grid.measures.length,
+            timeSignature: `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`
+          });
           if (result.errors && result.errors.length > 0) {
+            DebugLogger.warn("Validation errors found", { count: result.errors.length });
             const pre = el.createEl("pre", { cls: "chord-grid-error" });
             pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
           }
+          DebugLogger.log("\u{1F3A8} Starting SVG rendering");
           const renderer = new SVGRenderer();
           const svg = renderer.render(grid);
+          DebugLogger.log("\u2705 Rendering completed");
           el.appendChild(svg);
         } catch (err) {
+          DebugLogger.error("Fatal error", err);
           const error = err;
           el.createEl("pre", {
             text: `Erreur: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,
