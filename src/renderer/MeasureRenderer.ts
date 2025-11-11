@@ -36,6 +36,7 @@ interface NotePosition {
     chordIndex: number;
     beatIndex: number;
     noteIndex: number;
+    segmentNoteIndex?: number; // index of the note within its chord segment (for analyzer overlay)
     tieStart?: boolean;
     tieEnd?: boolean;
         globalTimeIndex?: number; // Updated to match Note_Element interface
@@ -114,7 +115,9 @@ export class MeasureRenderer {
         staffLine.setAttribute('stroke-width', '1');
         svg.appendChild(staffLine);
 
-        const segments: ChordSegment[] = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
+    const segments: ChordSegment[] = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
+    // Track per-segment note index to map to analyzer references
+    const segmentNoteCursor: number[] = new Array(segments.length).fill(0);
 
         // Layout segments: allocate widths proportional to number of beats, but
         // insert a visible separator when a segment has leadingSpace=true.
@@ -147,7 +150,7 @@ export class MeasureRenderer {
 
             segment.beats.forEach((beat: Beat, beatIndex: number) => {
                 const beatX = segmentX + (beatIndex * beatWidth);
-                const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions);
+                const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
                 if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
                     const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, '22px', 'bold');
@@ -176,14 +179,15 @@ export class MeasureRenderer {
         measureIndex: number,
         chordIndex: number,
         beatIndex: number,
-        notePositions: NotePosition[]
+        notePositions: NotePosition[],
+        segmentNoteCursor: number[]
     ): number | null {
         const beats = [beat];
         const beatWidth = width;
         let currentX = x;
         let firstNoteX: number | null = null;
 
-        const first = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions);
+    const first = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor);
         if (first !== null) firstNoteX = first;
 
         return firstNoteX;
@@ -198,7 +202,8 @@ export class MeasureRenderer {
         measureIndex: number,
         chordIndex: number,
         beatIndex: number,
-        notePositions: NotePosition[]
+        notePositions: NotePosition[],
+        segmentNoteCursor: number[]
     ): number | null {
         if (!beat || beat.notes.length === 0) return null;
 
@@ -253,6 +258,7 @@ export class MeasureRenderer {
                     chordIndex,
                     beatIndex,
                     noteIndex,
+                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
                     tieStart: !!nv.tieStart,
                     tieEnd: !!nv.tieEnd,
                     tieToVoid: !!nv.tieToVoid,
@@ -290,6 +296,7 @@ export class MeasureRenderer {
                 chordIndex,
                 beatIndex,
                 noteIndex: 0,
+                segmentNoteIndex: segmentNoteCursor[chordIndex]++,
                 tieStart: !!nv.tieStart,
                 tieEnd: !!nv.tieEnd,
                 tieToVoid: !!nv.tieToVoid,
