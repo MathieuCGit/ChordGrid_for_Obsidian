@@ -1,10 +1,37 @@
+/**
+ * @file RestRenderer.ts
+ * @description Rendu SVG des silences musicaux.
+ * 
+ * Cette classe est spécialisée dans le rendu graphique des différents types
+ * de silences (pauses, demi-pauses, soupirs, demi-soupirs, etc.).
+ * 
+ * Types de silences supportés :
+ * - Pause (1) : rectangle suspendu sous la ligne
+ * - Demi-pause (2) : rectangle posé sur la ligne
+ * - Soupir (4) : forme en Z stylisée
+ * - Demi-soupir (8) : crochet simple
+ * - Quart de soupir (16) : double crochet
+ * - Huitième de soupir (32) : triple crochet
+ * - Seizième de soupir (64) : quadruple crochet
+ * 
+ * Tous les silences peuvent être pointés (durée × 1.5).
+ */
+
 import { NoteElement } from '../parser/type';
 import { SVG_NS } from './constants';
 
+/**
+ * Classe de rendu des silences musicaux.
+ */
 export class RestRenderer {
   
   /**
-   * Dessine un silence selon sa valeur
+   * Dessine un silence selon sa valeur rythmique.
+   * 
+   * @param svg - Élément SVG parent
+   * @param note - Note marquée comme silence (isRest=true)
+   * @param x - Position X du silence
+   * @param y - Position Y de référence (ligne de portée)
    */
   drawRest(svg: SVGElement, note: NoteElement, x: number, y: number) {
     if (note.value === 1) {

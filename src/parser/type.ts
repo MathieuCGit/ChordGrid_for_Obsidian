@@ -1,5 +1,32 @@
+/**
+ * @file type.ts
+ * @description Définitions de types et interfaces pour le parsing et le rendu de grilles d'accords.
+ * 
+ * Ce fichier centralise tous les types utilisés dans le projet :
+ * - Types de notes et silences
+ * - Structures de beats et mesures
+ * - Informations de ligatures et liaisons
+ * - Types de barres de mesure
+ * - Résultats de parsing et erreurs de validation
+ * 
+ * Ces interfaces assurent la cohérence entre le parser et le renderer.
+ */
+
+/**
+ * Valeurs rythmiques supportées.
+ * - 1 = ronde (whole note)
+ * - 2 = blanche (half note)
+ * - 4 = noire (quarter note)
+ * - 8 = croche (eighth note)
+ * - 16 = double-croche (sixteenth note)
+ * - 32 = triple-croche (thirty-second note)
+ * - 64 = quadruple-croche (sixty-fourth note)
+ */
 export type NoteValue = 1 | 2 | 4 | 8 | 16 | 32 | 64;
 
+/**
+ * Informations de liaison entre notes de différentes mesures.
+ */
 export interface TieInfo {
   fromMeasure: number;
   fromBeat: number;
@@ -9,6 +36,25 @@ export interface TieInfo {
   toNote: number;
 }
 
+/**
+ * Élément note ou silence avec toutes ses propriétés rythmiques.
+ * 
+ * Propriétés de base :
+ * - value : valeur rythmique (1, 2, 4, 8, 16, 32, 64)
+ * - dotted : note pointée (durée × 1.5)
+ * - isRest : silence plutôt que note
+ * 
+ * Propriétés de liaison :
+ * - tieStart : début d'une liaison vers la note suivante
+ * - tieEnd : fin d'une liaison depuis la note précédente
+ * - tieToVoid : liaison vers note virtuelle (fin de ligne)
+ * - tieFromVoid : liaison depuis note virtuelle (début de ligne)
+ * - tieInfo : informations détaillées de liaison entre mesures
+ * 
+ * Propriétés de parsing :
+ * - position : position dans le texte source
+ * - length : longueur dans le texte source
+ */
 export interface NoteElement {
   value: NoteValue;
   dotted: boolean;
@@ -24,12 +70,23 @@ export interface NoteElement {
   length?: number;
 }
 
+/**
+ * Groupe de notes liées par une ligature (beam).
+ * 
+ * Définit les indices de début et fin des notes à relier visuellement.
+ */
 export interface BeamGroup {
   startIndex: number;
   endIndex: number;
   noteCount: number;
 }
 
+/**
+ * Beat (temps) contenant une ou plusieurs notes/silences.
+ * 
+ * Un beat représente une unité de temps dans une mesure.
+ * Les notes d'un même beat peuvent être groupées par des ligatures.
+ */
 export interface Beat {
   notes: NoteElement[];
   hasBeam: boolean;
@@ -37,6 +94,13 @@ export interface Beat {
   chord?: string;
 }
 
+/**
+ * Types de barres de mesure.
+ * - Single (|) : barre simple
+ * - Double (||) : double barre (fin de section)
+ * - RepeatStart (||:) : début de reprise
+ * - RepeatEnd (:||) : fin de reprise
+ */
 export enum BarlineType {
   Single = '|',
   Double = '||',
@@ -44,6 +108,12 @@ export enum BarlineType {
   RepeatEnd = ':||'
 }
 
+/**
+ * Segment d'accord dans une mesure.
+ * 
+ * Une mesure peut contenir plusieurs changements d'accords.
+ * Chaque segment représente un accord et les beats associés.
+ */
 export interface ChordSegment {
   chord: string;
   beats: Beat[];
@@ -51,6 +121,12 @@ export interface ChordSegment {
   leadingSpace?: boolean;
 }
 
+/**
+ * Mesure musicale complète.
+ * 
+ * Contient tous les beats de la mesure, l'accord principal,
+ * les segments d'accords multiples, et le type de barre de mesure.
+ */
 export interface Measure {
   beats: Beat[];
   chord: string;
@@ -60,6 +136,12 @@ export interface Measure {
   source?: string;
 }
 
+/**
+ * Signature temporelle (time signature).
+ * 
+ * Définit le nombre de temps par mesure et la valeur de note par temps.
+ * Exemple : 4/4 = 4 temps de noire par mesure
+ */
 export interface TimeSignature {
   numerator: number;
   denominator: number;
@@ -67,12 +149,26 @@ export interface TimeSignature {
   beatUnit: number;
 }
 
+/**
+ * Grille d'accords complète parsée.
+ * 
+ * Structure principale retournée par le parser, contenant :
+ * - La signature temporelle
+ * - Toutes les mesures de la grille
+ * - Les mesures regroupées en lignes pour le rendu
+ */
 export interface ChordGrid {
   timeSignature: TimeSignature;
   measures: Measure[];
   lines: Measure[][];
 }
 
+/**
+ * Erreur de validation de mesure.
+ * 
+ * Générée lorsque la durée totale d'une mesure ne correspond pas
+ * à la signature temporelle déclarée.
+ */
 export interface ValidationError {
   measureIndex: number; // 0-based
   measureSource?: string;
@@ -81,6 +177,12 @@ export interface ValidationError {
   message: string;
 }
 
+/**
+ * Résultat complet du parsing d'une grille d'accords.
+ * 
+ * Contient la grille parsée, les erreurs de validation éventuelles,
+ * et la liste brute des mesures.
+ */
 export interface ParseResult {
   grid: ChordGrid;
   errors: ValidationError[];

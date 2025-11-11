@@ -1,7 +1,29 @@
+/**
+ * @file NoteRenderer.ts
+ * @description Rendu SVG des notes et de leurs ligatures.
+ * 
+ * Cette classe gère le rendu graphique des notes musicales dans un beat,
+ * incluant :
+ * - Les têtes de notes (slash notation)
+ * - Les hampes (stems)
+ * - Les crochets individuels (flags) pour notes non groupées
+ * - Les ligatures (beams) reliant plusieurs notes
+ * - Les points pour notes pointées
+ * - Les silences (délégués à RestRenderer)
+ * 
+ * Les ligatures peuvent avoir plusieurs niveaux (croches, doubles-croches, etc.)
+ * et sont calculées automatiquement selon la valeur des notes.
+ * 
+ * @see {@link RestRenderer} pour le rendu des silences
+ */
+
 import { Beat, BeamGroup, NoteElement } from '../parser/type';
 import { RestRenderer } from './RestRenderer';
 import { SVG_NS } from './constants';
 
+/**
+ * Classe de rendu des notes et ligatures d'un beat.
+ */
 export class NoteRenderer {
   // expected fields
   private beat: Beat;
@@ -10,6 +32,13 @@ export class NoteRenderer {
   private NOTE_Y = 40;
   private restRenderer = new RestRenderer();
 
+  /**
+   * Constructeur du renderer de notes.
+   * 
+   * @param beat - Beat contenant les notes à rendre
+   * @param x - Position X de départ du beat
+   * @param y - Position Y de départ du beat
+   */
   constructor(beat?: Beat, x?: number, y?: number) {
     // allow zero-arg construction for type-checking scenarios; assign when provided
     this.beat = beat as Beat ?? { notes: [], hasBeam: false, beamGroups: [] };
@@ -17,6 +46,16 @@ export class NoteRenderer {
     this.y = y ?? 0;
   }
   
+  /**
+   * Dessine un groupe de ligatures reliant plusieurs notes.
+   * 
+   * Calcule le nombre de niveaux de ligatures nécessaires selon les valeurs
+   * des notes (croches = 1 niveau, doubles-croches = 2 niveaux, etc.).
+   * 
+   * @param svg - Élément SVG parent
+   * @param group - Groupe de ligature avec indices de début et fin
+   * @param spacing - Espacement entre notes
+   */
   private drawBeamGroup(svg: SVGElement, group: BeamGroup, spacing: number) {
     // group.startIndex et group.endIndex sont les VRAIS indices dans beat.notes
     const notes = this.beat.notes.slice(group.startIndex, group.endIndex + 1);
@@ -42,6 +81,16 @@ export class NoteRenderer {
     }
   }
   
+  /**
+   * Rend le beat complet avec toutes ses notes, silences et ligatures.
+   * 
+   * Cette méthode principale :
+   * 1. Dessine chaque note ou silence
+   * 2. Ajoute les hampes et crochets individuels si nécessaire
+   * 3. Dessine les groupes de ligatures pour les notes groupées
+   * 
+   * @param svg - Élément SVG parent
+   */
   render(svg: SVGElement) {
     const noteSpacing = 20;
     

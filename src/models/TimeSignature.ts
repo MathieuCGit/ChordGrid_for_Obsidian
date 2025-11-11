@@ -1,16 +1,39 @@
 /**
- * TimeSignature.ts
+ * @file TimeSignature.ts
+ * @description Classe utilitaire pour représenter et manipuler les signatures temporelles musicales.
  *
- * Small utility class to represent and manipulate musical time signatures.
+ * Cette classe gère les signatures temporelles (time signatures) avec validation
+ * et calculs de durée. Elle supporte également les notations spéciales comme
+ * "C" (common time = 4/4) et "C|" (cut time = 2/2).
  *
- * Usage:
- *   const ts = TimeSignature.parse("6/8");
- *   const secondsPerBar = ts.secondsPerBar(120); // BPM = 120 (quarter-note)
+ * Fonctionnalités :
+ * - Parsing de signatures temporelles depuis une chaîne ("4/4", "3/8", "C", etc.)
+ * - Validation des numérateurs et dénominateurs
+ * - Calculs de durée (secondes par mesure en fonction du BPM)
+ * - Détection de mesures composées vs simples
+ * - Conversion JSON pour sérialisation
  *
- * Notes:
- * - Denominator must be a power-of-two (1,2,4,8,16,32).
- * - Accepts "4/4", "C" (common time -> 4/4), "C|" (cut time -> 2/2).
- * - BPM input is assumed to be quarter-note BPM (standard).
+ * @example
+ * ```typescript
+ * // Parsing standard
+ * const ts = TimeSignature.parse("6/8");
+ * 
+ * // Common time
+ * const commonTime = TimeSignature.parse("C"); // 4/4
+ * 
+ * // Calcul de durée
+ * const secondsPerBar = ts.secondsPerBar(120); // BPM = 120 (noire)
+ * 
+ * // Vérification de mesure composée
+ * if (ts.isCompound()) {
+ *   console.log("Mesure composée");
+ * }
+ * ```
+ *
+ * Notes :
+ * - Le dénominateur doit être une puissance de 2 (1, 2, 4, 8, 16, 32)
+ * - Le BPM est toujours exprimé en noires (standard)
+ * - Les mesures composées ont un numérateur divisible par 3 et > 3 (6, 9, 12...)
  */
 
 export interface TimeSignatureJSON {
@@ -20,6 +43,13 @@ export interface TimeSignatureJSON {
 
 const VALID_DENOMINATORS = new Set([1, 2, 4, 8, 16, 32]);
 
+/**
+ * Classe représentant une signature temporelle musicale.
+ * 
+ * Format : numérateur / dénominateur (ex: 4/4, 3/4, 6/8)
+ * - Numérateur : nombre de temps par mesure
+ * - Dénominateur : valeur de la note représentant un temps
+ */
 export default class TimeSignature {
     readonly numerator: number;
     readonly denominator: number;

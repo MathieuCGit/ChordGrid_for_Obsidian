@@ -1,6 +1,31 @@
+/**
+ * @file MeasureRenderer.ts
+ * @description Rendu SVG d'une mesure musicale individuelle.
+ * 
+ * Cette classe est responsable du rendu graphique d'une mesure complète,
+ * incluant :
+ * - Les barres de mesure (simples, doubles, reprises)
+ * - La ligne de portée
+ * - Les accords et leurs changements au sein de la mesure
+ * - Les notes et silences avec leurs ligatures
+ * - Le positionnement relatif des beats selon l'espace disponible
+ * 
+ * Le renderer gère également la séparation visuelle entre différents segments
+ * d'accords lorsqu'un espace est présent dans la notation source.
+ * 
+ * @example
+ * ```typescript
+ * const renderer = new MeasureRenderer(measure, x, y, width);
+ * renderer.drawMeasure(svg, measureIndex, notePositions, grid);
+ * ```
+ */
+
 import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { SVG_NS } from './constants';
 
+/**
+ * Position d'une note dans le SVG avec métadonnées pour les liaisons.
+ */
 interface NotePosition {
     x: number;
     y: number;
@@ -19,6 +44,9 @@ interface NotePosition {
     stemBottomY?: number;
 }
 
+/**
+ * Note avec informations de ligature pour le rendu groupé.
+ */
 interface BeamNote {
     nv: NoteElement;
     beamCount: number;
@@ -28,7 +56,21 @@ interface BeamNote {
     stemBottomY?: number;
 }
 
+/**
+ * Classe de rendu d'une mesure musicale.
+ * 
+ * Gère le positionnement et le rendu de tous les éléments d'une mesure :
+ * barres, portée, accords, notes et ligatures.
+ */
 export class MeasureRenderer {
+    /**
+     * Constructeur du renderer de mesure.
+     * 
+     * @param measure - Mesure à rendre
+     * @param x - Position X de départ de la mesure dans le SVG
+     * @param y - Position Y de départ de la mesure dans le SVG
+     * @param width - Largeur allouée à la mesure
+     */
     constructor(
         private readonly measure: Measure,
         private readonly x: number,
@@ -36,6 +78,21 @@ export class MeasureRenderer {
         private readonly width: number
     ) {}
 
+    /**
+     * Dessine la mesure complète dans le SVG.
+     * 
+     * Cette méthode orchestre le rendu de tous les éléments de la mesure :
+     * 1. Barres de mesure (gauche avec éventuelle reprise)
+     * 2. Ligne de portée
+     * 3. Segments d'accords avec leurs beats
+     * 4. Notes et silences avec ligatures
+     * 5. Barre de mesure de fin (avec éventuelle reprise ou double barre)
+     * 
+     * @param svg - Élément SVG parent
+     * @param measureIndex - Index de la mesure dans la grille (pour numérotation)
+     * @param notePositions - Tableau collectant les positions de toutes les notes (pour liaisons)
+     * @param grid - Grille complète (pour contexte de signature temporelle, etc.)
+     */
     public drawMeasure(svg: SVGElement, measureIndex: number, notePositions: NotePosition[], grid: ChordGrid): void {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - 2;

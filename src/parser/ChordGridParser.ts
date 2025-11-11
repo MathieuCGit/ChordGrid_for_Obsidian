@@ -1,20 +1,52 @@
 /**
- * ChordGridParser
+ * @file ChordGridParser.ts
+ * @description Parser pour la notation textuelle des grilles d'accords.
  *
- * Parses a textual chord-grid notation into a structured ChordGrid object.
+ * Ce parser transforme une grille d'accords en notation textuelle en une structure
+ * d'objets ChordGrid contenant des mesures, des beats et des notes.
  *
- * Responsibilities:
- *  - read a time signature placed at the start of the first line (e.g. "4/4")
- *  - parse measures and rhythm groups into Measure/Beat/Note structures
- *  - mark line breaks and group measures into renderable lines
+ * Responsabilités :
+ * - Lecture de la signature temporelle (placée au début de la première ligne, ex: "4/4")
+ * - Parsing des mesures et des groupes rythmiques en structures Measure/Beat/Note
+ * - Marquage des sauts de ligne et regroupement des mesures en lignes de rendu
+ * - Gestion des ligatures (beams) entre notes selon les espaces et les beats
+ * - Gestion des liaisons (ties) entre notes, y compris entre mesures
+ * - Validation de la durée totale de chaque mesure par rapport à la signature temporelle
  *
- * Notes:
- *  - parseLine() is currently a stub and must be implemented to return Measure[]
- *  - parseTimeSignature() returns a simple TimeSignature { numerator, denominator }
- *  - Assumes project defines types: ChordGrid, Measure, Note, Beat, TimeSignature, NoteValue
+ * Syntaxe supportée :
+ * - Signature temporelle : `4/4`, `3/4`, `6/8`, etc.
+ * - Barres de mesure : `|` (simple), `||` (double), `||:` (début de reprise), `:||` (fin de reprise)
+ * - Accords : notation standard (Am, C, Gmaj7, F#m, Bb7, etc.)
+ * - Notes : 1 (ronde), 2 (blanche), 4 (noire), 8 (croche), 16 (double-croche), 32, 64
+ * - Notes pointées : ajout d'un point après le chiffre (ex: `4.`, `8.`)
+ * - Silences : préfixe `-` devant la valeur (ex: `-4` pour un soupir)
+ * - Liaisons : underscore `_` pour lier des notes (ex: `4_88_` ou `[_8]`)
+ * - Ligatures : notes groupées sans espace sont liées par une ligature (ex: `88` = 2 croches liées)
+ *
+ * @example
+ * ```typescript
+ * const parser = new ChordGridParser();
+ * const result = parser.parse("4/4 ||: Am[88 4 4 88] | C[2 4 4] :||");
+ * // result.grid contient la structure parsée
+ * // result.errors contient les erreurs de validation éventuelles
+ * ```
+ *
+ * @see {@link BeamAndTieAnalyzer} pour l'analyse des ligatures et liaisons
+ * @see {@link Measure} pour la structure d'une mesure
+ * @see {@link Beat} pour la structure d'un beat
+ * @see {@link Note} pour la structure d'une note
  */
 export class ChordGridParser {
 
+  /**
+   * Parse une grille d'accords en notation textuelle.
+   * 
+   * @param input - Chaîne contenant la grille d'accords en notation textuelle
+   * @returns Objet ParseResult contenant :
+   *   - grid : la structure ChordGrid parsée
+   *   - errors : tableau d'erreurs de validation (mesures mal formées)
+   *   - measures : tableau de toutes les mesures
+   */
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
     const firstLine = lines[0];
@@ -211,7 +243,13 @@ export class ChordGridParser {
     return measures;
   }
 
-  // Minimal implementation to avoid "this.parseTimeSignature is not a function"
+  /**
+   * Parse la signature temporelle depuis la première ligne.
+   * 
+   * @param line - Première ligne contenant la signature temporelle (ex: "4/4 ||: C[4 4 4 4]")
+   * @returns Objet TimeSignature avec numérateur et dénominateur
+   * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
+   */
   private parseTimeSignature(line: string): TimeSignature {
     const m = /^\s*(\d+)\/(\d+)/.exec(line);
     if (m) {
@@ -224,7 +262,13 @@ export class ChordGridParser {
     return { numerator: 4, denominator: 4 } as TimeSignature;
   }
 
-  // Placeholder for grouping helper (kept as referenced; implement if missing)
+  /**
+   * Regroupe les mesures en lignes pour le rendu.
+   * 
+   * @param measures - Tableau de toutes les mesures
+   * @param perLine - Nombre de mesures par ligne (généralement 4)
+   * @returns Tableau de lignes, chaque ligne contenant un tableau de mesures
+   */
   private groupIntoLines(measures: Measure[], perLine: number): Measure[][] {
     const lines: Measure[][] = [];
     for (let i = 0; i < measures.length; i += perLine) {
@@ -233,7 +277,29 @@ export class ChordGridParser {
     return lines;
   }
 }
-// ...existing code...
+
+/**
+ * @class BeamAndTieAnalyzer
+ * @description Analyseur de ligatures (beams) et de liaisons (ties) pour la notation rythmique.
+ * 
+ * Cette classe est responsable de :
+ * - Analyser les groupes rythmiques et déterminer quelles notes doivent être liées par des ligatures
+ * - Gérer les liaisons entre notes (ties), y compris entre mesures et lignes
+ * - Parser les valeurs de notes individuelles (avec points et silences)
+ * - Créer les structures Beat avec les informations de ligature appropriées
+ * 
+ * Règles de ligature :
+ * - Les notes sans espace entre elles sont groupées dans le même beat et liées
+ * - Un espace sépare les beats et donc les groupes de ligature
+ * - Les silences brisent les ligatures
+ * - Un espace avant un accord peut briser la ligature entre segments
+ * 
+ * Règles de liaison :
+ * - L'underscore `_` marque le début d'une liaison
+ * - Une liaison peut traverser les limites de mesure
+ * - Une liaison "to void" marque une note qui se lie à une note virtuelle en fin de ligne
+ * - Une liaison "from void" marque une note qui reçoit une liaison depuis une note virtuelle
+ */
 class BeamAndTieAnalyzer {
   
   private tieContext: {

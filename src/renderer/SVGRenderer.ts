@@ -1,9 +1,44 @@
+/**
+ * @file SVGRenderer.ts
+ * @description Rendu SVG des grilles d'accords.
+ * 
+ * Cette classe orchestre le rendu complet d'une grille d'accords en SVG,
+ * en gérant la disposition des mesures sur plusieurs lignes et en
+ * déléguant le rendu des mesures individuelles à MeasureRenderer.
+ * 
+ * Responsabilités :
+ * - Calculer la taille globale du SVG en fonction du nombre de lignes
+ * - Positionner les mesures sur la grille (4 mesures par ligne par défaut)
+ * - Gérer les sauts de ligne explicites (lineBreak)
+ * - Initialiser le TieManager pour gérer les liaisons entre mesures
+ * - Créer la structure SVG avec fond et éléments graphiques
+ * 
+ * @example
+ * ```typescript
+ * const renderer = new SVGRenderer();
+ * const svgElement = renderer.render(chordGrid);
+ * document.body.appendChild(svgElement);
+ * ```
+ * 
+ * @see {@link MeasureRenderer} pour le rendu d'une mesure individuelle
+ * @see {@link TieManager} pour la gestion des liaisons entre mesures
+ */
+
 import { ChordGrid } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
 import { SVG_NS } from './constants';
 import { TieManager } from '../utils/TieManager';
 
+/**
+ * Classe principale pour le rendu SVG des grilles d'accords.
+ */
 export class SVGRenderer {
+  /**
+   * Rend une grille d'accords en élément SVG.
+   * 
+   * @param grid - Structure ChordGrid contenant les mesures à rendre
+   * @returns Élément SVG prêt à être inséré dans le DOM
+   */
   render(grid: ChordGrid): SVGElement {
     return this.createSVG(grid);
   }
@@ -75,6 +110,16 @@ export class SVGRenderer {
     return svg;
   }
 
+  /**
+   * Crée un élément texte SVG avec les propriétés spécifiées.
+   * 
+   * @param text - Contenu du texte
+   * @param x - Position X
+   * @param y - Position Y
+   * @param size - Taille de la police
+   * @param weight - Poids de la police (normal, bold, etc.)
+   * @returns Élément SVG text
+   */
   private createText(text: string, x: number, y: number, size: string, weight: string = 'normal'): SVGTextElement {
     const textEl = document.createElementNS(SVG_NS, 'text');
     textEl.setAttribute('x', String(x));
@@ -87,6 +132,21 @@ export class SVGRenderer {
     return textEl;
   }
 
+  /**
+   * Détecte et dessine les liaisons (ties) entre notes.
+   * 
+   * Cette méthode gère trois types de liaisons :
+   * 1. Liaisons normales entre notes adjacentes
+   * 2. Liaisons "to void" (vers une note virtuelle en fin de ligne)
+   * 3. Liaisons "from void" (depuis une note virtuelle en début de ligne)
+   * 
+   * Les liaisons entre lignes sont gérées par le TieManager.
+   * 
+   * @param svg - Élément SVG parent
+   * @param notePositions - Tableau des positions de toutes les notes
+   * @param svgWidth - Largeur totale du SVG
+   * @param tieManager - Gestionnaire de liaisons entre lignes
+   */
   private detectAndDrawTies(
     svg: SVGElement,
     notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[],
