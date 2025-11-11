@@ -110,6 +110,55 @@ export class ChordGridParser {
 
     return { grid, errors, measures: allMeasures };
   }
+
+  /**
+   * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
+   * This ignores any beam grouping and only preserves the raw note sequence per chord segment.
+   *
+   * Contract:
+   * - Returns an array of ParsedMeasure (analyzer-types)
+   * - Each measure contains segments with flat notes (ParsedNote)
+   * - leadingSpace is propagated from segment parsing
+   */
+  public parseForAnalyzer(input: string): {
+    timeSignature: TimeSignature;
+    measures: AnalyzerParsedMeasure[];
+  } {
+    const result = this.parse(input);
+    const measures: AnalyzerParsedMeasure[] = result.measures.map((m) => {
+      const segments: AnalyzerParsedSegment[] = (m.chordSegments || []).map((seg) => {
+        const flatNotes: AnalyzerParsedNote[] = [];
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            flatNotes.push({
+              value: n.value,
+              dotted: !!n.dotted,
+              isRest: !!n.isRest,
+              tieStart: n.tieStart || false,
+              tieEnd: n.tieEnd || false,
+              tieToVoid: n.tieToVoid || false,
+              tieFromVoid: n.tieFromVoid || false,
+            });
+          }
+        }
+        return {
+          chord: seg.chord,
+          notes: flatNotes,
+          leadingSpace: !!seg.leadingSpace,
+        } as AnalyzerParsedSegment;
+      });
+
+      return {
+        segments,
+        timeSignature: result.grid.timeSignature,
+        barline: m.barline,
+        lineBreakAfter: m.lineBreakAfter,
+        source: m.source,
+      } as AnalyzerParsedMeasure;
+    });
+
+    return { timeSignature: result.grid.timeSignature, measures };
+  }
   
   private parseLine(line: string, isFirstLine: boolean): Measure[] {
     // Skip time signature on first line
@@ -194,26 +243,9 @@ export class ChordGridParser {
         anySource += (anySource ? ' ' : '') + sourceText;
 
         if (rhythm.length > 0) {
-          // Determine whether there is a SPACE character immediately before the
-          // chord label in the original measure text. This is stricter than
-          // relying on the captured leading whitespace because tokenization
-          // may alter surrounding spacing; we want to know if the chord
-          // letter (A..G or any non-space token) is preceded by a space.
-          let hasSignificantSpace = false;
-          
-          // Vérifier si on a une lettre d'accord (A-G)
-          const chordLetter = /[A-G]/.exec(text);
-          if (chordLetter && typeof chordLetter.index === 'number') {
-            // Vérifier si le caractère juste avant la lettre est un espace
-            const charBeforeLetter = chordLetter.index > 0 ? text.charAt(chordLetter.index - 1) : null;
-            hasSignificantSpace = charBeforeLetter === ' ' || charBeforeLetter === '\t';
-            console.log(`Détection accord:`, {
-              letter: chordLetter[0],
-              position: chordLetter.index,
-              charBefore: charBeforeLetter,
-              hasSpace: hasSignificantSpace
-            });
-          }
+          // Determine whether there was explicit whitespace before THIS segment
+          // Use the capture group from the segment regex which preserves leading spaces
+          const hasSignificantSpace = (leadingSpaceCapture || '').length > 0;
 
           const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
           
@@ -228,7 +260,7 @@ export class ChordGridParser {
         }
       }
 
-      console.log("Parsed chords:", chordSegments.map(s => s.chord));
+          console.log("Parsed chords:", chordSegments.map(s => s.chord));
 
       measures.push({
         beats,
@@ -535,3 +567,8 @@ import {
   BeamGroup,
   ChordSegment
 } from './type';
+import {
+  ParsedMeasure as AnalyzerParsedMeasure,
+  ParsedSegment as AnalyzerParsedSegment,
+  ParsedNote as AnalyzerParsedNote,
+} from '../analyzer/analyzer-types';
