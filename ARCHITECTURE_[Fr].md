@@ -1,41 +1,40 @@
-# Chord Grid Plugin Architecture
+# Architecture du Plugin Chord Grid
 
-## Overview
+## Vue d'ensemble
 
-This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It consists of three main modules: **Parsing**, **Models**, and **Rendering**.
+Ce plugin Obsidian permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de trois modules principaux : **Parsing**, **Modèles**, et **Rendu**.
 
-## Project Structure
+## Structure du projet
 
 ```
 chord-grid/
-├── main.ts                    # Obsidian plugin entry point
+├── main.ts                    # Point d'entrée du plugin Obsidian
 ├── src/
-│   ├── parser/                # Parsing module
-│   │   ├── ChordGridParser.ts # Main parser
-│   │   └── type.ts            # Type definitions
-│   ├── models/                # Data models
-│   │   ├── Beat.ts            # Beat model
-│   │   ├── Measure.ts         # Measure model
-│   │   ├── Note.ts            # Note model
-│   │   └── TimeSignature.ts   # TimeSignature model
-│   ├── renderer/              # SVG rendering module
-│   │   ├── SVGRenderer.ts     # Main renderer
-│   │   ├── MeasureRenderer.ts # Measure rendering
-│   │   ├── NoteRenderer.ts    # Note rendering
-│   │   ├── RestRenderer.ts    # Rest rendering
-│   │   ├── BeamAndTieAnalyzer.ts # Beam analysis
-│   │   └── constants.ts       # SVG constants
-│   └── utils/                 # Utilities
-│       ├── TieManager.ts      # Cross-measure tie management
-│       └── DebugLogger.ts     # Debug logging system
-└── test/                      # Unit tests
+│   ├── parser/                # Module de parsing
+│   │   ├── ChordGridParser.ts # Parser principal
+│   │   └── type.ts            # Définitions de types
+│   ├── models/                # Modèles de données
+│   │   ├── Beat.ts            # Modèle Beat
+│   │   ├── Measure.ts         # Modèle Measure
+│   │   ├── Note.ts            # Modèle Note
+│   │   └── TimeSignature.ts   # Modèle TimeSignature
+│   ├── renderer/              # Module de rendu SVG
+│   │   ├── SVGRenderer.ts     # Renderer principal
+│   │   ├── MeasureRenderer.ts # Rendu de mesures
+│   │   ├── NoteRenderer.ts    # Rendu de notes
+│   │   ├── RestRenderer.ts    # Rendu de silences
+│   │   ├── BeamAndTieAnalyzer.ts # Analyse ligatures
+│   │   └── constants.ts       # Constantes SVG
+│   └── utils/                 # Utilitaires
+│       └── TieManager.ts      # Gestion liaisons cross-mesure
+└── test/                      # Tests unitaires
 
 ```
 
-## Data Flow
+## Flux de données
 
 ```
-Text input (chordgrid notation)
+Entrée texte (notation chordgrid)
          ↓
    ChordGridParser
          ↓
@@ -43,58 +42,58 @@ Text input (chordgrid notation)
          ↓
     SVGRenderer
          ↓
-   SVG Element (output)
+   Élément SVG (sortie)
 ```
 
-## Parser Module
+## Module Parser
 
 ### ChordGridParser
 
-**Responsibilities:**
-- Parse textual notation into data structures
-- Validate measure durations against time signature
-- Analyze beams and ties
-- Handle line breaks and measure grouping
+**Responsabilités :**
+- Parse la notation textuelle en structures de données
+- Valide la durée des mesures par rapport à la signature temporelle
+- Analyse les ligatures et liaisons
+- Gère les sauts de ligne et le regroupement des mesures
 
-**Supported Syntax:**
-- Time signatures: `4/4`, `3/4`, `6/8`, `C`, `C|`
-- Bar lines: `|` (single), `||` (double), `||:` (repeat start), `:||` (repeat end)
-- Chords: standard notation (Am, C7, Gmaj7, F#m, Bb7, etc.)
-- Notes: 1, 2, 4, 8, 16, 32, 64
-- Dotted notes: `4.`, `8.`, etc.
-- Rests: `-4`, `-8`, etc.
-- Ties: `_` (e.g., `4_88_` or `[_8]`)
-- Beams: notes grouped without space (e.g., `88` = 2 beamed eighth notes)
+**Syntaxe supportée :**
+- Signatures temporelles : `4/4`, `3/4`, `6/8`, `C`, `C|`
+- Barres : `|` (simple), `||` (double), `||:` (reprise début), `:||` (reprise fin)
+- Accords : notation standard (Am, C7, Gmaj7, F#m, Bb7, etc.)
+- Notes : 1, 2, 4, 8, 16, 32, 64
+- Notes pointées : `4.`, `8.`, etc.
+- Silences : `-4`, `-8`, etc.
+- Liaisons : `_` (ex: `4_88_` ou `[_8]`)
+- Ligatures : notes groupées sans espace (ex: `88` = 2 croches liées)
 
-**Parsing Algorithm:**
-1. Extract time signature (first line)
-2. Tokenize by bar lines
-3. Parse each measure:
-   - Extract chords and rhythms
-   - Create beats and notes
-   - Analyze beams (BeamAndTieAnalyzer)
-   - Detect ties
-4. Validate durations
-5. Group into rendering lines
+**Algorithme de parsing :**
+1. Extraction de la signature temporelle (première ligne)
+2. Tokenisation par barres de mesure
+3. Parsing de chaque mesure :
+   - Extraction des accords et rythmes
+   - Création des beats et notes
+   - Analyse des ligatures (BeamAndTieAnalyzer)
+   - Détection des liaisons
+4. Validation des durées
+5. Regroupement en lignes de rendu
 
 ### BeamAndTieAnalyzer
 
-**Responsibilities:**
-- Analyze rhythmic groups
-- Determine beams between notes
-- Handle ties between notes, measures, and lines
+**Responsabilités :**
+- Analyser les groupes rythmiques
+- Déterminer les ligatures entre notes
+- Gérer les liaisons (ties) entre notes, mesures et lignes
 
-**Beam Rules:**
-- Notes >= 8 (eighth notes) can be beamed
-- Rests break beams
-- Spaces in notation separate groups
-- Minimum 2 notes to form a beam group
+**Règles de ligature :**
+- Notes >= 8 (croches) peuvent être liées
+- Silences brisent les ligatures
+- Espace dans la notation sépare les groupes
+- Minimum 2 notes pour former un groupe
 
-**Tie Rules:**
-- `_` marks a tie
-- Ties can cross measures and lines
-- `tieToVoid`: tie to virtual note (end of line)
-- `tieFromVoid`: tie from virtual note (start of line)
+**Règles de liaison :**
+- `_` marque une liaison
+- Liaisons peuvent traverser mesures et lignes
+- `tieToVoid` : liaison vers note virtuelle (fin ligne)
+- `tieFromVoid` : liaison depuis note virtuelle (début ligne)
 
 ## Module Modèles
 
