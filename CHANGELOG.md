@@ -7,10 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🚧 Architecture Refactoring in Progress
-**Note**: Starting major refactoring to v2.0.0 with cleaner architecture.
+### 🚧 v2.0.0 Architecture Refactoring in Progress
+**Note**: Major refactoring toward clean Parser → Analyzer → Renderer architecture.
 - See `REFACTORING_PLAN.md` for details
 - v1.1.0 tagged as stable working version before refactoring
+
+#### Added (In Progress)
+- **MusicAnalyzer** class for computing beam groups independently of parsing
+- Cross-segment beaming: notes beam across chord boundaries when no space is present (e.g., `[8]G[8]`)
+- Multi-level beam support (8th, 16th, 32nd, 64th) with proper beamlet direction for dotted notes
+- Analyzer-based beam overlay rendering (optional, behind `USE_ANALYZER_BEAMS` feature flag)
+- `parseForAnalyzer()` method in ChordGridParser for analyzer-compatible output
+- Comprehensive analyzer unit tests (cross-segment, rests, dotted notes, beam levels)
+- Integration tests validating parser→analyzer pipeline
+- French README (`README.fr.md`) linked from main README
+- **CHANGELOG.md** with structured release notes
+
+#### Changed (In Progress)
+- **Breaking**: Architecture split into Parser (syntax), Analyzer (musical semantics), Renderer (visual)
+- Parser refactored to focus purely on syntax; musical rules moved to analyzer
+- Fixed `leadingSpace` detection using captured whitespace per segment
+- MeasureRenderer tracks `segmentNoteIndex` for note-to-analyzer mapping
+- Beam rendering can use analyzer output (when flag is enabled) while keeping legacy path for stability
+
+#### Fixed (In Progress)
+- Beams no longer incorrectly broken at chord segment boundaries when musically continuous
+- Beamlet direction rules correctly handle dotted notes (follow/precede logic)
+- Rest notes properly break beam groups in analyzer path
+
+#### Technical
+- Added `analyzer-types.ts` with BeamGroup, NoteReference, AnalyzedMeasure types
+- Created `AnalyzerBeamOverlay.ts` for drawing analyzer beams
+- Extended `NotePosition` interface with `segmentNoteIndex` field
+- Made DebugLogger safe in Node test environment (optional parameter)
+
+#### Documentation
+- Updated README with architecture section and cross-segment examples
+- Documented feature flag usage and overlay activation
+
+#### Known Issues
+- Analyzer overlay is experimental; legacy beaming still present for fallback during transition
+- Type alignment between old/new structures ongoing
 
 ---
 

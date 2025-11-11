@@ -38,6 +38,7 @@ export interface ParsedNote {
   tieEnd?: boolean;
   tieToVoid?: boolean;
   tieFromVoid?: boolean;
+  beatIndex?: number;  // Beat index within the segment (to break beams at beat boundaries)
   // No beam information here - that's for the analyzer
 }
 

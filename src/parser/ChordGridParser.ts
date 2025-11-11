@@ -128,7 +128,7 @@ export class ChordGridParser {
     const measures: AnalyzerParsedMeasure[] = result.measures.map((m) => {
       const segments: AnalyzerParsedSegment[] = (m.chordSegments || []).map((seg) => {
         const flatNotes: AnalyzerParsedNote[] = [];
-        for (const beat of seg.beats) {
+        seg.beats.forEach((beat, beatIndex) => {
           for (const n of beat.notes) {
             flatNotes.push({
               value: n.value,
@@ -138,9 +138,10 @@ export class ChordGridParser {
               tieEnd: n.tieEnd || false,
               tieToVoid: n.tieToVoid || false,
               tieFromVoid: n.tieFromVoid || false,
+              beatIndex,  // Preserve beat index to break beams at beat boundaries
             });
           }
-        }
+        });
         return {
           chord: seg.chord,
           notes: flatNotes,

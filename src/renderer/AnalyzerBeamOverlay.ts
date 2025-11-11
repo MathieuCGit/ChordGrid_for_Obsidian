@@ -22,6 +22,16 @@ export function drawAnalyzerBeams(
 ) {
   const beamGap = 5;
 
+  // Build a set of notes that are connected by a primary (level 1) beam of length >= 2
+  const level1Beamed = new Set<string>();
+  for (const g of analyzed.beamGroups) {
+    if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+      for (const r of g.notes) {
+        level1Beamed.add(`${r.segmentIndex}:${r.noteIndex}`);
+      }
+    }
+  }
+
   for (const group of analyzed.beamGroups) {
     const level = group.level;
 
@@ -45,6 +55,15 @@ export function drawAnalyzerBeams(
     if (group.isPartial) {
       // Beamlet: draw short segment from stemX towards direction
       const p = valid[0].pos!;
+      // If this is a higher-level beamlet for a note not in any level-1 group,
+      // skip drawing it (isolated notes should use flags instead of beamlets).
+      if (group.level > 1) {
+        const r = group.notes[0];
+        const key = `${r.segmentIndex}:${r.noteIndex}`;
+        if (!level1Beamed.has(key)) {
+          return; // skip beamlet; flags will be drawn later
+        }
+      }
       const startX = p.x - 10/2 + 2; // approximate stem X like MeasureRenderer
       const beamletLength = 8;
       const endX = group.direction === 'right' ? (startX + beamletLength) : (startX - beamletLength);
@@ -74,4 +93,6 @@ export function drawAnalyzerBeams(
       svg.appendChild(beam);
     }
   }
+
+  // Flags for isolated notes are now drawn by MeasureRenderer when analyzer is active.
 }

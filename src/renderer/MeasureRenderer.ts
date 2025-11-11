@@ -21,7 +21,8 @@
  */
 
 import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
-import { SVG_NS } from './constants';
+import { SVG_NS, USE_ANALYZER_BEAMS } from './constants';
+import { RestRenderer } from './RestRenderer';
 import { DebugLogger } from '../utils/DebugLogger';
 
 /**
@@ -77,8 +78,12 @@ export class MeasureRenderer {
         private readonly measure: Measure,
         private readonly x: number,
         private readonly y: number,
-        private readonly width: number
+        private readonly width: number,
+        // Optional: set of `${segmentIndex}:${noteIndexInSegment}` that are in a level-1 beam group (length >=2)
+        private readonly beamedAtLevel1?: Set<string>
     ) {}
+
+    private readonly restRenderer = new RestRenderer();
 
     /**
      * Dessine la mesure complète dans le SVG.
@@ -222,8 +227,91 @@ export class MeasureRenderer {
         DebugLogger.log(`Beam detection`, {
             hasBeamableNotes,
             multipleNotes: beat.notes.length > 1,
-            willDrawGroup: hasBeamableNotes && beat.notes.length > 1
+            willDrawGroup: hasBeamableNotes && beat.notes.length > 1,
+            analyzerActive: USE_ANALYZER_BEAMS
         });
+
+        // When analyzer beams are active, skip legacy beaming and just position notes
+        if (USE_ANALYZER_BEAMS) {
+            DebugLogger.log(`✅ Using analyzer beams (legacy beaming bypassed)`);
+            // Draw notes without beams; analyzer overlay will handle beams later
+            // Position notes left-aligned within the beat area but clamp spacing to avoid overflow
+            const noteCount = beat.notes.length;
+            let firstNoteX: number | null = null;
+
+            // Geometry constants (match stem/head geometry)
+            const innerLeft = 10;
+            const innerRight = 10;
+            const headHalfMax = 6; // worst case (diamond)
+            const startX = x + innerLeft;
+            const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
+
+            // Preferred compact spacing but clamped to fit in beat width
+            const preferredSpacing = 20;
+            let spacing = preferredSpacing;
+            if (noteCount > 1) {
+                const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
+                spacing = Math.min(preferredSpacing, maxSpacing);
+            }
+
+            beat.notes.forEach((nv, noteIndex) => {
+                // Left-aligned progression with clamped spacing
+                const noteX = startX + noteIndex * spacing;
+                // Render rests properly
+                if (nv.isRest) {
+                    // Draw the rest glyph at noteX
+                    this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
+                    // Maintain analyzer segment index progression to stay in sync with overlay references
+                    segmentNoteCursor[chordIndex]++;
+                    // Rests do not participate in ties; don't push into notePositions
+                    if (firstNoteX === null) firstNoteX = noteX;
+                    return;
+                }
+                // Determine if this note belongs to a primary (level-1) beam group
+                const localIndexInSegment = segmentNoteCursor[chordIndex];
+                const isInPrimaryBeam = !!this.beamedAtLevel1?.has(`${chordIndex}:${localIndexInSegment}`);
+                const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
+                this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+                if (firstNoteX === null) firstNoteX = noteX;
+
+                let headLeftX: number;
+                let headRightX: number;
+                if (nv.value === 1 || nv.value === 2) {
+                    const diamondSize = 6;
+                    headLeftX = noteX - diamondSize;
+                    headRightX = noteX + diamondSize;
+                } else {
+                    const slashHalf = 10 / 2;
+                    headLeftX = noteX - slashHalf;
+                    headRightX = noteX + slashHalf;
+                }
+                const hasStem = nv.value >= 2;
+                const stemTopY = hasStem ? staffLineY + 5 : undefined;
+                const stemBottomY = hasStem ? staffLineY + 30 : undefined;
+
+                notePositions.push({
+                    x: noteX,
+                    y: staffLineY,
+                    headLeftX,
+                    headRightX,
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    noteIndex,
+                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+                    tieStart: !!nv.tieStart,
+                    tieEnd: !!nv.tieEnd,
+                    tieToVoid: !!nv.tieToVoid,
+                    tieFromVoid: !!nv.tieFromVoid,
+                    globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
+                    stemTopY,
+                    stemBottomY
+                });
+            });
+            return firstNoteX;
+        }
+
+        // Legacy beaming path when analyzer is not active
 
         if (hasBeamableNotes && beat.notes.length > 1) {
             DebugLogger.log(`✅ Drawing note group with beams`);
@@ -271,6 +359,14 @@ export class MeasureRenderer {
             return firstNoteX;
         } else {
             const nv = beat.notes[0];
+            if (nv.isRest) {
+                const noteX = x + 10;
+                this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
+                // Rests don't create notePositions for ties
+                // Still advance segmentNoteCursor for analyzer sync
+                segmentNoteCursor[chordIndex]++;
+                return noteX;
+            }
             const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
             let headLeftX: number;
             let headRightX: number;
@@ -310,6 +406,10 @@ export class MeasureRenderer {
     }
 
     private drawSingleNote(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, width: number): number {
+        if (nv.isRest) {
+            this.restRenderer.drawRest(svg, nv, x, staffLineY);
+            return x;
+        }
         const centerX = x;
         if (nv.value === 1) {
             this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
@@ -335,6 +435,43 @@ export class MeasureRenderer {
         }
 
         return centerX;
+    }
+
+    /**
+     * Draw a single note without beams or flags (for analyzer path).
+     * Analyzer overlay will handle beams; this just draws head and stem.
+     */
+    private drawSingleNoteWithoutBeam(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, drawFlagsForIsolated: boolean = false): void {
+        if (nv.isRest) {
+            this.restRenderer.drawRest(svg, nv, x, staffLineY);
+            return;
+        }
+        if (nv.value === 1) {
+            this.drawDiamondNoteHead(svg, x, staffLineY, true);
+        } else if (nv.value === 2) {
+            this.drawDiamondNoteHead(svg, x, staffLineY, true);
+            this.drawStem(svg, x, staffLineY, 25);
+        } else {
+            // For beamable notes (>=8), draw slash + stem but no flag (analyzer overlay draws beams)
+            this.drawSlash(svg, x, staffLineY);
+            this.drawStem(svg, x, staffLineY, 25);
+            // If not part of a primary beam group, render flags directly here
+            if (drawFlagsForIsolated) {
+                const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+                if (level > 0) {
+                    this.drawFlag(svg, x, staffLineY, level);
+                }
+            }
+        }
+
+        if (nv.dotted) {
+            const dot = document.createElementNS(SVG_NS, 'circle');
+            dot.setAttribute('cx', (x + 8).toString());
+            dot.setAttribute('cy', staffLineY.toString());
+            dot.setAttribute('r', '2');
+            dot.setAttribute('fill', '#000');
+            svg.appendChild(dot);
+        }
     }
 
     private drawDiamondNoteHead(svg: SVGElement, x: number, y: number, hollow: boolean): void {
@@ -377,7 +514,10 @@ export class MeasureRenderer {
         for (let i = 0; i < noteCount; i++) {
             const nv = notesValues[i];
             const centerX = x + i * noteSpacing + noteSpacing / 2;
-            if (nv.value === 1) {
+            if (nv.isRest) {
+                this.restRenderer.drawRest(svg, nv, centerX, staffLineY);
+                notes.push({ nv, beamCount: 0, centerX });
+            } else if (nv.value === 1) {
                 this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
                 notes.push({ nv, beamCount: 0, centerX });
             } else if (nv.value === 2) {

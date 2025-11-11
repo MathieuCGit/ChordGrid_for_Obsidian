@@ -1,5 +1,7 @@
 # Chord Grid Plugin for Obsidian
 
+[Français](./README.fr.md)
+
 A plugin that displays chord charts with rhythmic notation using vector graphics (SVG).
 
 ## Installation
@@ -149,7 +151,9 @@ chord-grid/
 - ✅ 4 measures per line (automatic)
 - ✅ Dynamic measure width
 - ✅ **Inline Debug Logger** (v1.1.0) - collapsible debug panel in notes
-- ✅ **Fixed beam rendering** for complex rhythmic patterns with dotted notes
+- ✅ **Improved beam rendering** for complex rhythmic patterns with dotted notes
+- 🚧 **Analyzer-based cross-segment beaming** (v2.0.0 in progress) – beams can now connect notes across chord boundaries when no separating space is present (e.g. `[8]G[8]`)
+- 🚧 **Configurable beam overlay** via analyzer feature flag
 
 ## Debugging
 
@@ -165,10 +169,48 @@ For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
 
 ## Current Limitations
 
-- Beams not yet connected across chord segments without spacing (e.g., `[8]G[8]`)
+- Analyzer beam overlay is experimental (enable with feature flag; renderer still contains legacy beaming path)
 - No support for dynamics or articulations
 - No export to other formats
-- Dynamics, articulations, tuplets and grace notes are not yet supported (planned)
+- Tuplets, grace notes, dynamics, articulations not yet supported (planned)
+
+## Architecture (v2.0 refactor – in progress)
+
+The rendering pipeline is being refactored into three clear stages:
+
+1. Parser – Performs only syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness).
+2. Analyzer – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
+3. Renderer – Draws notes/stems/ties and (optionally) overlays analyzer-driven beams instead of legacy per-beat grouping.
+
+### Why the analyzer?
+Previously, beams could not cross chord boundaries even when musically continuous (e.g. `[8]G[8]`). The analyzer flattens measure notes, respects rests and whitespace, and builds multi‑level beam groups (8/16/32/64) including correct beamlet direction for dotted values.
+
+### Feature flag
+An experimental overlay draws analyzer beams while the legacy beaming remains for fallback.
+
+To enable it, edit `src/renderer/constants.ts`:
+
+```ts
+export const USE_ANALYZER_BEAMS = true; // set to true to activate overlay
+```
+
+### Cross-segment beaming examples
+
+```chordgrid
+4/4 | C[8]G[8] Am[88 4 4] |
+```
+The two isolated eighths before the space will beam together if there is no space between `]G[`.
+
+```chordgrid
+4/4 | C[8] G[8] Am[88 4 4] |
+```
+Here the space before `G` breaks the beam, producing two separate single stems.
+
+### Planned next steps
+* Replace legacy measure beaming with analyzer output (remove duplication)
+* Extend analyzer for tuplets & grace notes
+* Snapshot tests for SVG beam rendering
+* Documentation updates for advanced rhythmic cases
 
 ## License
 

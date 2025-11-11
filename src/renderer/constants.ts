@@ -19,3 +19,9 @@
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Common SVG helper values can be added here later (default font, sizes, etc.)
+
+/**
+ * Feature flag: use analyzer-based beam overlay.
+ * When true, beams are drawn from MusicAnalyzer's BeamGroup[] on top of legacy note rendering.
+ */
+export const USE_ANALYZER_BEAMS = true;

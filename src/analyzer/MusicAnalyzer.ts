@@ -116,34 +116,52 @@ export class MusicAnalyzer {
     measure: ParsedMeasure
   ): BeamGroup[] {
     const beamGroups: BeamGroup[] = [];
-    let currentGroup: number[] = []; // Indices into allNotes
-    
+
+    // 1) Collect indices of beamable notes (exclude rests)
+    const beamableIdxs: number[] = [];
     for (let i = 0; i < allNotes.length; i++) {
-      const note = allNotes[i];
-      const isBeamable = this.isBeamable(note);
-      
-      // Check if we should break beam BEFORE this note
-      const shouldBreakBefore = i > 0 && this.shouldBreakBeam(allNotes, i - 1, measure);
-      
-      // End current group if we're breaking or hit non-beamable
-      if (shouldBreakBefore || !isBeamable) {
-        if (currentGroup.length > 0) {
-          this.createBeamGroupsForNotes(currentGroup, allNotes, beamGroups);
-          currentGroup = [];
+      if (this.isBeamable(allNotes[i])) beamableIdxs.push(i);
+    }
+    if (beamableIdxs.length === 0) return beamGroups;
+
+    // 2) Split into segments separated by hard breaks (beat boundary or segment leadingSpace)
+    const segments: number[][] = [];
+    let seg: number[] = [beamableIdxs[0]];
+    for (let k = 1; k < beamableIdxs.length; k++) {
+      const a = beamableIdxs[k - 1];
+      const b = beamableIdxs[k];
+      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure)) {
+        segments.push(seg);
+        seg = [b];
+      } else {
+        seg.push(b);
+      }
+    }
+    if (seg.length) segments.push(seg);
+
+    // 3) For each segment, compute block levels between adjacent notes (rests-in-between)
+    for (const noteIndices of segments) {
+      if (noteIndices.length === 0) continue;
+      const blocks: number[] = []; // blockFromLevel between adjacency j and j+1 (1..4), Infinity if none
+      for (let j = 0; j < noteIndices.length - 1; j++) {
+        const aIdx = noteIndices[j];
+        const bIdx = noteIndices[j + 1];
+        const aAbs = allNotes[aIdx].absoluteIndex;
+        const bAbs = allNotes[bIdx].absoluteIndex;
+        let blockFromLevel = Infinity;
+        // Scan between aAbs and bAbs for rests
+        for (let t = aAbs + 1; t < bAbs; t++) {
+          const mid = allNotes.find(n => n.absoluteIndex === t);
+          if (mid && (mid as any).isRest) {
+            const lv = this.getBeamLevel((mid as any).value);
+            blockFromLevel = Math.min(blockFromLevel, lv);
+          }
         }
+        blocks.push(blockFromLevel);
       }
-      
-      // Add beamable notes to current group
-      if (isBeamable) {
-        currentGroup.push(i);
-      }
+      this.createBeamGroupsForNotes(noteIndices, allNotes, beamGroups, blocks);
     }
-    
-    // Handle any remaining group
-    if (currentGroup.length > 0) {
-      this.createBeamGroupsForNotes(currentGroup, allNotes, beamGroups);
-    }
-    
+
     return beamGroups;
   }
   
@@ -159,6 +177,21 @@ export class MusicAnalyzer {
     
     const current = allNotes[index];
     const next = allNotes[index + 1];
+    
+    // Break beam if we change beat within the same segment
+    if (current.segmentIndex === next.segmentIndex) {
+      const currentBeat = current.beatIndex ?? 0;
+      const nextBeat = next.beatIndex ?? 0;
+      
+      if (nextBeat !== currentBeat) {
+        DebugLogger.log('🔍 Beat boundary detected', {
+          segment: current.segmentIndex,
+          fromBeat: currentBeat,
+          toBeat: nextBeat
+        });
+        return true;
+      }
+    }
     
     // Check if next note crosses to a new segment with leadingSpace
     if (next.segmentIndex > current.segmentIndex) {
@@ -185,7 +218,8 @@ export class MusicAnalyzer {
   private createBeamGroupsForNotes(
     noteIndices: number[],
     allNotes: NoteWithPosition[],
-    beamGroups: BeamGroup[]
+    beamGroups: BeamGroup[],
+    blocksBetween?: number[] // length = noteIndices.length - 1, values are blockFromLevel (1..4) or Infinity
   ): void {
     if (noteIndices.length === 0) return;
     
@@ -199,51 +233,79 @@ export class MusicAnalyzer {
       maxLevel
     });
     
-    // Create beam groups for each level
+    // For each beam level build contiguous sequences. Intermediate notes with lower level break higher-level beams.
     for (let level = 1; level <= maxLevel; level++) {
-      // Find notes that need this level of beam
-      const notesAtLevel = noteIndices.filter(i => 
-        this.getBeamLevel(allNotes[i].value) >= level
-      );
-      
-      if (notesAtLevel.length === 0) continue;
-      
-      // For single notes, create beamlets
-      if (notesAtLevel.length === 1) {
-        const noteIdx = notesAtLevel[0];
-        const direction = this.determineBeamletDirection(
-          noteIdx,
-          noteIndices,
-          allNotes
-        );
-        
-        beamGroups.push({
-          level,
-          notes: [{
-            segmentIndex: allNotes[noteIdx].segmentIndex,
-            noteIndex: allNotes[noteIdx].noteIndexInSegment
-          }],
-          isPartial: true,
-          direction
-        });
-        
-        DebugLogger.log('  ✏️ Created beamlet', { level, direction });
-      } else {
-        // Full beam connecting multiple notes
-        beamGroups.push({
-          level,
-          notes: notesAtLevel.map(i => ({
-            segmentIndex: allNotes[i].segmentIndex,
-            noteIndex: allNotes[i].noteIndexInSegment
-          })),
-          isPartial: false
-        });
-        
-        DebugLogger.log(`  ═ Created beam level ${level}`, {
-          notesConnected: notesAtLevel.length
-        });
+      let sequence: number[] = [];
+      for (let gi = 0; gi < noteIndices.length; gi++) {
+        const idx = noteIndices[gi];
+        const noteLevel = this.getBeamLevel(allNotes[idx].value);
+        const qualifies = noteLevel >= level;
+        if (qualifies) {
+          sequence.push(idx);
+        }
+        // Check barrier between this and next at this level
+        const barrierBlocks = (blocksBetween && gi < noteIndices.length - 1)
+          ? blocksBetween[gi]
+          : Infinity;
+        const cutByBarrier = gi < noteIndices.length - 1 && (level >= barrierBlocks);
+
+        if (!qualifies || cutByBarrier || gi === noteIndices.length - 1) {
+          // Flush sequence when we hit a non-qualifying note OR end of group
+          if (sequence.length > 0) {
+            if (level === 1) {
+              // Level 1: connect entire contiguous sequence with one primary beam
+              beamGroups.push({
+                level,
+                notes: sequence.map(i => ({
+                  segmentIndex: allNotes[i].segmentIndex,
+                  noteIndex: allNotes[i].noteIndexInSegment
+                })),
+                isPartial: false
+              });
+              DebugLogger.log(`  ═ Created primary beam level 1`, { notesConnected: sequence.length });
+            } else {
+              // Higher level: sequences of length >1 become full secondary beam; length==1 => beamlet
+              if (sequence.length === 1) {
+                const soloIdx = sequence[0];
+                const direction = this.determineBeamletDirection(soloIdx, noteIndices, allNotes);
+                beamGroups.push({
+                  level,
+                  notes: [{
+                    segmentIndex: allNotes[soloIdx].segmentIndex,
+                    noteIndex: allNotes[soloIdx].noteIndexInSegment
+                  }],
+                  isPartial: true,
+                  direction
+                });
+                DebugLogger.log('  ✏️ Created secondary beamlet', { level, direction });
+              } else {
+                beamGroups.push({
+                  level,
+                  notes: sequence.map(i => ({
+                    segmentIndex: allNotes[i].segmentIndex,
+                    noteIndex: allNotes[i].noteIndexInSegment
+                  })),
+                  isPartial: false
+                });
+                DebugLogger.log(`  ═ Created secondary beam level ${level}`, { notesConnected: sequence.length });
+              }
+            }
+            sequence = [];
+          }
+        }
       }
     }
+  }
+
+  private isHardBreakBetween(a: NoteWithPosition, b: NoteWithPosition, measure: ParsedMeasure): boolean {
+    // Beat boundary
+    if ((a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) return true;
+    // Segment boundary with leadingSpace
+    if (b.segmentIndex > a.segmentIndex) {
+      const nextSegment = measure.segments[b.segmentIndex];
+      return !!nextSegment.leadingSpace;
+    }
+    return false;
   }
   
   /**

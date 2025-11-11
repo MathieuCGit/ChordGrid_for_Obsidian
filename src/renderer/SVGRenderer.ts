@@ -26,8 +26,11 @@
 
 import { ChordGrid } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
-import { SVG_NS } from './constants';
+import { SVG_NS, USE_ANALYZER_BEAMS } from './constants';
 import { TieManager } from '../utils/TieManager';
+import { ChordGridParser } from '../parser/ChordGridParser';
+import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
+import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
 import { DebugLogger } from '../utils/DebugLogger';
 
 /**
@@ -45,38 +48,77 @@ export class SVGRenderer {
   }
 
   private createSVG(grid: ChordGrid): SVGElement {
-    const measuresPerLine = 4;
-    const measureWidth = 200;
-    const measureHeight = 120;
+  const measuresPerLine = 4;
+  const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
+  const measureHeight = 120;
 
     DebugLogger.log('📐 Creating SVG layout', { 
       measuresPerLine, 
-      measureWidth, 
+      baseMeasureWidth, 
       measureHeight 
     });
 
-    // Build linear positions honoring line breaks
+    // Pre-compute dynamic widths per measure based on rhythmic density
+    const separatorWidth = 12;
+    const innerPaddingPerSegment = 20;
+    const headHalfMax = 6; // for diamond
+    // Minimum horizontal spacing between consecutive note centers based on rhythmic subdivision.
+    // Increased values to improve legibility of dense patterns (user request).
+    const valueMinSpacing = (v: number) => {
+      if (v >= 64) return 16;   // was 12
+      if (v >= 32) return 20;   // was 14
+      if (v >= 16) return 26;   // was 20 (16816 needs more air)
+      if (v >= 8)  return 24;   // was 20
+      return 20;                // was 16 for quarters & longer
+    };
+    const requiredBeatWidth = (beat: any) => {
+      const noteCount = beat?.notes?.length || 0;
+  if (noteCount <= 1) return 28 + 10 + headHalfMax; // increased minimal single-note width
+      const spacing = Math.max(...beat.notes.map((n: any) => valueMinSpacing(n.value)));
+  return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8; // +8 extra breathing room
+    };
+    const requiredMeasureWidth = (measure: any) => {
+      const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+      let width = 0;
+      segments.forEach((seg: any, idx: number) => {
+        if (idx > 0 && seg.leadingSpace) width += separatorWidth;
+        const beatsWidth = (seg.beats || []).reduce((acc: number, b: any) => acc + requiredBeatWidth(b), 0);
+        width += beatsWidth + innerPaddingPerSegment; // include inner padding for segment
+      });
+      // Ensure a sensible minimum
+      return Math.max(baseMeasureWidth, Math.ceil(width));
+    };
+    const dynamicMeasureWidths = grid.measures.map(m => requiredMeasureWidth(m));
+
+    // Build linear positions honoring line breaks and available line width budget
     let currentLine = 0;
     let measuresInCurrentLine = 0;
-    const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number}[] = [];
+    const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[] = [];
     let globalIndex = 0;
+    const maxLineWidth = measuresPerLine * baseMeasureWidth; // budget per line (before margins)
+    let currentLineWidth = 0;
 
-    grid.measures.forEach((measure) => {
+    grid.measures.forEach((measure, mi) => {
       if ((measure as any).isLineBreak) {
         DebugLogger.log('↵ Line break detected');
         currentLine++;
         measuresInCurrentLine = 0;
+        currentLineWidth = 0;
         return;
       }
 
-      if (measuresInCurrentLine >= measuresPerLine) {
+      const mWidth = dynamicMeasureWidths[mi];
+      // wrap if adding this measure would exceed budget
+      if (measuresInCurrentLine > 0 && (currentLineWidth + mWidth) > maxLineWidth) {
         DebugLogger.log(`↵ Auto line break (${measuresInCurrentLine} measures)`);
         currentLine++;
         measuresInCurrentLine = 0;
+        currentLineWidth = 0;
       }
 
-      measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++ });
+      measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++, width: mWidth });
       measuresInCurrentLine++;
+      currentLineWidth += mWidth;
     });
 
     DebugLogger.log('📊 Layout calculated', { 
@@ -85,7 +127,12 @@ export class SVGRenderer {
     });
 
     const lines = currentLine + 1;
-    const width = measuresPerLine * measureWidth + 60;
+    // Compute SVG width as max line accumulation plus margins
+    const linesWidths: number[] = [];
+    measurePositions.forEach(p => {
+      linesWidths[p.lineIndex] = (linesWidths[p.lineIndex] || 0) + p.width;
+    });
+    const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
     const height = lines * (measureHeight + 20) + 20;
 
     const svg = document.createElementNS(SVG_NS, 'svg');
@@ -108,15 +155,95 @@ export class SVGRenderer {
     const timeText = this.createText(timeSig, 10, 40, '18px', 'bold');
     svg.appendChild(timeText);
 
-  const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
+  const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
   const tieManager = new TieManager();
 
     DebugLogger.log('🎼 Rendering measures');
-    measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex}) => {
-      const x = posInLine * measureWidth + 40;
+    // Optional analyzer path: prepare analyzed measures once if flag active
+    let analyzedMeasures: any[] = [];
+    let level1BeamSet: Set<string> | undefined;
+    if (USE_ANALYZER_BEAMS) {
+      try {
+        const parser = new ChordGridParser();
+        const analyzer = new MusicAnalyzer();
+        // rebuild text source from grid? we keep existing grid measures
+        analyzedMeasures = grid.measures.map(m => {
+          // Map existing measure into analyzer ParsedMeasure shape
+          const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map(seg => {
+            const notes: any[] = [];
+            seg.beats.forEach((beat, beatIndex) => {
+              beat.notes.forEach(n => {
+                notes.push({
+                  value: n.value,
+                  dotted: n.dotted,
+                  isRest: n.isRest,
+                  tieStart: n.tieStart || false,
+                  tieEnd: n.tieEnd || false,
+                  tieToVoid: n.tieToVoid || false,
+                  tieFromVoid: n.tieFromVoid || false,
+                  beatIndex  // Preserve beat index for beam breaking
+                });
+              });
+            });
+            return {
+              chord: seg.chord,
+              leadingSpace: !!seg.leadingSpace,
+              notes
+            };
+          });
+          const parsedMeasure = {
+            segments,
+            timeSignature: grid.timeSignature,
+            barline: (m as any).barline || '|',
+            lineBreakAfter: (m as any).lineBreakAfter || false,
+            source: (m as any).source || ''
+          };
+          const analyzed = analyzer.analyze(parsedMeasure as any);
+          return analyzed;
+        });
+        DebugLogger.log('✅ Analyzer measures prepared', { count: analyzedMeasures.length });
+        // Build global set of notes in level-1 beams of length >=2 per measure
+        level1BeamSet = new Set<string>();
+        analyzedMeasures.forEach((am: any, mi: number) => {
+          am.beamGroups?.forEach((g: any) => {
+            if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+              g.notes.forEach((r: any) => {
+                level1BeamSet!.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
+              });
+            }
+          });
+        });
+      } catch (e) {
+        DebugLogger.error('Analyzer preparation failed', e);
+        analyzedMeasures = [];
+      }
+    }
+
+    const lineAccumulated: number[] = new Array(lines).fill(40);
+    measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex, width: mWidth}) => {
+      const x = lineAccumulated[lineIndex];
       const y = lineIndex * (measureHeight + 20) + 20;
-      const mr = new MeasureRenderer(measure, x, y, measureWidth);
+      // Build a per-measure subset for MeasureRenderer: only segmentIndex:noteIndex entries in this measure
+      let perMeasureBeamSet: Set<string> | undefined;
+      if (level1BeamSet) {
+        perMeasureBeamSet = new Set<string>();
+        analyzedMeasures[globalIndex]?.beamGroups?.forEach((g: any) => {
+          if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+            g.notes.forEach((r: any) => {
+              const key = `${r.segmentIndex}:${r.noteIndex}`;
+              perMeasureBeamSet!.add(key);
+            });
+          }
+        });
+      }
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet);
       mr.drawMeasure(svg, globalIndex, notePositions, grid);
+
+      if (USE_ANALYZER_BEAMS && analyzedMeasures[globalIndex]) {
+        // Overlay still draws beams, but flags for isolated notes now handled inside MeasureRenderer
+        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any);
+      }
+      lineAccumulated[lineIndex] += mWidth;
     });
 
   DebugLogger.log('🎵 Note positions collected', { count: notePositions.length });
