@@ -5,7 +5,16 @@ All notable changes to the Chord Grid Plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2025-11-11
+## [Unreleased]
+
+### 🚧 Architecture Refactoring in Progress
+**Note**: Starting major refactoring to v2.0.0 with cleaner architecture.
+- See `REFACTORING_PLAN.md` for details
+- v1.1.0 tagged as stable working version before refactoring
+
+---
+
+## [1.1.0] - 2025-11-11 (Current Stable)
 
 ### Added
 - **Debug Logger System** (`src/utils/DebugLogger.ts`)
@@ -46,8 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added musical notation rules for beamlet orientation
 
 ### Known Issues
-- Beams not yet connected across chord segments without spacing (e.g., `[8]G[8]` without space before G)
-  - This will be addressed in a future update
+- ⚠️ **Beams not connected across chord segments without spacing** (e.g., `[8]G[8]`)
+  - Root cause: Beam analysis happens per-segment instead of per-measure
+  - Will be fixed in v2.0.0 architecture refactoring
+  - Workaround: Use explicit ties `[8_]G[_8]` or add space `[8] G[8]`
+
+### Notes
+This version works reliably for most use cases. A major architecture refactoring is planned for v2.0.0 to:
+- Properly support cross-segment beams
+- Enable future UI customization features
+- Improve code maintainability and extensibility
 
 ## [1.0.0] - 2025-11-08
 

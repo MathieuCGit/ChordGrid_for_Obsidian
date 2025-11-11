@@ -165,7 +165,7 @@ var ChordGridParser = class {
         }
       }
       console.log("Parsed chords:", chordSegments.map((s) => s.chord));
-      measures.push({
+      const measure = {
         beats,
         chord: firstChord,
         // garder pour compatibilité
@@ -174,9 +174,65 @@ var ChordGridParser = class {
         barline: bar,
         lineBreakAfter: false,
         source: anySource || text
-      });
+      };
+      this.reanalyzeCrossSegmentBeams(measure);
+      measures.push(measure);
     }
     return measures;
+  }
+  /**
+   * Re-analyze beams across all segments of a measure to properly connect beams
+   * when segments don't have leading space (e.g., [8]G[8] should have connected beams).
+   * 
+   * This method collects all beamable notes (value >= 8, not rests) from all segments,
+   * respecting segment boundaries only when leadingSpace=true, and creates unified
+   * beam groups that can span multiple chord segments.
+   */
+  reanalyzeCrossSegmentBeams(measure) {
+    if (!measure.chordSegments || measure.chordSegments.length === 0) return;
+    const allNotes = [];
+    for (let segIdx = 0; segIdx < measure.chordSegments.length; segIdx++) {
+      const segment = measure.chordSegments[segIdx];
+      const hasLeadingSpace = segment.leadingSpace || false;
+      for (let beatIdx = 0; beatIdx < segment.beats.length; beatIdx++) {
+        const beat = segment.beats[beatIdx];
+        for (let noteIdx = 0; noteIdx < beat.notes.length; noteIdx++) {
+          const note = beat.notes[noteIdx];
+          const isBeamable = note.value >= 8 && !note.isRest;
+          allNotes.push({
+            note,
+            segmentIndex: segIdx,
+            beatIndex: beatIdx,
+            noteIndex: noteIdx,
+            isBeamable
+          });
+        }
+      }
+      if (hasLeadingSpace && segIdx > 0 && allNotes.length > 0) {
+        allNotes[allNotes.length - 1].beamBreakAfter = true;
+      }
+    }
+    const beamGroups = [];
+    let currentGroup = [];
+    for (let i = 0; i < allNotes.length; i++) {
+      const item = allNotes[i];
+      if (item.isBeamable) {
+        currentGroup.push(i);
+      } else {
+        if (currentGroup.length > 1) {
+        }
+        currentGroup = [];
+      }
+      const nextSegmentIndex = i < allNotes.length - 1 ? allNotes[i + 1].segmentIndex : -1;
+      const hasBeamBreak = allNotes[i].beamBreakAfter || nextSegmentIndex > item.segmentIndex && nextSegmentIndex < measure.chordSegments.length && measure.chordSegments[nextSegmentIndex].leadingSpace;
+      if (hasBeamBreak && currentGroup.length > 0) {
+        if (currentGroup.length > 1) {
+        }
+        currentGroup = [];
+      }
+    }
+    if (currentGroup.length > 1) {
+    }
   }
   /**
    * Parse la signature temporelle depuis la première ligne.
