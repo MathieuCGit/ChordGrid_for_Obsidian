@@ -34,15 +34,27 @@ In your Obsidian notes, create a code block with the `chordgrid` language:
 **Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`)
 
 **Rhythm in brackets:**
-- `1` = Whole note
-- `2` = Half note
-- `4` = Quarter note
-- `8` = Eighth note
-- `16` = Sixteenth note
-- `32` = Thirty tow note
-- `64` = sixty four note
+- `1` = Whole note (ronde)
+- `2` = Half note (blanche)
+- `4` = Quarter note (noire)
+- `8` = Eighth note (croche)
+- `16` = Sixteenth note (double-croche)
+- `32` = Thirty-second note (triple-croche)
+- `64` = Sixty-fourth note (quadruple-croche)
 
-> Note: Rests are supported using `-` before a value (for example `-8` for an eighth-note rest).
+**Rests (Silences):**
+Add a `-` prefix before any note value to create a rest:
+- `-1` = Whole rest (pause)
+- `-2` = Half rest (demi-pause)
+- `-4` = Quarter rest (soupir)
+- `-8` = Eighth rest (demi-soupir)
+- `-16` = Sixteenth rest (quart de soupir)
+- `-32` = Thirty-second rest
+- `-64` = Sixty-fourth rest
+
+Example: `C[4 -4 8 8]` = quarter note, quarter rest, two eighth notes
+
+> **Important**: Rests break beam groups. For example, `[88-88]` creates two separate beam groups with a rest in between.
 
 **Rhythmic grouping:**
 - Numbers grouped together represent one beat (e.g., `88` = 2 eighth notes in the same beat, with connected beams)
@@ -83,6 +95,11 @@ Notes on syntax:
 **chords with dotted notes**
 ```chordgrid
 4/4 | C[4. 8 4 4] | D[8.16 88 4. 8] | Em[168. 4 4 88] | C[16816 4 16168 81616]  |
+```
+
+**chords with rests**
+```chordgrid
+4/4 | C[4 -4 4 4] | G[-2 4 4] | Am[88 -8 8 4] | F[4 4 -2] |
 ```
 
 **tied chords**
