@@ -33,6 +33,15 @@ var import_obsidian = require("obsidian");
 
 // src/parser/ChordGridParser.ts
 var ChordGridParser = class {
+  /**
+   * Parse une grille d'accords en notation textuelle.
+   * 
+   * @param input - Chaîne contenant la grille d'accords en notation textuelle
+   * @returns Objet ParseResult contenant :
+   *   - grid : la structure ChordGrid parsée
+   *   - errors : tableau d'erreurs de validation (mesures mal formées)
+   *   - measures : tableau de toutes les mesures
+   */
   parse(input) {
     const lines = input.trim().split("\n");
     const firstLine = lines[0];
@@ -169,7 +178,13 @@ var ChordGridParser = class {
     }
     return measures;
   }
-  // Minimal implementation to avoid "this.parseTimeSignature is not a function"
+  /**
+   * Parse la signature temporelle depuis la première ligne.
+   * 
+   * @param line - Première ligne contenant la signature temporelle (ex: "4/4 ||: C[4 4 4 4]")
+   * @returns Objet TimeSignature avec numérateur et dénominateur
+   * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
+   */
   parseTimeSignature(line) {
     const m = /^\s*(\d+)\/(\d+)/.exec(line);
     if (m) {
@@ -180,7 +195,13 @@ var ChordGridParser = class {
     }
     return { numerator: 4, denominator: 4 };
   }
-  // Placeholder for grouping helper (kept as referenced; implement if missing)
+  /**
+   * Regroupe les mesures en lignes pour le rendu.
+   * 
+   * @param measures - Tableau de toutes les mesures
+   * @param perLine - Nombre de mesures par ligne (généralement 4)
+   * @returns Tableau de lignes, chaque ligne contenant un tableau de mesures
+   */
   groupIntoLines(measures, perLine) {
     const lines = [];
     for (let i = 0; i < measures.length; i += perLine) {
@@ -346,12 +367,35 @@ var SVG_NS = "http://www.w3.org/2000/svg";
 
 // src/renderer/MeasureRenderer.ts
 var MeasureRenderer = class {
+  /**
+   * Constructeur du renderer de mesure.
+   * 
+   * @param measure - Mesure à rendre
+   * @param x - Position X de départ de la mesure dans le SVG
+   * @param y - Position Y de départ de la mesure dans le SVG
+   * @param width - Largeur allouée à la mesure
+   */
   constructor(measure, x, y, width) {
     this.measure = measure;
     this.x = x;
     this.y = y;
     this.width = width;
   }
+  /**
+   * Dessine la mesure complète dans le SVG.
+   * 
+   * Cette méthode orchestre le rendu de tous les éléments de la mesure :
+   * 1. Barres de mesure (gauche avec éventuelle reprise)
+   * 2. Ligne de portée
+   * 3. Segments d'accords avec leurs beats
+   * 4. Notes et silences avec ligatures
+   * 5. Barre de mesure de fin (avec éventuelle reprise ou double barre)
+   * 
+   * @param svg - Élément SVG parent
+   * @param measureIndex - Index de la mesure dans la grille (pour numérotation)
+   * @param notePositions - Tableau collectant les positions de toutes les notes (pour liaisons)
+   * @param grid - Grille complète (pour contexte de signature temporelle, etc.)
+   */
   drawMeasure(svg, measureIndex, notePositions, grid) {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - 2;
@@ -713,12 +757,26 @@ var TieManager = class {
     // pending ties saved when a tie continues beyond the rendered area (e.g. line break)
     __publicField(this, "pending", []);
   }
+  /**
+   * Ajoute une liaison en attente de résolution.
+   * 
+   * Utilisé lorsqu'une note se termine par une liaison "to void" en fin de ligne.
+   * 
+   * @param measureIndex - Index de la mesure contenant la note de départ
+   * @param x - Position X de la fin de la liaison
+   * @param y - Position Y de la fin de la liaison
+   */
   addPendingTie(measureIndex, x, y) {
     this.pending.push({ measureIndex, x, y });
   }
   /**
-   * Try to resolve a pending tie for a note that begins from void (tieFromVoid).
-   * Returns the pending tie (and removes it) or null.
+   * Tente de résoudre une liaison en attente pour une note commençant par "from void".
+   * 
+   * Recherche une liaison en attente dont l'index de mesure est strictement inférieur
+   * à celui donné (car la liaison vient d'une mesure précédente).
+   * 
+   * @param measureIndex - Index de la mesure contenant la note d'arrivée
+   * @returns La liaison en attente (et la retire de la liste) ou null si aucune
    */
   resolvePendingFor(measureIndex) {
     for (let i = 0; i < this.pending.length; i++) {
@@ -729,6 +787,11 @@ var TieManager = class {
     }
     return null;
   }
+  /**
+   * Efface toutes les liaisons en attente.
+   * 
+   * Utilisé pour réinitialiser le gestionnaire entre différents rendus.
+   */
   clearPending() {
     this.pending = [];
   }
@@ -736,6 +799,12 @@ var TieManager = class {
 
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
+  /**
+   * Rend une grille d'accords en élément SVG.
+   * 
+   * @param grid - Structure ChordGrid contenant les mesures à rendre
+   * @returns Élément SVG prêt à être inséré dans le DOM
+   */
   render(grid) {
     return this.createSVG(grid);
   }
@@ -789,6 +858,16 @@ var SVGRenderer = class {
     this.detectAndDrawTies(svg, notePositions, width, tieManager);
     return svg;
   }
+  /**
+   * Crée un élément texte SVG avec les propriétés spécifiées.
+   * 
+   * @param text - Contenu du texte
+   * @param x - Position X
+   * @param y - Position Y
+   * @param size - Taille de la police
+   * @param weight - Poids de la police (normal, bold, etc.)
+   * @returns Élément SVG text
+   */
   createText(text, x, y, size, weight = "normal") {
     const textEl = document.createElementNS(SVG_NS, "text");
     textEl.setAttribute("x", String(x));
@@ -800,6 +879,21 @@ var SVGRenderer = class {
     textEl.textContent = text;
     return textEl;
   }
+  /**
+   * Détecte et dessine les liaisons (ties) entre notes.
+   * 
+   * Cette méthode gère trois types de liaisons :
+   * 1. Liaisons normales entre notes adjacentes
+   * 2. Liaisons "to void" (vers une note virtuelle en fin de ligne)
+   * 3. Liaisons "from void" (depuis une note virtuelle en début de ligne)
+   * 
+   * Les liaisons entre lignes sont gérées par le TieManager.
+   * 
+   * @param svg - Élément SVG parent
+   * @param notePositions - Tableau des positions de toutes les notes
+   * @param svgWidth - Largeur totale du SVG
+   * @param tieManager - Gestionnaire de liaisons entre lignes
+   */
   detectAndDrawTies(svg, notePositions, svgWidth, tieManager) {
     const matched = /* @__PURE__ */ new Set();
     const drawCurve = (startX, startY, endX, endY, isCross) => {
@@ -912,6 +1006,18 @@ var SVGRenderer = class {
 
 // main.ts
 var ChordGridPlugin = class extends import_obsidian.Plugin {
+  /**
+   * Méthode appelée lors du chargement du plugin.
+   * 
+   * Enregistre le processeur de blocs de code pour le langage `chordgrid`.
+   * Ce processeur :
+   * 1. Parse le contenu du bloc avec ChordGridParser
+   * 2. Valide la durée des mesures par rapport à la signature temporelle
+   * 3. Affiche les erreurs de validation le cas échéant
+   * 4. Rend la grille en SVG avec SVGRenderer
+   * 
+   * En cas d'erreur de parsing, affiche un message d'erreur formaté.
+   */
   async onload() {
     console.log("Loading Chord Grid Plugin");
     this.registerMarkdownCodeBlockProcessor(
@@ -939,6 +1045,11 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
       }
     );
   }
+  /**
+   * Méthode appelée lors du déchargement du plugin.
+   * 
+   * Permet de nettoyer les ressources si nécessaire.
+   */
   onunload() {
     console.log("Unloading Chord Grid Plugin");
   }

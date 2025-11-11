@@ -76,7 +76,10 @@ export class NoteRenderer {
     // Calculer le nombre de ligatures nécessaires
     const maxBeams = Math.max(...notes.map(n => this.getBeamCount(n.value)));
     
+    console.log(`Nombre max de niveaux de ligature : ${maxBeams}`);
+    
     for (let beamLevel = 0; beamLevel < maxBeams; beamLevel++) {
+      console.log(`Dessiner niveau ${beamLevel + 1} de ligature`);
       this.drawBeamLevel(svg, notes, startX, spacing, beamLevel);
     }
   }
@@ -154,18 +157,125 @@ export class NoteRenderer {
   }
 
   private drawBeamLevel(svg: SVGElement, notes: NoteElement[], startX: number, spacing: number, beamLevel: number) {
-    // Match main_2025 beam positioning
-    const y = this.y + this.NOTE_Y - 25 - beamLevel * 5;
-    const firstX = startX - 3; // Account for stem offset
-    const lastX = startX + (notes.length - 1) * spacing - 3;
-    const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('x1', String(firstX));
-    line.setAttribute('y1', String(y));
-    line.setAttribute('x2', String(lastX));
-    line.setAttribute('y2', String(y));
-    line.setAttribute('stroke', '#000');
-    line.setAttribute('stroke-width', '2');
-    svg.appendChild(line);
+    const level = beamLevel + 1; // Convertir en niveau 1-based pour la comparaison
+    const beamY = this.y + this.NOTE_Y - 25 - beamLevel * 5;
+    const stubLength = Math.max(8, spacing * 0.4);
+    
+    console.log(`=== Niveau ${level} de ligature ===`);
+    console.log('Notes:', notes.map((n, i) => ({ index: i, value: n.value, beamCount: this.getBeamCount(n.value) })));
+    
+    // Étape 1 : Dessiner les segments continus entre notes ayant ce niveau
+    let segStartIndex: number | null = null;
+    
+    for (let i = 0; i <= notes.length; i++) {
+      const noteBeamCount = i < notes.length ? this.getBeamCount(notes[i].value) : 0;
+      const hasThisLevel = noteBeamCount >= level;
+      
+      if (hasThisLevel && segStartIndex === null) {
+        segStartIndex = i;
+        console.log(`  Démarrage segment continu à l'index ${i}`);
+      } else if (!hasThisLevel && segStartIndex !== null) {
+        const segEnd = i - 1;
+        
+        // Ne dessiner que si le segment contient au moins 2 notes
+        if (segEnd > segStartIndex) {
+          const segStartX = startX + segStartIndex * spacing - 3;
+          const segEndX = startX + segEnd * spacing - 3;
+          
+          console.log(`  Dessin segment continu de ${segStartIndex} à ${segEnd} (X: ${segStartX} -> ${segEndX})`);
+          
+          const beam = document.createElementNS(SVG_NS, 'line');
+          beam.setAttribute('x1', String(segStartX));
+          beam.setAttribute('y1', String(beamY));
+          beam.setAttribute('x2', String(segEndX));
+          beam.setAttribute('y2', String(beamY));
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+        }
+        
+        segStartIndex = null;
+      }
+    }
+    
+    // Étape 2 : Dessiner les segments partiels (stubs)
+    for (let i = 0; i < notes.length; i++) {
+      const noteBeamCount = this.getBeamCount(notes[i].value);
+      const hasLevel = noteBeamCount >= level;
+      
+      if (!hasLevel) continue;
+      
+      const leftBeamCount = (i - 1 >= 0) ? this.getBeamCount(notes[i - 1].value) : 0;
+      const rightBeamCount = (i + 1 < notes.length) ? this.getBeamCount(notes[i + 1].value) : 0;
+      
+      const leftHasLevel = leftBeamCount >= level;
+      const rightHasLevel = rightBeamCount >= level;
+      
+      console.log(`  Note ${i}: beamCount=${noteBeamCount}, leftHas=${leftHasLevel}, rightHas=${rightHasLevel}`);
+      
+      // Si les deux voisins ont ce niveau, le segment continu a déjà été dessiné
+      if (leftHasLevel && rightHasLevel) {
+        console.log(`    -> Segment continu déjà dessiné`);
+        continue;
+      }
+      
+      const stemX = startX + i * spacing - 3;
+      
+      // Cas 1 : Aucun voisin n'a ce niveau (note complètement isolée)
+      if (!leftHasLevel && !rightHasLevel) {
+        console.log(`    -> Note isolée, stub vers ${i < notes.length - 1 ? 'droite' : 'gauche'}`);
+        if (i < notes.length - 1) {
+          const stubEndX = stemX + stubLength;
+          const beam = document.createElementNS(SVG_NS, 'line');
+          beam.setAttribute('x1', String(stemX));
+          beam.setAttribute('y1', String(beamY));
+          beam.setAttribute('x2', String(stubEndX));
+          beam.setAttribute('y2', String(beamY));
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+        } else {
+          const stubEndX = stemX - stubLength;
+          const beam = document.createElementNS(SVG_NS, 'line');
+          beam.setAttribute('x1', String(stemX));
+          beam.setAttribute('y1', String(beamY));
+          beam.setAttribute('x2', String(stubEndX));
+          beam.setAttribute('y2', String(beamY));
+          beam.setAttribute('stroke', '#000');
+          beam.setAttribute('stroke-width', '2');
+          svg.appendChild(beam);
+        }
+        continue;
+      }
+      
+      // Cas 2 : Fin de segment (voisin gauche a le niveau mais pas le droit)
+      if (leftHasLevel && !rightHasLevel && i > 0) {
+        console.log(`    -> Fin de segment, stub vers gauche`);
+        const stubEndX = stemX - stubLength;
+        const beam = document.createElementNS(SVG_NS, 'line');
+        beam.setAttribute('x1', String(stemX));
+        beam.setAttribute('y1', String(beamY));
+        beam.setAttribute('x2', String(stubEndX));
+        beam.setAttribute('y2', String(beamY));
+        beam.setAttribute('stroke', '#000');
+        beam.setAttribute('stroke-width', '2');
+        svg.appendChild(beam);
+      }
+      
+      // Cas 3 : Début de segment (voisin droit a le niveau mais pas le gauche)
+      if (!leftHasLevel && rightHasLevel && i < notes.length - 1) {
+        console.log(`    -> Début de segment, stub vers droite`);
+        const stubEndX = stemX + stubLength;
+        const beam = document.createElementNS(SVG_NS, 'line');
+        beam.setAttribute('x1', String(stemX));
+        beam.setAttribute('y1', String(beamY));
+        beam.setAttribute('x2', String(stubEndX));
+        beam.setAttribute('y2', String(beamY));
+        beam.setAttribute('stroke', '#000');
+        beam.setAttribute('stroke-width', '2');
+        svg.appendChild(beam);
+      }
+    }
   }
 
   private drawSlashNotehead(svg: SVGElement, x: number, y: number) {

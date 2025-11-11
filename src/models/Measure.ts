@@ -1,4 +1,4 @@
-import { Measure as IMeasure, Beat as IBeat, BarlineType } from '../parser/type';
+import { Measure as IMeasure, Beat as IBeat, BarlineType, ChordSegment } from '../parser/type';
 import { Beat } from './Beat';
 
 /**
@@ -12,6 +12,7 @@ import { Beat } from './Beat';
  * Propriétés :
  * - beats : Tableau de beats contenus dans la mesure
  * - chord : Accord principal de la mesure (pour compatibilité)
+ * - chordSegments : Segments d'accords multiples dans la mesure
  * - barline : Type de barre de mesure (simple, double, reprise début/fin)
  * - lineBreakAfter : Indique si un saut de ligne doit suivre cette mesure
  * - source : Texte source ayant généré cette mesure (pour débogage)
@@ -31,6 +32,7 @@ export class Measure implements IMeasure {
   chord: string;
   barline: BarlineType;
   lineBreakAfter: boolean;
+  chordSegments: ChordSegment[];
   source?: string;
 
   /**
@@ -43,6 +45,7 @@ export class Measure implements IMeasure {
     this.chord = data.chord || '';
     this.barline = data.barline || (BarlineType.Single as BarlineType);
     this.lineBreakAfter = Boolean(data.lineBreakAfter);
+    this.chordSegments = data.chordSegments || [];
     this.source = data.source;
   }
 
