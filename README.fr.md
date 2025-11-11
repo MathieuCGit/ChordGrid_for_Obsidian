@@ -1,6 +1,10 @@
 # Plugin Chord Grid pour Obsidian
 
-Un plugin qui affiche des grilles d'accords avec une notation rythmique en SVG.
+[English](./README.md)
+
+> Affiche des grilles d'accords avec une notation rythmique précise, rendue en SVG net et scalable dans vos notes Obsidian.
+
+**Version :** 1.1.0 · **Licence :** GPL-3.0 · **Statut :** Refonte vers Analyseur (v2.0.0 en cours)
 
 ## Installation
 
@@ -23,7 +27,7 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 
 ### Syntaxe
 
-**Indication de mesure :** `4/4`, `3/4`, `6/8`, etc.
+**Indication de mesure :** `4/4`, `3/4`, `6/8`, `12/8`, etc.
 
 **Barres de mesure :**
 - `|` : barre simple
@@ -31,9 +35,9 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 - `||:` : début de reprise
 - `:||` : fin de reprise
 
-**Accords :** Notation standard (`Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7` ...)
+**Accords :** Notation standard (`Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E` ...)
 
-**Rythme entre crochets :**
+**Rythme entre crochets (valeurs de notes) :**
 - `1` = ronde
 - `2` = blanche
 - `4` = noire
@@ -66,6 +70,28 @@ Rappel :
 - `_` en fin ou début de groupe permet de lier vers/depuis la mesure suivante
 - Un espace entre deux segments d'accord coupe une ligature, même sans changement d'accord
 - Les notes pointées influencent la direction des beamlets (demi-ligatures)
+
+#### Glossaire (référence rapide)
+| Terme | Signification |
+|------|----------------|
+| Battement (Beat) | Unité de pulsation logique dans la mesure |
+| Ligature (Beam) | Barre horizontale reliant des hampes de notes courtes (≥ croches) |
+| Demi-ligature (Beamlet) | Petit tronçon de ligature pour notes isolées |
+| Liaison (Tie) | Courbe prolongeant la durée sur la note suivante |
+| Silence (Rest) | Durée sans son |
+| Segment | Portion de mesure associée à un accord |
+| Note pointée | Note avec `.` augmentant la durée de 50% |
+
+#### Points de syntaxe avancés
+| Modèle | Effet |
+|--------|-------|
+| `88` | Deux croches liées (même battement) |
+| `8 8` | Deux croches séparées (espace coupe la ligature) |
+| `4.` | Noire pointée (= noire + croche) |
+| `16.32` | Direction des demi-ligatures adaptée (chemin analyseur) |
+| `4_88_ | [_8]` | Liaison à travers la barre de mesure |
+| `C[8]G[8]` | Ligature inter-segments si aucun espace (analyseur) |
+| `C[8] G[8]` | Espace = ligature cassée |
 
 ### Exemples
 
@@ -115,26 +141,46 @@ Différent de :
 ```
 L'espace avant `G` casse la ligature.
 
+### Dépannage
+| Symptôme | Cause possible | Correctif |
+|---------|-----------------|-----------|
+| Mesure invalide | Somme ≠ signature rythmique | Recompter; une note pointée ajoute 50% |
+| Ligature coupée | Présence d'un espace ou d'un silence | Retirer l'espace / vérifier absence de `-` |
+| Liaison absente entre lignes | Résolution en attente dans TieManager | Mettre `_` en fin et début de groupe |
+| Pas de panneau Debug | Plugin désactivé ou logger masqué | Réactiver le plugin; vérifier paramètres |
+
 ### Fonctionnalités
 
 - ✅ Rendu SVG vectoriel
 - ✅ Grilles d'accords avec notation rythmique
-- ✅ Groupement automatique des croches par battement
-- ✅ Barres de reprise
-- ✅ Signatures rythmiques
+- ✅ Groupement automatique des croches par battement (chemin legacy)
+- ✅ Barres de reprise & types de barres
+- ✅ Signatures rythmiques (simples & composées)
 - ✅ 4 mesures par ligne (auto)
 - ✅ Largeur de mesure dynamique
+- ✅ Notes pointées, liaisons, silences
 - ✅ **Logger de debug inline** (v1.1.0)
-- ✅ **Rendu amélioré des ligatures complexes** (notes pointées)
-- 🚧 **Ligatures inter-segments via analyseur** (v2.0.0 en cours) – possibilité de relier `[8]G[8]` s'il n'y a pas d'espace
-- 🚧 **Overlay de ligature basé sur l'analyse** (flag expérimental)
+- ✅ **Rendu amélioré des ligatures complexes**
+- 🚧 **Ligatures inter-segments via analyseur** (v2.0.0)
+- 🚧 **Overlay de ligature basé sur analyse** (feature flag)
+- 🚧 Prévu : tuplets, appoggiatures, articulations, dynamiques, export
 
 ### Limitations actuelles
 
-- Overlay d'analyse expérimental (fallback sur l'ancien système)
-- Pas de dynamiques ni articulations
-- Pas d'export
-- Tuplets, appoggiatures (grace notes), dynamiques, articulations : à venir
+- Overlay d'analyse expérimental (fallback legacy)
+- Pas encore de dynamiques, articulations, appoggiatures, tuplets
+- Pas d'export (PDF/PNG/MIDI) pour le moment
+- Cas très complexes avec notes pointées + silences : décisions limitées en mode legacy
+
+### Feuille de route (haut niveau)
+| Jalon | Contenu |
+|-------|---------|
+| v1.x Maintenance | Stabilité, corrections, polissage de la doc |
+| v2.0 Analyseur | Séparation Parser → Analyzer → Renderer, beaming unifié |
+| v2.1 Tuplets & appoggiatures | Extension du modèle de durée |
+| v2.2 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
+| v2.3 Export | Export PNG / SVG propre + POC MIDI |
+| v3.0 Édition | Édition interactive dans la note |
 
 ## Architecture (refonte v2.0 en cours)
 
@@ -142,6 +188,18 @@ Pipeline en 3 couches :
 1. Parseur – Extraction purement syntaxique (mesures, segments, groupes rythmiques, espaces, ties)
 2. Analyseur – Détermination des groupes de ligatures multi-niveaux (8/16/32/64), franchissant les segments d'accords
 3. Renderer – Dessin des éléments graphiques; overlay des beams de l'analyseur (flag) avant remplacement complet de l'ancien système
+
+#### Schéma Mermaid
+
+```mermaid
+flowchart TD
+    A[Notation chordgrid] --> B[Parseur\nChordGridParser]
+    B --> C[Analyseur\nMusicAnalyzer]
+    C --> D[Renderer\nSVGRenderer + Measure/Note/Rest]
+    C -->|USE_ANALYZER_BEAMS| E[Overlay des ligatures\nAnalyzerBeamOverlay]
+    E --> D
+    D --> F[Sortie SVG]
+```
 
 **Pourquoi un analyseur ?**
 Pour autoriser des ligatures cohérentes à travers des frontières d'accord sans espace et gérer la direction des beamlets avec des notes pointées.
@@ -169,19 +227,34 @@ Ligature cassée.
 - Support des tuplets & grace notes
 - Tests de rendu (snapshots) pour SVG
 - Documentation avancée (cas limites, ties complexes)
+- Points d'accroche pour l'export
 
 ## Développement
 
 ### Pré-requis
-- Node.js
+- Node.js (LTS recommandé)
 - npm
 
 ### Installation
 ```bash
 npm install
-npm run dev
-npm run build
+npm run dev   # build avec watch (esbuild)
+npm run build # build production (type-check + bundle)
 ```
+
+### Tests
+Tests principaux (parseur) :
+```bash
+npm test
+```
+Scripts supplémentaires (analyseur / intégration) :
+```bash
+ts-node ./test/run_analyzer_tests.ts
+ts-node ./test/run_integration_analyzer.ts
+```
+
+### Contribuer (résumé)
+Voir `CONTRIBUTING.md` pour les règles complètes (style, branches, ajout de fonctionnalités, exigences de test).
 
 ## Débogage
 
@@ -189,4 +262,4 @@ Un logger visuel affiche : parsing, layout, détection des ligatures, des liaiso
 
 ## Licence
 
-GPL v3
+Sous licence **GNU GPL-3.0**. Voir `LICENSE` pour le texte intégral.

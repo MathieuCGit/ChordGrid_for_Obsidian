@@ -2,20 +2,32 @@
 
 [Français](./README.fr.md)
 
-A plugin that displays chord charts with rhythmic notation using vector graphics (SVG).
+> Display clean chord grids with precise rhythmic notation rendered as crisp, scalable SVG inside your Obsidian notes.
+
+<!-- Badges (manual style to avoid external services) -->
+**Version:** 1.1.0 · **License:** GPL-3.0 · **Status:** Refactoring → Analyzer (v2.0.0 in progress)
+
+This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic. A refactor toward a 3‑stage pipeline (Parser → Analyzer → Renderer) is underway.
 
 ## Installation
 
-1. Create a `chord-grid` folder in `.obsidian/plugins/`
-2. Copy the following files into this folder:
-   - `main.ts` (plugin code)
-   - `manifest.json`
-3. Compile TypeScript: `npm run build` (see Development section)
-4. Enable the plugin in Obsidian: Settings → Community plugins
+### Quick (Recommended via Community Plugins)
+1. Open Obsidian → Settings → Community plugins → Browse
+2. Search for "Chord Grid" (once published) and install
+3. Enable the plugin
+
+### Manual (Developer / Local Build)
+1. Create a `chord-grid` folder under `.obsidian/plugins/`
+2. Copy / clone repository contents into that folder
+3. Install dependencies & build (see Development)
+4. Enable in Obsidian: Settings → Community plugins
+
+### Update / Upgrade
+Re-run `npm run build` after pulling new changes. If you encounter rendering issues after updating, disable & re-enable the plugin to refresh cached code.
 
 ## Usage
 
-In your Obsidian notes, create a code block with the `chordgrid` language:
+In your Obsidian notes, create a fenced code block with the `chordgrid` language:
 
 ````markdown
 ```chordgrid
@@ -25,7 +37,7 @@ In your Obsidian notes, create a code block with the `chordgrid` language:
 
 ### Syntax
 
-**Time signature:** `4/4`, `3/4`, `6/8`, etc.
+**Time signature:** `4/4`, `3/4`, `6/8`, `12/8`, etc.
 
 **Bar lines:**
 - `|` : Single bar
@@ -33,9 +45,9 @@ In your Obsidian notes, create a code block with the `chordgrid` language:
 - `||:` : Start repeat
 - `:||` : End repeat
 
-**Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`)
+**Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
 
-**Rhythm in brackets:**
+**Rhythm in brackets (note values):**
 - `1` = Whole note (ronde)
 - `2` = Half note (blanche)
 - `4` = Quarter note (noire)
@@ -71,6 +83,28 @@ Notes on syntax:
 - Dotted notes use `.` immediately after the number (e.g. `4.`).
 - Whitespace influences beaming: placing a space between numbers separates beam groups; a space before a chord token may break a beam group across the chord.
 
+#### Glossary (Quick Reference)
+| Term | Meaning |
+|------|---------|
+| Beat | Logical pulse grouping inside a measure |
+| Beam | Horizontal bar connecting stems of short notes (8th or smaller) |
+| Beamlet | Partial beam/stub for isolated short notes inside complex groups |
+| Tie | Curved line extending a note’s duration into the next note (same pitch implied) |
+| Rest | Silence occupying rhythmic duration |
+| Segment | Portion of measure tied to one chord symbol |
+| Dotted note | Note with trailing `.` increasing duration by 50% |
+
+#### Advanced Syntax Highlights
+| Pattern | Effect |
+|---------|-------|
+| `88` | Two beamed eighths (same beat) |
+| `8 8` | Two separate eighths (space splits beams) |
+| `4.` | Dotted quarter ( = quarter + eighth ) |
+| `16.32` | Beamlet direction adapts (analyzer path) |
+| `4_88_ | [_8]` | Tie across measure boundary |
+| `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
+| `C[8] G[8]` | Space blocks beam |
+
 ### Examples
 
 **Simple 4/4 measure:**
@@ -94,22 +128,22 @@ Notes on syntax:
     Am[88 88 4 4] | Dm[4 4 2] | G7[16161616 4 4] | C[1] :||
 ```
 
-**chords with dotted notes**
+**Chords with dotted notes**
 ```chordgrid
 4/4 | C[4. 8 4 4] | D[8.16 88 4. 8] | Em[168. 4 4 88] | C[16816 4 16168 81616]  |
 ```
 
-**chords with rests**
+**Chords with rests**
 ```chordgrid
 4/4 | C[4 -4 4 4] | G[-2 4 4] | Am[88 -8 8 4] | F[4 4 -2] |
 ```
 
-**tied chords**
+**Tied chords**
 ```chordgrid
 4/4 | C[2 4_88_] | [_8] G[8 4 4 4] | Am[88_4 4 88_] | [_4] Dm[2.] | C[4 4 4_88_] | [_88 4] D[4 4] |
 ```
 
-NOTE: If you want to keep beam grouped by beat take care of space places. For example
+NOTE: If you want to keep beam grouped by beat take care of space placement. For example
 ```chordgrid
 [_8] G[8 4 4 4]
 ```
@@ -117,20 +151,42 @@ is different from
 ```chordgrid
 [_8]G[8 4 4 4]
 ```
-The space just before the G break the beam.
+The space just before the G breaks the beam.
+
+### Troubleshooting
+| Symptom | Possible Cause | Fix |
+|---------|----------------|-----|
+| Measure flagged invalid | Total durations ≠ time signature | Recount values; dotted adds 50% |
+| Beam unexpectedly broken | Space or rest present | Remove space / ensure no `-` rest |
+| Tie not drawn across line | Analyzer/TieManager pending resolution | Ensure `_` at end & start groups |
+| Debug panel absent | Plugin disabled or logger suppressed | Re-enable plugin; check settings |
 
 ## Development
 
 ### Prerequisites
-- Node.js
+- Node.js (LTS recommended)
 - npm
 
 ### Setup
 ```bash
 npm install
-npm run dev  # Development mode with watch
-npm run build  # Production build
+npm run dev   # Watch build (esbuild)
+npm run build # Production build (type-check + bundle)
 ```
+
+### Testing
+Core parser tests:
+```bash
+npm test
+```
+Additional analyzer / integration scripts (run manually):
+```bash
+ts-node ./test/run_analyzer_tests.ts
+ts-node ./test/run_integration_analyzer.ts
+```
+
+### Contributing (Summary)
+Please see `CONTRIBUTING.md` for full guidelines (style, branching, adding features, test requirements).
 
 ### Structure
 ```
@@ -145,15 +201,17 @@ chord-grid/
 
 - ✅ Vector SVG rendering
 - ✅ Chord charts with rhythmic notation
-- ✅ Automatic eighth note beaming by beat
-- ✅ Repeat bars
-- ✅ Time signature support
+- ✅ Automatic eighth note beaming by beat (legacy path)
+- ✅ Repeat bars & barline types
+- ✅ Time signature support (simple + compound)
 - ✅ 4 measures per line (automatic)
 - ✅ Dynamic measure width
-- ✅ **Inline Debug Logger** (v1.1.0) - collapsible debug panel in notes
-- ✅ **Improved beam rendering** for complex rhythmic patterns with dotted notes
-- 🚧 **Analyzer-based cross-segment beaming** (v2.0.0 in progress) – beams can now connect notes across chord boundaries when no separating space is present (e.g. `[8]G[8]`)
-- 🚧 **Configurable beam overlay** via analyzer feature flag
+- ✅ Dotted notes, ties, rests
+- ✅ **Inline Debug Logger** (v1.1.0) – collapsible debug panel
+- ✅ **Improved beam rendering** for complex rhythmic patterns
+- 🚧 **Analyzer-based cross-segment beaming** (v2.0.0) – continuous beams without spaces
+- 🚧 **Configurable analyzer overlay** (feature flag)
+- 🚧 Planned: tuplets, grace notes, articulations, dynamics, export formats
 
 ## Debugging
 
@@ -169,10 +227,20 @@ For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
 
 ## Current Limitations
 
-- Analyzer beam overlay is experimental (enable with feature flag; renderer still contains legacy beaming path)
-- No support for dynamics or articulations
-- No export to other formats
-- Tuplets, grace notes, dynamics, articulations not yet supported (planned)
+- Analyzer beam overlay is experimental (legacy beaming kept)
+- No dynamics, articulations, grace notes, tuplets yet
+- No export to PDF/PNG/MIDI yet
+- Beaming decisions limited for very complex mixed dotted/rest patterns in legacy path
+
+### Roadmap (High Level)
+| Milestone | Highlights |
+|-----------|-----------|
+| v1.x Maintenance | Stability, bug fixes, doc polish |
+| v2.0 Analyzer Core | Full Parser → Analyzer → Renderer separation, unified beaming |
+| v2.1 Tuplets & Grace | Extend duration model; advanced beam groups |
+| v2.2 Dynamics & Articulation | Symbol layer, extensible rendering decorators |
+| v2.3 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
+| v3.0 Interactive Editing | In-note editing handles, real-time validation |
 
 ## Architecture (v2.0 refactor – in progress)
 
@@ -181,6 +249,18 @@ The rendering pipeline is being refactored into three clear stages:
 1. Parser – Performs only syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness).
 2. Analyzer – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
 3. Renderer – Draws notes/stems/ties and (optionally) overlays analyzer-driven beams instead of legacy per-beat grouping.
+
+#### Mermaid diagram
+
+```mermaid
+flowchart TD
+    A[Chordgrid notation] --> B[Parser\nChordGridParser]
+    B --> C[Analyzer\nMusicAnalyzer]
+    C --> D[Renderer\nSVGRenderer + Measure/Note/Rest]
+    C -->|USE_ANALYZER_BEAMS| E[AnalyzerBeamOverlay]
+    E --> D
+    D --> F[SVG output]
+```
 
 ### Why the analyzer?
 Previously, beams could not cross chord boundaries even when musically continuous (e.g. `[8]G[8]`). The analyzer flattens measure notes, respects rests and whitespace, and builds multi‑level beam groups (8/16/32/64) including correct beamlet direction for dotted values.
@@ -211,7 +291,8 @@ Here the space before `G` breaks the beam, producing two separate single stems.
 * Extend analyzer for tuplets & grace notes
 * Snapshot tests for SVG beam rendering
 * Documentation updates for advanced rhythmic cases
+* Introduce export hooks
 
 ## License
 
-GPL V3
+Licensed under **GNU GPL-3.0**. See `LICENSE` for full text. (The `package.json` has been aligned to GPL-3.0.)

@@ -235,29 +235,50 @@ export class ChordGridParser {
       const isLastMeasureOfLine = ti === nonEmptyTokens.length - 1;
 
       const chordSegments: ChordSegment[] = [];
-      while ((m2 = segmentRe.exec(text)) !== null) {
-        const leadingSpaceCapture = m2[1] || '';
-        const chord = (m2[2] || '').trim();
-        const rhythm = (m2[3] || '').trim();
-        const sourceText = m2[0];
-        if (!firstChord && chord) firstChord = chord;
-        anySource += (anySource ? ' ' : '') + sourceText;
+      
+      // Check if text contains brackets (chord[rhythm] syntax)
+      if (text.includes('[')) {
+        // Use bracket-based parsing
+        while ((m2 = segmentRe.exec(text)) !== null) {
+          const leadingSpaceCapture = m2[1] || '';
+          const chord = (m2[2] || '').trim();
+          const rhythm = (m2[3] || '').trim();
+          const sourceText = m2[0];
+          if (!firstChord && chord) firstChord = chord;
+          anySource += (anySource ? ' ' : '') + sourceText;
 
+          if (rhythm.length > 0) {
+            // Determine whether there was explicit whitespace before THIS segment
+            // Use the capture group from the segment regex which preserves leading spaces
+            const hasSignificantSpace = (leadingSpaceCapture || '').length > 0;
+
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+            
+            // Créer un segment pour chaque groupe accord/rythme
+            chordSegments.push({
+              chord: chord,  // utiliser l'accord actuel
+              beats: parsedBeats,
+              leadingSpace: hasSignificantSpace
+            });
+            
+            beats.push(...parsedBeats); // garder la compatibilité avec le reste du code
+          }
+        }
+      } else {
+        // No brackets: treat entire content as rhythm group without chord
+        const rhythm = text.trim();
+        anySource = text;
+        
         if (rhythm.length > 0) {
-          // Determine whether there was explicit whitespace before THIS segment
-          // Use the capture group from the segment regex which preserves leading spaces
-          const hasSignificantSpace = (leadingSpaceCapture || '').length > 0;
-
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false);
           
-          // Créer un segment pour chaque groupe accord/rythme
           chordSegments.push({
-            chord: chord,  // utiliser l'accord actuel
+            chord: '',
             beats: parsedBeats,
-            leadingSpace: hasSignificantSpace
+            leadingSpace: false
           });
           
-          beats.push(...parsedBeats); // garder la compatibilité avec le reste du code
+          beats.push(...parsedBeats);
         }
       }
 
@@ -455,17 +476,27 @@ class BeamAndTieAnalyzer {
   }
   
   private parseNote(rhythmStr: string, startIndex: number): NoteElement {
+    // Check for rest prefix '-'
+    let isRest = false;
+    let offset = startIndex;
+    if (rhythmStr[startIndex] === '-') {
+      isRest = true;
+      offset += 1;
+    }
+
     // Match only valid note values. For concatenated numbers (e.g. "323216"),
     // prefer the longest match from the allowed set: 64,32,16,8,4,2,1
     const VALID = ['64','32','16','8','4','2','1'];
     for (const v of VALID) {
-      if (rhythmStr.startsWith(v, startIndex)) {
+      if (rhythmStr.startsWith(v, offset)) {
         let len = v.length;
         let dotted = false;
-        if (startIndex + len < rhythmStr.length && rhythmStr[startIndex + len] === '.') {
+        if (offset + len < rhythmStr.length && rhythmStr[offset + len] === '.') {
           dotted = true;
           len += 1;
         }
+        // Total length includes the optional '-' prefix
+        const totalLen = (offset - startIndex) + len;
         return {
           value: parseInt(v) as NoteValue,
           dotted,
@@ -473,9 +504,9 @@ class BeamAndTieAnalyzer {
           tieEnd: false,
           tieToVoid: false,
           tieFromVoid: false,
-          isRest: false,
+          isRest,
           position: startIndex,
-          length: len
+          length: totalLen
         } as NoteElement;
       }
     }

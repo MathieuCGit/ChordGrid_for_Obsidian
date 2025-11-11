@@ -2,33 +2,40 @@
 
 ## Overview
 
-This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It consists of three main modules: **Parsing**, **Models**, and **Rendering**.
+This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It now follows a three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models** and **Utilities**. During v2.0.0, an analyzer overlay coexists with the legacy beaming path for stability.
 
 ## Project Structure
 
 ```
 chord-grid/
-├── main.ts                    # Obsidian plugin entry point
+├── main.ts                          # Obsidian plugin entry point
 ├── src/
-│   ├── parser/                # Parsing module
-│   │   ├── ChordGridParser.ts # Main parser
-│   │   └── type.ts            # Type definitions
-│   ├── models/                # Data models
-│   │   ├── Beat.ts            # Beat model
-│   │   ├── Measure.ts         # Measure model
-│   │   ├── Note.ts            # Note model
-│   │   └── TimeSignature.ts   # TimeSignature model
-│   ├── renderer/              # SVG rendering module
-│   │   ├── SVGRenderer.ts     # Main renderer
-│   │   ├── MeasureRenderer.ts # Measure rendering
-│   │   ├── NoteRenderer.ts    # Note rendering
-│   │   ├── RestRenderer.ts    # Rest rendering
-│   │   ├── BeamAndTieAnalyzer.ts # Beam analysis
-│   │   └── constants.ts       # SVG constants
-│   └── utils/                 # Utilities
-│       ├── TieManager.ts      # Cross-measure tie management
-│       └── DebugLogger.ts     # Debug logging system
-└── test/                      # Unit tests
+│   ├── parser/                      # Parsing (syntax only)
+│   │   ├── ChordGridParser.ts       # Main parser
+│   │   └── type.ts                  # Type definitions
+│   ├── analyzer/                    # Musical analysis (beams across segments, levels)
+│   │   ├── MusicAnalyzer.ts         # Analyzer implementation
+│   │   └── analyzer-types.ts        # BeamGroup, NoteReference, etc.
+│   ├── models/                      # Data models
+│   │   ├── Beat.ts                  # Beat model
+│   │   ├── Measure.ts               # Measure model
+│   │   ├── Note.ts                  # Note model
+│   │   └── TimeSignature.ts         # TimeSignature model
+│   ├── renderer/                    # SVG rendering
+│   │   ├── SVGRenderer.ts           # Main renderer (orchestration)
+│   │   ├── MeasureRenderer.ts       # Measure rendering
+│   │   ├── NoteRenderer.ts          # Note rendering
+│   │   ├── RestRenderer.ts          # Rest rendering
+│   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer (feature-flagged)
+│   │   ├── BeamAndTieAnalyzer.ts    # Legacy per-segment beaming (temporary)
+│   │   └── constants.ts             # SVG/layout constants
+│   └── utils/
+│       ├── TieManager.ts            # Cross-measure tie management
+│       └── DebugLogger.ts           # Debug logging system
+└── test/
+  ├── *.spec.ts / *.test.ts        # Unit tests (parser / render)
+  ├── run_analyzer_tests.ts        # Analyzer tests
+  └── run_integration_analyzer.ts  # Parser→Analyzer integration
 
 ```
 
@@ -36,14 +43,45 @@ chord-grid/
 
 ```
 Text input (chordgrid notation)
-         ↓
-   ChordGridParser
-         ↓
-    ChordGrid (structure)
-         ↓
-    SVGRenderer
-         ↓
+     ↓
+   Parser (ChordGridParser) — syntax only
+     ↓
+   Analyzer (MusicAnalyzer) — musical semantics
+     ↓
+   Renderer (SVGRenderer + Measure/Note/Rest)
+     ↓
    SVG Element (output)
+```
+
+### Mermaid Diagram
+
+```mermaid
+flowchart LR
+    A[Raw chordgrid text\n(code block)] --> B[Parser\nChordGridParser]
+    B -->|Measures + Segments + Rhythm Tokens| C[Analyzer\nMusicAnalyzer]
+    C -->|BeamGroups + NoteRefs| D[Renderer Orchestrator\nSVGRenderer]
+    D --> E[MeasureRenderer]
+    D --> F[NoteRenderer]
+    D --> G[RestRenderer]
+    D --> H[TieManager]
+    C -->|Optional overlay| I[AnalyzerBeamOverlay]
+    subgraph Legacy Path (temporary)
+    J[BeamAndTieAnalyzer]
+    end
+    B --> J
+    J --> D
+    H --> D
+    D --> Z[SVG Output]
+
+    classDef parser fill:#2b6cb0,stroke:#1a4568,stroke-width:1,color:#fff;
+    classDef analyzer fill:#805ad5,stroke:#553c9a,color:#fff;
+    classDef renderer fill:#38a169,stroke:#276749,color:#fff;
+    classDef util fill:#718096,stroke:#4a5568,color:#fff;
+    class B parser;
+    class C,I analyzer;
+    class D,E,F,G,Z renderer;
+    class H util;
+    class J util;
 ```
 
 ## Parser Module
@@ -51,9 +89,10 @@ Text input (chordgrid notation)
 ### ChordGridParser
 
 **Responsibilities:**
-- Parse textual notation into data structures
+- Parse textual notation into typed structures (measures, segments, rhythm groups)
 - Validate measure durations against time signature
-- Analyze beams and ties
+- Detect ties markers (`_`) and rests (`-`) in syntax (without computing geometry)
+- Preserve whitespace significance (segment-leading space breaks beams)
 - Handle line breaks and measure grouping
 
 **Supported Syntax:**
@@ -72,29 +111,28 @@ Text input (chordgrid notation)
 3. Parse each measure:
    - Extract chords and rhythms
    - Create beats and notes
-   - Analyze beams (BeamAndTieAnalyzer)
-   - Detect ties
+  - Detect ties markers at group boundaries
 4. Validate durations
 5. Group into rendering lines
 
-### BeamAndTieAnalyzer
+## Analyzer Module
+
+### MusicAnalyzer
 
 **Responsibilities:**
-- Analyze rhythmic groups
-- Determine beams between notes
-- Handle ties between notes, measures, and lines
+- Compute musical beam groups per measure, possibly spanning chord segments when no whitespace separates them
+- Support multi-level beams (8th/16th/32nd/64th) and beamlet direction rules (dotted-note aware)
+- Respect rests and whitespace as hard beam breaks
+- Produce stable references back to parsed notes via `NoteReference`
 
-**Beam Rules:**
-- Notes >= 8 (eighth notes) can be beamed
-- Rests break beams
-- Spaces in notation separate groups
-- Minimum 2 notes to form a beam group
+**Beam Rules (summary):**
+- Values ≥ 8 (eighth and shorter) are eligible for beaming
+- Rests break beams; whitespace between segments breaks beams
+- Dotted notes influence beamlet direction (follow/precede logic)
+- Single short notes get beamlets where musically appropriate
 
-**Tie Rules:**
-- `_` marks a tie
-- Ties can cross measures and lines
-- `tieToVoid`: tie to virtual note (end of line)
-- `tieFromVoid`: tie from virtual note (start of line)
+**Ties:**
+- Analyzer does not invent ties; it uses parser tie markers and TieManager for cross-line resolution
 
 ## Module Modèles
 
@@ -263,7 +301,7 @@ Les modèles (Note, Beat, Measure) acceptent des données partielles et initiali
 Le parser construit progressivement la structure ChordGrid en accumulant les mesures.
 
 ### Strategy Pattern
-Différents renderers (NoteRenderer, RestRenderer) pour différents types d'éléments.
+Différents renderers (NoteRenderer, RestRenderer) pour différents types d'éléments; Analyzer interchangeable sous forme de service.
 
 ### Observer Pattern
 Le TieManager observe les notes avec liaisons et résout les références cross-mesure.
@@ -273,7 +311,7 @@ Le TieManager observe les notes avec liaisons et résout les références cross-
 ### Points d'extension possibles :
 1. **Nouveaux types de notation** : ajouter des handlers dans ChordGridParser
 2. **Styles de rendu alternatifs** : créer des renderers alternatifs implémentant l'interface commune
-3. **Export** : ajouter des méthodes dans les renderers pour export PNG/PDF
+3. **Export** : ajouter des méthodes dans les renderers pour export PNG/PDF/MIDI
 4. **Audio** : intégrer un moteur audio pour lecture des grilles
 5. **Édition interactive** : ajouter des handlers d'événements sur les éléments SVG
 
@@ -301,6 +339,12 @@ Les tests sont organisés par fonctionnalité :
 ### Lancer les tests :
 ```bash
 npm test
+```
+
+Scripts supplémentaires :
+```bash
+ts-node ./test/run_analyzer_tests.ts
+ts-node ./test/run_integration_analyzer.ts
 ```
 
 ## Performance
@@ -340,5 +384,5 @@ Pour contribuer au projet :
 ---
 
 **Dernière mise à jour** : 11 novembre 2025  
-**Version** : 1.0.0  
+**Version** : 1.1.0  
 **Auteur** : MathieuCGit

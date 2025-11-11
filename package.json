@@ -1,7 +1,7 @@
 {
   "name": "obsidian-chord-grid",
   "version": "1.1.0",
-  "description": "Plugin Obsidian pour afficher des grilles d'accords",
+  "description": "Obsidian plugin to render chord grids with rhythmic notation (SVG).",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -13,10 +13,11 @@
     "obsidian",
     "plugin",
     "music",
-    "chords"
+    "chords",
+    "rhythm"
   ],
-  "author": "Votre Nom",
-  "license": "MIT",
+  "author": "Mathieu CONAN",
+  "license": "GPL-3.0",
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
@@ -24,8 +25,8 @@
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.27.0",
     "obsidian": "latest",
-  "ts-node": "10.9.1",
-  "tslib": "2.6.2",
+    "ts-node": "10.9.1",
+    "tslib": "2.6.2",
     "typescript": "5.3.3"
   }
 }

@@ -284,21 +284,35 @@ var ChordGridParser = class {
       const isFirstMeasureOfLine = ti === 0;
       const isLastMeasureOfLine = ti === nonEmptyTokens.length - 1;
       const chordSegments = [];
-      while ((m2 = segmentRe.exec(text)) !== null) {
-        const leadingSpaceCapture = m2[1] || "";
-        const chord = (m2[2] || "").trim();
-        const rhythm = (m2[3] || "").trim();
-        const sourceText = m2[0];
-        if (!firstChord && chord) firstChord = chord;
-        anySource += (anySource ? " " : "") + sourceText;
+      if (text.includes("[")) {
+        while ((m2 = segmentRe.exec(text)) !== null) {
+          const leadingSpaceCapture = m2[1] || "";
+          const chord = (m2[2] || "").trim();
+          const rhythm = (m2[3] || "").trim();
+          const sourceText = m2[0];
+          if (!firstChord && chord) firstChord = chord;
+          anySource += (anySource ? " " : "") + sourceText;
+          if (rhythm.length > 0) {
+            const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+            chordSegments.push({
+              chord,
+              // utiliser l'accord actuel
+              beats: parsedBeats,
+              leadingSpace: hasSignificantSpace
+            });
+            beats.push(...parsedBeats);
+          }
+        }
+      } else {
+        const rhythm = text.trim();
+        anySource = text;
         if (rhythm.length > 0) {
-          const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false);
           chordSegments.push({
-            chord,
-            // utiliser l'accord actuel
+            chord: "",
             beats: parsedBeats,
-            leadingSpace: hasSignificantSpace
+            leadingSpace: false
           });
           beats.push(...parsedBeats);
         }
@@ -426,15 +440,22 @@ var BeamAndTieAnalyzer = class {
     }
   }
   parseNote(rhythmStr, startIndex) {
+    let isRest = false;
+    let offset = startIndex;
+    if (rhythmStr[startIndex] === "-") {
+      isRest = true;
+      offset += 1;
+    }
     const VALID = ["64", "32", "16", "8", "4", "2", "1"];
     for (const v of VALID) {
-      if (rhythmStr.startsWith(v, startIndex)) {
+      if (rhythmStr.startsWith(v, offset)) {
         let len = v.length;
         let dotted = false;
-        if (startIndex + len < rhythmStr.length && rhythmStr[startIndex + len] === ".") {
+        if (offset + len < rhythmStr.length && rhythmStr[offset + len] === ".") {
           dotted = true;
           len += 1;
         }
+        const totalLen = offset - startIndex + len;
         return {
           value: parseInt(v),
           dotted,
@@ -442,9 +463,9 @@ var BeamAndTieAnalyzer = class {
           tieEnd: false,
           tieToVoid: false,
           tieFromVoid: false,
-          isRest: false,
+          isRest,
           position: startIndex,
-          length: len
+          length: totalLen
         };
       }
     }
@@ -508,29 +529,11 @@ var USE_ANALYZER_BEAMS = true;
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
   constructor() {
-    // Rendering style constants tuned for a single staff line context
-    __publicField(this, "stroke", "#000");
-    __publicField(this, "strokeThin", 1.6);
-    // lighter lines for better readability
-    __publicField(this, "strokeThick", 2);
+    // Rendering style constants
     __publicField(this, "dotRadius", 1.8);
-    // Match note stem height from MeasureRenderer (approx 25px)
-    __publicField(this, "stemLength", 25);
-    __publicField(this, "stemTopOffset", -5);
-    // start slightly above the staff line
-    __publicField(this, "stemBottomOffset", 20);
-    // end below the staff line so total ~= 25
-    // Reference height for 1/8 rest (used to scale 1/16)
-    __publicField(this, "EIGHTH_REF_HEIGHT", 1052.4 * 0.05);
-    // ≈ 52.62 px
-    // Tunables for 1/16 rest size and alignment
-    __publicField(this, "sixteenthHeightRatio", 0.6);
-    // 60% of eighth rest height
-    __publicField(this, "sixteenthVertAlign", 0.55);
-    // center placement factor (similar to 0.57 for 1/8)
-    __publicField(this, "sixteenthStrokePx", 0.8);
+    __publicField(this, "NOTE_HEIGHT", 30);
   }
-  // visual stroke thickness target in px
+  // Hauteur de référence d'une quarter note (slash + stem)
   /**
    * Dessine un silence selon sa valeur rythmique.
    * 
@@ -561,7 +564,7 @@ var RestRenderer = class {
     const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
     rect.setAttribute("x", String(x - width / 2));
-    rect.setAttribute("y", String(y + 1));
+    rect.setAttribute("y", String(y + 2));
     rect.setAttribute("width", String(width));
     rect.setAttribute("height", String(height));
     rect.setAttribute("fill", "black");
@@ -575,7 +578,7 @@ var RestRenderer = class {
     const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
     rect.setAttribute("x", String(x - width / 2));
-    rect.setAttribute("y", String(y - (height + 1)));
+    rect.setAttribute("y", String(y - height));
     rect.setAttribute("width", String(width));
     rect.setAttribute("height", String(height));
     rect.setAttribute("fill", "black");
@@ -585,106 +588,79 @@ var RestRenderer = class {
     }
   }
   drawQuarterRest(svg, x, y, dotted) {
-    const SCALE = 0.045;
-    const RAW_HEIGHT = 512 * SCALE;
-    const translateX = x - 256 * SCALE;
-    const translateY = y - RAW_HEIGHT / 2;
+    const TARGET_HEIGHT = 24;
+    const SYMBOL_HEIGHT = 12;
+    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SYMBOL_CENTER_X = 512;
+    const SYMBOL_CENTER_Y = 75;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${SCALE})`);
+    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", "M349.091,371.859c-14.588-11.448-44.397-43.31-65.554-102.28c-20.802-57.964,25.648-94.268,50.571-113.841 c6.486-5.102,7.92-11.556-0.692-20.531C324.82,126.241,219.343,9.028,219.343,9.028c-13.03-17.143-30.816-7.13-20.604,7.302 c120.65,170.544-35.068,196.638-35.068,196.638s16.854,43.837,97.392,115.062c-84.28-21.915-138.6,40.178-97.392,104.108 c41.2,63.923,120.798,77.62,127.358,79.45c7.261,2.02,17.794-3.659,6.561-10.953c-25.566-16.623-78.667-60.732-53.381-92.24 c33.716-42.008,83.348-23.744,96.452-17.358C363.44,402.147,371.574,389.52,349.091,371.859z");
-    path.setAttribute("fill", "black");
+    path.setAttribute("d", "m 512.254,71.019 c -0.137,0.058 -0.219,0.258 -0.156,0.398 0.019,0.02 0.218,0.258 0.418,0.52 0.457,0.515 0.535,0.637 0.636,0.875 0.399,0.816 0.18,1.855 -0.519,2.512 -0.059,0.078 -0.317,0.296 -0.559,0.476 -0.695,0.598 -1.015,0.938 -1.133,1.238 -0.043,0.079 -0.043,0.157 -0.043,0.278 -0.019,0.277 0,0.301 0.821,1.254 1.113,1.336 1.91,2.273 1.972,2.332 l 0.059,0.058 -0.078,-0.039 c -1.098,-0.457 -2.332,-0.676 -2.75,-0.476 -0.141,0.058 -0.223,0.14 -0.281,0.277 -0.161,0.34 -0.118,0.84 0.121,1.574 0.218,0.66 0.656,1.535 1.093,2.192 0.18,0.281 0.52,0.718 0.559,0.738 0.059,0.059 0.141,0.039 0.199,0 0.059,-0.078 0.059,-0.141 -0.058,-0.277 -0.418,-0.598 -0.617,-1.836 -0.379,-2.493 0.097,-0.296 0.219,-0.457 0.437,-0.558 0.578,-0.258 1.856,0.062 2.391,0.597 0.039,0.04 0.121,0.122 0.16,0.141 0.141,0.059 0.34,-0.019 0.399,-0.16 0.082,-0.141 0.039,-0.238 -0.141,-0.457 -0.336,-0.399 -1.352,-1.594 -1.492,-1.774 -0.36,-0.418 -0.52,-0.816 -0.559,-1.316 -0.019,-0.637 0.238,-1.312 0.719,-1.754 0.058,-0.078 0.316,-0.297 0.555,-0.476 0.738,-0.618 1.039,-0.957 1.156,-1.278 0.082,-0.258 0.043,-0.496 -0.137,-0.715 -0.062,-0.058 -0.758,-0.918 -1.574,-1.894 -1.117,-1.313 -1.516,-1.793 -1.574,-1.813 -0.082,-0.019 -0.18,-0.019 -0.262,0.02 z");
+    path.setAttribute("fill", "#000000");
     group.appendChild(path);
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 12, y - 4);
   }
   drawEighthRest(svg, x, y, dotted) {
-    const VIEW_W = 744.09;
-    const VIEW_H = 1052.4;
-    const SCALE = 0.05;
-    const RAW_HEIGHT = VIEW_H * SCALE;
-    const centerX = VIEW_W / 2;
-    const translateX = x - centerX * SCALE;
-    const translateY = y - RAW_HEIGHT * 0.57;
+    const TARGET_HEIGHT = 18;
+    const SYMBOL_HEIGHT = 9;
+    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SYMBOL_CENTER_X = 531;
+    const SYMBOL_CENTER_Y = 78;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${SCALE})`);
+    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", "m393.4 441.74c17.21-1.095 24.829-18.447 33.337-30.631 5.2859-7.5696 18.577-14.912 24.908-8.7934 8.965 8.6646-7.7624 23.608-11.243 35.674-23.183 77.875-46.296 155.78-71.16 233.14-6.5676 6.6802-25.437 6.0742-27.886-2.034 25.232-69.872 50.463-139.74 75.695-209.62-26.033 4.9431-52.11 11.93-78.77 11.611-21.055-1.3185-42.014-15.485-46.498-36.923-5.1756-17.258 0.047-37.86 15.535-48.125 16.48-12.754 44.789-13.811 57.294 4.986 9.5372 14.464 6.4128 34.464 18.521 47.502 2.8844 2.2846 6.6328 3.2533 10.268 3.2108z");
-    path.setAttribute("fill", "black");
-    path.setAttribute("stroke", "black");
-    path.setAttribute("stroke-width", "18");
-    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("d", "m 531.098,74.847 c -0.52,0.098 -0.918,0.457 -1.098,0.953 -0.039,0.16 -0.039,0.199 -0.039,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.094,0.836 0.5,0.141 1.336,0.02 2.293,-0.297 l 0.238,-0.082 -1.176,3.25 -1.156,3.246 c 0,0 0.039,0.02 0.102,0.063 0.117,0.078 0.316,0.137 0.457,0.137 0.238,0 0.539,-0.137 0.578,-0.258 0,-0.039 0.558,-1.934 1.234,-4.184 l 1.195,-4.125 -0.039,-0.058 c -0.097,-0.121 -0.296,-0.16 -0.418,-0.063 -0.039,0.039 -0.101,0.121 -0.14,0.18 -0.18,0.301 -0.637,0.836 -0.875,1.035 -0.219,0.18 -0.34,0.199 -0.539,0.121 -0.18,-0.098 -0.239,-0.199 -0.36,-0.738 -0.117,-0.535 -0.257,-0.778 -0.558,-0.977 -0.278,-0.179 -0.637,-0.238 -0.953,-0.156 z");
+    path.setAttribute("fill", "#000000");
     group.appendChild(path);
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
   drawSixteenthRest(svg, x, y, dotted) {
-    const BASE_W = 12.66;
-    const BASE_H = 26.65;
-    const INTERNAL_SCALE = 1.8;
-    const H_TARGET = this.EIGHTH_REF_HEIGHT * this.sixteenthHeightRatio;
-    const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
-    const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
-    const heightPx = H_TARGET;
-    const translateX = x - widthPx / 2;
-    const translateY = y - heightPx * this.sixteenthVertAlign;
-    const outer = document.createElementNS(SVG_NS, "g");
-    outer.setAttribute("transform", `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
-    const g1 = document.createElementNS(SVG_NS, "g");
-    g1.setAttribute("transform", "translate(-481.99253,-144.99198)");
-    const g2 = document.createElementNS(SVG_NS, "g");
-    g2.setAttribute("transform", "matrix(1.8,0,0,1.8,-492.20747,10.83713)");
-    g2.setAttribute("style", "fill:#000000;fill-rule:evenodd;stroke:#000000;stroke-width:0;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:10");
+    const TARGET_HEIGHT = 24;
+    const SYMBOL_HEIGHT = 14.5;
+    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SYMBOL_CENTER_X = 544;
+    const SYMBOL_CENTER_Y = 81;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", "M 544.191,74.847 C 543.672,74.945 543.273,75.304 543.098,75.8 C 543.055,75.96 543.055,75.999 543.055,76.218 C 543.055,76.519 543.074,76.679 543.215,76.917 C 543.414,77.316 543.832,77.636 544.313,77.753 C 544.809,77.894 545.605,77.792 546.563,77.476 C 546.703,77.417 546.82,77.374 546.82,77.394 C 546.82,77.417 545.926,80.324 545.887,80.425 C 545.785,80.683 545.445,81.16 545.148,81.46 C 544.871,81.738 544.73,81.8 544.512,81.699 C 544.332,81.601 544.273,81.499 544.152,80.96 C 544.051,80.562 543.973,80.343 543.813,80.187 C 543.395,79.726 542.676,79.667 542.121,80.027 C 541.859,80.206 541.66,80.484 541.543,80.785 C 541.5,80.941 541.5,80.984 541.5,81.202 C 541.5,81.499 541.523,81.66 541.66,81.898 C 541.859,82.296 542.277,82.617 542.758,82.734 C 542.977,82.796 543.535,82.796 543.914,82.734 C 544.23,82.675 544.609,82.577 544.988,82.456 C 545.148,82.398 545.289,82.359 545.289,82.378 C 545.289,82.378 543.336,88.734 543.297,88.831 C 543.297,88.851 543.453,88.972 543.613,89.011 C 543.773,89.074 543.934,89.074 544.094,89.011 C 544.25,88.972 544.41,88.874 544.41,88.812 C 544.43,88.792 545.227,85.785 546.203,82.136 L 547.977,75.503 L 547.938,75.445 C 547.859,75.324 547.699,75.304 547.559,75.363 C 547.48,75.402 547.48,75.402 547.242,75.761 C 547.043,76.081 546.762,76.417 546.602,76.577 C 546.383,76.757 546.266,76.796 546.066,76.718 C 545.887,76.62 545.824,76.519 545.707,75.98 C 545.586,75.445 545.445,75.202 545.148,75.003 C 544.871,74.824 544.512,74.765 544.191,74.847 z ");
-    path.setAttribute("fill", "#000");
-    path.setAttribute("stroke", "#000");
-    const desiredStrokePx = this.sixteenthStrokePx;
-    const strokeAttr = desiredStrokePx / (INTERNAL_SCALE * OUTER_SCALE);
-    path.setAttribute("stroke-width", strokeAttr.toFixed(3));
-    path.setAttribute("stroke-linejoin", "round");
-    g2.appendChild(path);
-    g1.appendChild(g2);
-    outer.appendChild(g1);
-    svg.appendChild(outer);
+    path.setAttribute("d", "m 544.191,74.847 c -0.519,0.098 -0.918,0.457 -1.093,0.953 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.098,0.836 0.496,0.141 1.292,0.039 2.25,-0.277 0.14,-0.059 0.257,-0.102 0.257,-0.082 0,0.023 -0.894,2.93 -0.933,3.031 -0.102,0.258 -0.442,0.735 -0.739,1.035 -0.277,0.278 -0.418,0.34 -0.636,0.239 -0.18,-0.098 -0.239,-0.2 -0.36,-0.739 -0.101,-0.398 -0.179,-0.617 -0.339,-0.773 -0.418,-0.461 -1.137,-0.52 -1.692,-0.16 -0.262,0.179 -0.461,0.457 -0.578,0.758 -0.043,0.156 -0.043,0.199 -0.043,0.417 0,0.297 0.023,0.458 0.16,0.696 0.199,0.398 0.617,0.719 1.098,0.836 0.219,0.062 0.777,0.062 1.156,0 0.316,-0.059 0.695,-0.157 1.074,-0.278 0.16,-0.058 0.301,-0.097 0.301,-0.078 0,0 -1.953,6.356 -1.992,6.453 0,0.02 0.156,0.141 0.316,0.18 0.16,0.063 0.321,0.063 0.481,0 0.156,-0.039 0.316,-0.137 0.316,-0.199 0.02,-0.02 0.817,-3.027 1.793,-6.676 l 1.774,-6.633 -0.039,-0.058 c -0.079,-0.121 -0.239,-0.141 -0.379,-0.082 -0.079,0.039 -0.079,0.039 -0.317,0.398 -0.199,0.32 -0.48,0.656 -0.64,0.816 -0.219,0.18 -0.336,0.219 -0.536,0.141 -0.179,-0.098 -0.242,-0.199 -0.359,-0.738 -0.121,-0.535 -0.262,-0.778 -0.559,-0.977 -0.277,-0.179 -0.636,-0.238 -0.957,-0.156 z");
+    path.setAttribute("fill", "#000000");
+    group.appendChild(path);
+    svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
   drawThirtySecondRest(svg, x, y, dotted) {
-    this.drawRestStem(svg, x, y + this.stemTopOffset, y + this.stemBottomOffset);
-    this.drawDroplet(svg, x + 2, y - 6, 6, 4.5);
-    this.drawDroplet(svg, x + 2, y, 6, 4.5);
-    this.drawDroplet(svg, x + 2, y + 6, 6, 4.5);
+    const TARGET_HEIGHT = 28;
+    const SYMBOL_HEIGHT = 21;
+    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SYMBOL_CENTER_X = 554;
+    const SYMBOL_CENTER_Y = 76;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "m 553.789,69.863 c -0.516,0.101 -0.918,0.461 -1.094,0.957 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.218 0,0.3 0.043,0.418 0.137,0.441 0.418,0.777 0.856,0.976 0.297,0.16 0.437,0.18 0.855,0.18 0.52,0 0.957,-0.078 1.657,-0.297 0.179,-0.063 0.316,-0.102 0.316,-0.102 0.019,0 -0.16,0.7 -0.399,1.536 -0.296,1.175 -0.417,1.554 -0.457,1.671 -0.16,0.301 -0.5,0.758 -0.718,0.957 -0.2,0.18 -0.317,0.219 -0.516,0.141 -0.18,-0.098 -0.242,-0.199 -0.359,-0.738 -0.102,-0.399 -0.18,-0.617 -0.34,-0.778 -0.418,-0.457 -1.137,-0.515 -1.692,-0.156 -0.261,0.176 -0.46,0.457 -0.578,0.754 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.301 0.024,0.461 0.161,0.699 0.199,0.399 0.617,0.719 1.097,0.836 0.219,0.063 0.778,0.063 1.156,0 0.317,-0.058 0.696,-0.16 1.075,-0.277 0.179,-0.059 0.32,-0.102 0.32,-0.102 0,0.02 -0.797,3.051 -0.84,3.11 -0.156,0.34 -0.476,0.758 -0.715,0.996 -0.258,0.258 -0.398,0.301 -0.617,0.219 -0.18,-0.098 -0.242,-0.2 -0.359,-0.739 -0.102,-0.398 -0.18,-0.617 -0.34,-0.773 -0.418,-0.461 -1.137,-0.52 -1.692,-0.16 -0.261,0.179 -0.46,0.457 -0.578,0.758 -0.043,0.156 -0.043,0.199 -0.043,0.417 0,0.219 0,0.297 0.043,0.418 0.137,0.438 0.418,0.778 0.856,0.977 0.32,0.16 0.437,0.18 0.875,0.18 0.32,0 0.422,0 0.679,-0.043 0.36,-0.059 0.739,-0.176 1.157,-0.297 l 0.258,-0.102 v 0.063 c -0.02,0.078 -1.696,6.375 -1.715,6.414 -0.02,0.082 0.34,0.238 0.558,0.238 0.219,0 0.539,-0.137 0.559,-0.238 0.019,-0.02 0.976,-4.145 2.172,-9.164 2.133,-9.086 2.133,-9.106 2.094,-9.168 -0.063,-0.078 -0.161,-0.117 -0.282,-0.117 -0.14,0.019 -0.199,0.078 -0.34,0.316 -0.277,0.481 -0.597,0.898 -0.773,1.039 -0.121,0.078 -0.223,0.078 -0.379,0.02 -0.18,-0.102 -0.242,-0.2 -0.359,-0.739 -0.121,-0.539 -0.262,-0.777 -0.559,-0.976 -0.277,-0.18 -0.637,-0.238 -0.957,-0.16 z");
+    path.setAttribute("fill", "#000000");
+    group.appendChild(path);
+    svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
   drawSixtyFourthRest(svg, x, y, dotted) {
-    this.drawRestStem(svg, x, y + this.stemTopOffset, y + this.stemBottomOffset);
-    this.drawDroplet(svg, x + 2, y - 6, 6, 4.5);
-    this.drawDroplet(svg, x + 2, y, 6, 4.5);
-    this.drawDroplet(svg, x + 2, y + 6, 6, 4.5);
-    this.drawDroplet(svg, x + 2, y + 12, 6, 4.5);
-    if (dotted) this.drawDot(svg, x + 10, y - 2);
-  }
-  drawRestStem(svg, x, topY, bottomY) {
-    const stem = document.createElementNS(SVG_NS, "line");
-    stem.setAttribute("x1", String(x));
-    stem.setAttribute("y1", String(topY));
-    stem.setAttribute("x2", String(x));
-    stem.setAttribute("y2", String(bottomY));
-    stem.setAttribute("stroke", this.stroke);
-    stem.setAttribute("stroke-width", String(this.strokeThin));
-    stem.setAttribute("stroke-linecap", "round");
-    svg.appendChild(stem);
-  }
-  drawDroplet(svg, cx, cy, w = 4, h = 3) {
+    const TARGET_HEIGHT = 32;
+    const SYMBOL_HEIGHT = 52;
+    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SYMBOL_CENTER_X = 608;
+    const SYMBOL_CENTER_Y = 45;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
-    const d = `M ${cx},${cy}
-               c ${w / 3},${-h} ${w},${-h} ${w},0
-               c 0,${h} ${-w / 1.5},${h + 1} ${-w},${h + 1}
-               c ${-w / 3},${-1} ${-w / 3},${-h} 0,${-h + 1}
-               z`;
-    path.setAttribute("d", d.replace(/\s+/g, " "));
-    path.setAttribute("fill", "black");
-    svg.appendChild(path);
+    path.setAttribute("d", "m 608.27627,17.897034 c -0.9342,0.1818 -1.6524,0.8298 -1.9692,1.7226 -0.0774,0.288 -0.0774,0.3582 -0.0774,0.7524 0,0.3924 0,0.54 0.0774,0.7524 0.2466,0.7938 0.7524,1.3986 1.5408,1.7568 0.5688,0.288 0.7866,0.324 1.575,0.324 0.5418,0 0.7524,0 1.188,-0.0702 0.5688,-0.1062 1.3572,-0.324 1.9692,-0.5346 l 0.3942,-0.1476 -0.036,0.1476 c -0.0342,0.0702 -0.288,1.3212 -0.612,2.7558 -0.5688,2.511 -0.6048,2.6586 -0.7866,2.9808 -0.3942,0.8226 -0.963,1.611 -1.3644,1.8648 -0.2106,0.1404 -0.3942,0.1404 -0.6408,0.0342 -0.3222,-0.1764 -0.4356,-0.3582 -0.6462,-1.3284 -0.1836,-0.7182 -0.324,-1.1106 -0.612,-1.4004 -0.7524,-0.8226 -2.0466,-0.927 -3.051,-0.2808 -0.4644,0.3168 -0.8226,0.8226 -1.0332,1.3572 -0.0774,0.288 -0.0774,0.3582 -0.0774,0.7524 0,0.5418 0.0342,0.8298 0.288,1.2582 0.3582,0.7182 1.1106,1.2942 1.9764,1.5048 0.3924,0.1134 1.3986,0.1134 2.0808,0 0.5688,-0.1044 1.251,-0.288 1.9332,-0.4986 0.324,-0.1062 0.5418,-0.1836 0.576,-0.1836 0,0.036 -1.2222,5.4216 -1.2924,5.598 -0.2196,0.4644 -0.7884,1.3644 -1.2168,1.827 -0.4716,0.4302 -0.6822,0.5076 -1.0764,0.36 -0.324,-0.1764 -0.4356,-0.36 -0.6462,-1.3302 -0.1836,-0.7164 -0.324,-1.1106 -0.612,-1.3914 -0.7524,-0.8298 -2.0466,-0.936 -3.051,-0.288 -0.4644,0.3222 -0.8226,0.8226 -1.0422,1.3644 -0.0702,0.2808 -0.0702,0.3582 -0.0702,0.7506 0,0.5346 0.036,0.8244 0.2898,1.2528 0.3582,0.7164 1.1106,1.2942 1.9746,1.5048 0.9288,0.252 2.475,0.0414 4.2336,-0.5346 0.2448,-0.1062 0.4986,-0.1836 0.4986,-0.1836 0,0.0432 -0.288,1.224 -0.612,2.6928 -0.5346,2.511 -0.5688,2.6928 -0.7524,3.0096 -0.288,0.612 -0.927,1.4778 -1.3644,1.8702 -0.3582,0.324 -0.603,0.3942 -0.963,0.2466 -0.3222,-0.1764 -0.4356,-0.3582 -0.6462,-1.3212 -0.1836,-0.7182 -0.324,-1.1124 -0.612,-1.4004 -0.7524,-0.8298 -2.0466,-0.9342 -3.051,-0.288 -0.4644,0.324 -0.8226,0.8226 -1.0332,1.3644 -0.0774,0.288 -0.0774,0.3582 -0.0774,0.7524 0,0.5346 0.0342,0.8226 0.288,1.251 0.3582,0.7182 1.1106,1.2942 1.9746,1.512 0.9288,0.2466 2.7216,0 4.4802,-0.612 0.2178,-0.0702 0.3582,-0.1044 0.3582,-0.1044 0,0.0342 -2.511,11.2914 -2.6154,11.6496 0,0.0774 0.0342,0.1134 0.1746,0.1836 0.2196,0.1404 0.5778,0.2538 0.8298,0.2538 0.2466,0 0.6048,-0.1134 0.8226,-0.2538 0.1476,-0.0702 0.1836,-0.1062 0.2196,-0.288 0,-0.1062 1.8972,-9.5418 4.2318,-20.9826 3.6918,-18.4356 4.1562,-20.7972 4.1202,-20.8746 -0.1044,-0.1764 -0.2466,-0.2466 -0.4644,-0.2466 -0.3222,0 -0.3924,0.0702 -0.7164,0.6822 -0.4644,0.8928 -0.936,1.539 -1.2582,1.7928 -0.1764,0.1404 -0.36,0.1404 -0.6408,0.036 -0.3222,-0.1836 -0.4356,-0.36 -0.6462,-1.3302 -0.2178,-0.9702 -0.4716,-1.3986 -1.0062,-1.7568 -0.5058,-0.324 -1.1448,-0.4284 -1.7226,-0.288 z");
+    path.setAttribute("fill", "#000000");
+    group.appendChild(path);
+    svg.appendChild(group);
+    if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
   drawDot(svg, x, y) {
     const circle = document.createElementNS(SVG_NS, "circle");

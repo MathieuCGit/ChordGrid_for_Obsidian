@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Rest Visual Test - 32nd and 64th</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+        }
+        .rest-row {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 10px;
+            background: #fafafa;
+            border-radius: 4px;
+        }
+        .rest-label {
+            width: 150px;
+            font-weight: bold;
+            color: #555;
+        }
+        svg {
+            border: 1px solid #ddd;
+            background: white;
+            margin: 0 10px;
+        }
+        .staff-line {
+            stroke: #999;
+            stroke-width: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Visual Test: 32nd and 64th Rests</h1>
+    
+    <div class="test-section">
+        <h2>Current Implementation (From Code)</h2>
+        <div class="rest-row">
+            <div class="rest-label">8th rest (reference)</div>
+            <svg width="80" height="100" id="eighth-current"></svg>
+        </div>
+        <div class="rest-row">
+            <div class="rest-label">16th rest (reference)</div>
+            <svg width="80" height="100" id="sixteenth-current"></svg>
+        </div>
+        <div class="rest-row">
+            <div class="rest-label">32nd rest (current)</div>
+            <svg width="80" height="100" id="thirtysecond-current"></svg>
+        </div>
+        <div class="rest-row">
+            <div class="rest-label">64th rest (current)</div>
+            <svg width="80" height="100" id="sixtyfourth-current"></svg>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Alternative Approach: Simple Flag Extension</h2>
+        <div class="rest-row">
+            <div class="rest-label">32nd rest (v2)</div>
+            <svg width="80" height="100" id="thirtysecond-v2"></svg>
+        </div>
+        <div class="rest-row">
+            <div class="rest-label">64th rest (v2)</div>
+            <svg width="80" height="100" id="sixtyfourth-v2"></svg>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Alternative Approach: Scaled 16th Pattern</h2>
+        <div class="rest-row">
+            <div class="rest-label">32nd rest (v3)</div>
+            <svg width="80" height="100" id="thirtysecond-v3"></svg>
+        </div>
+        <div class="rest-row">
+            <div class="rest-label">64th rest (v3)</div>
+            <svg width="80" height="100" id="sixtyfourth-v3"></svg>
+        </div>
+    </div>
+
+    <script>
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+        
+        // Helper to add staff line
+        function addStaffLine(svg, y = 50) {
+            const line = document.createElementNS(SVG_NS, 'line');
+            line.setAttribute('x1', '0');
+            line.setAttribute('y1', y.toString());
+            line.setAttribute('x2', '80');
+            line.setAttribute('y2', y.toString());
+            line.setAttribute('class', 'staff-line');
+            svg.appendChild(line);
+        }
+
+        // 8th rest (Quaver) - from Music_rests.svg
+        function draw8thRest(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.8;
+            const H_TARGET = 52.62 * 0.6;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.55);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            const path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', 'm 531.098,74.847 c -0.52,0.098 -0.918,0.457 -1.098,0.953 -0.039,0.16 -0.039,0.199 -0.039,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.094,0.836 0.5,0.141 1.336,0.02 2.293,-0.297 l 0.238,-0.082 -1.176,3.25 -1.156,3.246 c 0,0 0.039,0.02 0.102,0.063 0.117,0.078 0.316,0.137 0.457,0.137 0.238,0 0.539,-0.137 0.578,-0.258 0,-0.039 0.558,-1.934 1.234,-4.184 l 1.195,-4.125 -0.039,-0.058 c -0.097,-0.121 -0.296,-0.16 -0.418,-0.063 -0.039,0.039 -0.101,0.121 -0.14,0.18 -0.18,0.301 -0.637,0.836 -0.875,1.035 -0.219,0.18 -0.34,0.199 -0.539,0.121 -0.18,-0.098 -0.239,-0.199 -0.36,-0.738 -0.117,-0.535 -0.257,-0.778 -0.558,-0.977 -0.278,-0.179 -0.637,-0.238 -0.953,-0.156 z');
+            path.setAttribute('fill', '#000');
+            path.setAttribute('stroke', '#000');
+            path.setAttribute('stroke-width', '0.6');
+            
+            g2.appendChild(path);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        // 16th rest (Semiquaver) - from Music_rests.svg
+        function draw16thRest(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.8;
+            const H_TARGET = 52.62 * 0.6;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.55);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            const path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', 'M 544.191,74.847 C 543.672,74.945 543.273,75.304 543.098,75.8 C 543.055,75.96 543.055,75.999 543.055,76.218 C 543.055,76.519 543.074,76.679 543.215,76.917 C 543.414,77.316 543.832,77.636 544.313,77.753 C 544.809,77.894 545.605,77.792 546.563,77.476 C 546.703,77.417 546.82,77.374 546.82,77.394 C 546.82,77.417 545.926,80.324 545.887,80.425 C 545.785,80.683 545.445,81.16 545.148,81.46 C 544.871,81.738 544.73,81.8 544.512,81.699 C 544.332,81.601 544.273,81.499 544.152,80.96 C 544.051,80.562 543.973,80.343 543.813,80.187 C 543.395,79.726 542.676,79.667 542.121,80.027 C 541.859,80.206 541.66,80.484 541.543,80.785 C 541.5,80.941 541.5,80.984 541.5,81.202 C 541.5,81.499 541.523,81.66 541.66,81.898 C 541.859,82.296 542.277,82.617 542.758,82.734 C 542.977,82.796 543.535,82.796 543.914,82.734 C 544.23,82.675 544.609,82.577 544.988,82.456 C 545.148,82.398 545.289,82.359 545.289,82.378 C 545.289,82.378 543.336,88.734 543.297,88.831 C 543.297,88.851 543.453,88.972 543.613,89.011 C 543.773,89.074 543.934,89.074 544.094,89.011 C 544.25,88.972 544.41,88.874 544.41,88.812 C 544.43,88.792 545.227,85.785 546.203,82.136 L 547.977,75.503 L 547.938,75.445 C 547.859,75.324 547.699,75.304 547.559,75.363 C 547.48,75.402 547.48,75.402 547.242,75.761 C 547.043,76.081 546.762,76.417 546.602,76.577 C 546.383,76.757 546.266,76.796 546.066,76.718 C 545.887,76.62 545.824,76.519 545.707,75.98 C 545.586,75.445 545.445,75.202 545.148,75.003 C 544.871,74.824 544.512,74.765 544.191,74.847 z ');
+            path.setAttribute('fill', '#000');
+            path.setAttribute('stroke', '#000');
+            const strokeAttr = 0.8 / (INTERNAL_SCALE * OUTER_SCALE);
+            path.setAttribute('stroke-width', strokeAttr.toFixed(3));
+            g2.appendChild(path);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        // Current 32nd rest (Demisemiquaver) - from Music_rests.svg
+        function draw32ndRestCurrent(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.8;
+            const H_TARGET = 52.62 * 0.70;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.52);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            const path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', 'M 553.789,69.863 C 553.273,69.964 552.871,70.324 552.695,70.82 C 552.652,70.98 552.652,71.019 552.652,71.238 C 552.652,71.456 552.652,71.538 552.695,71.656 C 552.832,72.097 553.113,72.433 553.551,72.632 C 553.848,72.792 553.988,72.812 554.406,72.812 C 554.926,72.812 555.363,72.734 556.063,72.515 C 556.242,72.452 556.379,72.413 556.379,72.413 C 556.398,72.413 556.219,73.113 555.98,73.949 C 555.684,75.124 555.563,75.503 555.523,75.62 C 555.363,75.921 555.023,76.378 554.805,76.577 C 554.605,76.757 554.488,76.796 554.289,76.718 C 554.109,76.62 554.047,76.519 553.93,75.98 C 553.828,75.581 553.75,75.363 553.59,75.202 C 553.172,74.745 552.453,74.687 551.898,75.046 C 551.637,75.222 551.438,75.503 551.32,75.8 C 551.277,75.96 551.277,75.999 551.277,76.218 C 551.277,76.519 551.301,76.679 551.438,76.917 C 551.637,77.316 552.055,77.636 552.535,77.753 C 552.754,77.816 553.313,77.816 553.691,77.753 C 554.008,77.695 554.387,77.593 554.766,77.476 C 554.945,77.417 555.086,77.374 555.086,77.374 C 555.086,77.394 554.289,80.425 554.246,80.484 C 554.09,80.824 553.77,81.242 553.531,81.48 C 553.273,81.738 553.133,81.781 552.914,81.699 C 552.734,81.601 552.672,81.499 552.555,80.96 C 552.453,80.562 552.375,80.343 552.215,80.187 C 551.797,79.726 551.078,79.667 550.523,80.027 C 550.262,80.206 550.063,80.484 549.945,80.785 C 549.902,80.941 549.902,80.984 549.902,81.202 C 549.902,81.421 549.902,81.499 549.945,81.62 C 550.082,82.058 550.363,82.398 550.801,82.597 C 551.121,82.757 551.238,82.777 551.676,82.777 C 551.996,82.777 552.098,82.777 552.355,82.734 C 552.715,82.675 553.094,82.558 553.512,82.437 L 553.77,82.335 L 553.77,82.398 C 553.75,82.476 552.074,88.773 552.055,88.812 C 552.035,88.894 552.395,89.05 552.613,89.05 C 552.832,89.05 553.152,88.913 553.172,88.812 C 553.191,88.792 554.148,84.667 555.344,79.648 C 557.477,70.562 557.477,70.542 557.438,70.48 C 557.375,70.402 557.277,70.363 557.156,70.363 C 557.016,70.382 556.957,70.441 556.816,70.679 C 556.539,71.16 556.219,71.577 556.043,71.718 C 555.922,71.796 555.82,71.796 555.664,71.738 C 555.484,71.636 555.422,71.538 555.305,70.999 C 555.184,70.46 555.043,70.222 554.746,70.023 C 554.469,69.843 554.109,69.785 553.789,69.863 z');
+            path.setAttribute('fill', '#000');
+            path.setAttribute('stroke', '#000');
+            path.setAttribute('stroke-width', '0.6');
+            
+            g2.appendChild(path);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        // Current 64th rest (Hemidemisemiquaver) - from Music_rests.svg
+        function draw64thRestCurrent(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.8;
+            const H_TARGET = 52.62 * 0.85;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.48);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            const path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', 'M 568.191,65.847 C 567.673,65.964 567.271,66.324 567.095,66.82 C 567.052,66.98 567.052,67.019 567.052,67.238 C 567.052,67.456 567.052,67.538 567.095,67.656 C 567.232,68.097 567.513,68.433 567.951,68.632 C 568.248,68.792 568.388,68.812 568.806,68.812 C 569.326,68.812 569.763,68.734 570.463,68.515 C 570.642,68.452 570.779,68.413 570.779,68.413 C 570.798,68.413 570.619,69.113 570.38,69.949 C 570.084,71.124 569.963,71.503 569.923,71.62 C 569.763,71.921 569.423,72.378 569.205,72.577 C 569.005,72.757 568.888,72.796 568.689,72.718 C 568.509,72.62 568.447,72.519 568.33,71.98 C 568.228,71.581 568.15,71.363 567.99,71.202 C 567.572,70.745 566.853,70.687 566.298,71.046 C 566.037,71.222 565.838,71.503 565.72,71.8 C 565.677,71.96 565.677,71.999 565.677,72.218 C 565.677,72.519 565.701,72.679 565.838,72.917 C 566.037,73.316 566.455,73.636 566.935,73.753 C 567.154,73.816 567.713,73.816 568.091,73.753 C 568.408,73.695 568.787,73.593 569.166,73.476 C 569.345,73.417 569.486,73.374 569.486,73.374 C 569.486,73.394 568.689,76.425 568.646,76.484 C 568.49,76.824 568.17,77.242 567.931,77.48 C 567.673,77.738 567.533,77.781 567.314,77.699 C 567.134,77.601 567.072,77.499 566.955,76.96 C 566.853,76.562 566.775,76.343 566.615,76.187 C 566.197,75.726 565.478,75.667 564.923,76.027 C 564.662,76.206 564.463,76.484 564.345,76.785 C 564.302,76.941 564.302,76.984 564.302,77.202 C 564.302,77.421 564.302,77.499 564.345,77.62 C 564.482,78.058 564.763,78.398 565.201,78.597 C 565.521,78.757 565.638,78.777 566.076,78.777 C 566.396,78.777 566.498,78.777 566.755,78.734 C 567.115,78.675 567.494,78.558 567.912,78.437 L 568.17,78.335 L 568.17,78.398 C 568.15,78.476 566.474,84.773 566.455,84.812 C 566.435,84.894 566.795,85.05 567.013,85.05 C 567.232,85.05 567.552,84.913 567.572,84.812 C 567.591,84.792 568.4,81.2 569.1,76.8 C 569.5,74.2 569.8,71.95 570.05,69.9 C 570.3,67.85 570.5,66.15 570.7,64.8 C 571.877,56.562 571.877,56.542 571.838,56.48 C 571.775,56.402 571.677,56.363 571.556,56.363 C 571.416,56.382 571.357,56.441 571.216,56.679 C 570.939,57.16 570.619,57.577 570.443,57.718 C 570.322,57.796 570.22,57.796 570.064,57.738 C 569.884,57.636 569.822,57.538 569.705,56.999 C 569.584,56.46 569.443,56.222 569.146,56.023 C 568.869,55.843 568.509,55.785 568.191,55.863 z');
+            path.setAttribute('fill', '#000');
+            path.setAttribute('stroke', '#000');
+            path.setAttribute('stroke-width', '0.6');
+
+            g2.appendChild(path);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        // V2: Simple approach - extract droplet from 16th rest and duplicate
+        function draw32ndRestV2(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.8;
+            const H_TARGET = 52.62 * 0.70;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.50);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            // Complete path with stem + 3 droplets (extended from 16th rest)
+            const path1 = document.createElementNS(SVG_NS, 'path');
+            path1.setAttribute('d', 'M 544.191,74.847 C 543.672,74.945 543.273,75.304 543.098,75.8 C 543.055,75.96 543.055,75.999 543.055,76.218 C 543.055,76.519 543.074,76.679 543.215,76.917 C 543.414,77.316 543.832,77.636 544.313,77.753 C 544.809,77.894 545.605,77.792 546.563,77.476 C 546.703,77.417 546.82,77.374 546.82,77.394 C 546.82,77.417 545.926,80.324 545.887,80.425 C 545.785,80.683 545.445,81.16 545.148,81.46 C 544.871,81.738 544.73,81.8 544.512,81.699 C 544.332,81.601 544.273,81.499 544.152,80.96 C 544.051,80.562 543.973,80.343 543.813,80.187 C 543.395,79.726 542.676,79.667 542.121,80.027 C 541.859,80.206 541.66,80.484 541.543,80.785 C 541.5,80.941 541.5,80.984 541.5,81.202 C 541.5,81.499 541.523,81.66 541.66,81.898 C 541.859,82.296 542.277,82.617 542.758,82.734 C 542.977,82.796 543.535,82.796 543.914,82.734 C 544.23,82.675 544.609,82.577 544.988,82.456 C 545.148,82.398 545.289,82.359 545.289,82.378 C 545.289,82.378 544.4,85.2 544.35,85.35 C 544.25,85.5 544.05,85.85 543.85,86.15 C 543.65,86.4 543.53,86.45 543.35,86.35 C 543.2,86.27 543.15,86.18 543.05,85.7 C 542.97,85.35 542.9,85.15 542.76,85.01 C 542.39,84.6 541.75,84.55 541.25,84.87 C 541.02,85.03 540.85,85.28 540.75,85.55 C 540.71,85.69 540.71,85.73 540.71,85.93 C 540.71,86.2 540.73,86.35 540.85,86.57 C 541.03,86.93 541.4,87.22 541.84,87.33 C 542.04,87.38 542.55,87.38 542.9,87.33 C 543.19,87.28 543.54,87.19 543.89,87.08 C 544.04,87.03 544.17,87.0 544.17,87.02 C 544.17,87.02 542.5,92.5 542.5,92.5 C 542.5,92.52 542.64,92.63 542.78,92.67 C 542.93,92.72 543.08,92.72 543.22,92.67 C 543.36,92.63 543.51,92.54 543.51,92.49 C 543.52,92.47 544.2,89.8 545.1,86.5 L 546.7,80.3 L 546.67,80.25 C 546.6,80.14 546.45,80.12 546.32,80.17 C 546.25,80.21 546.25,80.21 546.03,80.54 C 545.85,80.84 545.59,81.15 545.44,81.3 C 545.24,81.47 545.14,81.5 544.96,81.43 C 544.8,81.34 544.74,81.25 544.64,80.75 C 544.54,80.25 544.41,80.02 544.13,79.83 C 543.88,79.66 543.54,79.61 543.24,79.68 z ');
+            path1.setAttribute('fill', '#000');
+            path1.setAttribute('stroke', '#000');
+            path1.setAttribute('stroke-width', '0.6');
+
+            g2.appendChild(path1);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        function draw64thRestV2(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.8;
+            const H_TARGET = 52.62 * 0.80;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.48);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            // Complete path with stem + 4 droplets (extended from 16th rest)
+            const path1 = document.createElementNS(SVG_NS, 'path');
+            path1.setAttribute('d', 'M 544.191,74.847 C 543.672,74.945 543.273,75.304 543.098,75.8 C 543.055,75.96 543.055,75.999 543.055,76.218 C 543.055,76.519 543.074,76.679 543.215,76.917 C 543.414,77.316 543.832,77.636 544.313,77.753 C 544.809,77.894 545.605,77.792 546.563,77.476 C 546.703,77.417 546.82,77.374 546.82,77.394 C 546.82,77.417 545.926,80.324 545.887,80.425 C 545.785,80.683 545.445,81.16 545.148,81.46 C 544.871,81.738 544.73,81.8 544.512,81.699 C 544.332,81.601 544.273,81.499 544.152,80.96 C 544.051,80.562 543.973,80.343 543.813,80.187 C 543.395,79.726 542.676,79.667 542.121,80.027 C 541.859,80.206 541.66,80.484 541.543,80.785 C 541.5,80.941 541.5,80.984 541.5,81.202 C 541.5,81.499 541.523,81.66 541.66,81.898 C 541.859,82.296 542.277,82.617 542.758,82.734 C 542.977,82.796 543.535,82.796 543.914,82.734 C 544.23,82.675 544.609,82.577 544.988,82.456 C 545.148,82.398 545.289,82.359 545.289,82.378 C 545.289,82.378 544.4,85.2 544.35,85.35 C 544.25,85.5 544.05,85.85 543.85,86.15 C 543.65,86.4 543.53,86.45 543.35,86.35 C 543.2,86.27 543.15,86.18 543.05,85.7 C 542.97,85.35 542.9,85.15 542.76,85.01 C 542.39,84.6 541.75,84.55 541.25,84.87 C 541.02,85.03 540.85,85.28 540.75,85.55 C 540.71,85.69 540.71,85.73 540.71,85.93 C 540.71,86.2 540.73,86.35 540.85,86.57 C 541.03,86.93 541.4,87.22 541.84,87.33 C 542.04,87.38 542.55,87.38 542.9,87.33 C 543.19,87.28 543.54,87.19 543.89,87.08 C 544.04,87.03 544.17,87.0 544.17,87.02 C 544.17,87.02 543.5,89.2 543.45,89.35 C 543.35,89.5 543.15,89.85 542.95,90.15 C 542.75,90.4 542.63,90.45 542.45,90.35 C 542.3,90.27 542.25,90.18 542.15,89.7 C 542.07,89.35 542.0,89.15 541.86,89.01 C 541.49,88.6 540.85,88.55 540.35,88.87 C 540.12,89.03 539.95,89.28 539.85,89.55 C 539.81,89.69 539.81,89.73 539.81,89.93 C 539.81,90.2 539.83,90.35 539.95,90.57 C 540.13,90.93 540.5,91.22 540.94,91.33 C 541.14,91.38 541.65,91.38 542.0,91.33 C 542.29,91.28 542.64,91.19 542.99,91.08 C 543.14,91.03 543.27,91.0 543.27,91.02 C 543.27,91.02 541.0,98.5 541.0,98.5 C 541.0,98.52 541.14,98.63 541.28,98.67 C 541.43,98.72 541.58,98.72 541.72,98.67 C 541.86,98.63 542.01,98.54 542.01,98.49 C 542.02,98.47 542.7,95.8 543.6,92.5 L 545.2,86.3 L 545.17,86.25 C 545.1,86.14 544.95,86.12 544.82,86.17 C 544.75,86.21 544.75,86.21 544.53,86.54 C 544.35,86.84 544.09,87.15 543.94,87.3 C 543.74,87.47 543.64,87.5 543.46,87.43 C 543.3,87.34 543.24,87.25 543.14,86.75 C 543.04,86.25 542.91,86.02 542.63,85.83 C 542.38,85.66 542.04,85.61 541.74,85.68 z ');
+            path1.setAttribute('fill', '#000');
+            path1.setAttribute('stroke', '#000');
+            path1.setAttribute('stroke-width', '0.6');
+
+            g2.appendChild(path1);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        // V3: Replicate and offset 16th rest flags
+        function draw32ndRestV3(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            // Use base 16th rest scaled down slightly and add one extra flag
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.6;
+            const H_TARGET = 52.62 * 0.65;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.5);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            // Original 16th path (2 flags)
+            const path1 = document.createElementNS(SVG_NS, 'path');
+            path1.setAttribute('d', 'M 544.191,74.847 C 543.672,74.945 543.273,75.304 543.098,75.8 C 543.055,75.96 543.055,75.999 543.055,76.218 C 543.055,76.519 543.074,76.679 543.215,76.917 C 543.414,77.316 543.832,77.636 544.313,77.753 C 544.809,77.894 545.605,77.792 546.563,77.476 C 546.703,77.417 546.82,77.374 546.82,77.394 C 546.82,77.417 545.926,80.324 545.887,80.425 C 545.785,80.683 545.445,81.16 545.148,81.46 C 544.871,81.738 544.73,81.8 544.512,81.699 C 544.332,81.601 544.273,81.499 544.152,80.96 C 544.051,80.562 543.973,80.343 543.813,80.187 C 543.395,79.726 542.676,79.667 542.121,80.027 C 541.859,80.206 541.66,80.484 541.543,80.785 C 541.5,80.941 541.5,80.984 541.5,81.202 C 541.5,81.499 541.523,81.66 541.66,81.898 C 541.859,82.296 542.277,82.617 542.758,82.734 C 542.977,82.796 543.535,82.796 543.914,82.734 C 544.23,82.675 544.609,82.577 544.988,82.456 C 545.148,82.398 545.289,82.359 545.289,82.378 C 545.289,82.378 543.336,88.734 543.297,88.831 C 543.297,88.851 543.453,88.972 543.613,89.011 C 543.773,89.074 543.934,89.074 544.094,89.011 C 544.25,88.972 544.41,88.874 544.41,88.812 C 544.43,88.792 545.227,85.785 546.203,82.136 L 547.977,75.503 L 547.938,75.445 C 547.859,75.324 547.699,75.304 547.559,75.363 C 547.48,75.402 547.48,75.402 547.242,75.761 C 547.043,76.081 546.762,76.417 546.602,76.577 C 546.383,76.757 546.266,76.796 546.066,76.718 C 545.887,76.62 545.824,76.519 545.707,75.98 C 545.586,75.445 545.445,75.202 545.148,75.003 C 544.871,74.824 544.512,74.765 544.191,74.847 z ');
+            path1.setAttribute('fill', '#000');
+            path1.setAttribute('stroke', '#000');
+            path1.setAttribute('stroke-width', '0.6');
+            
+            // Third flag - replicate bottom flag shape offset down
+            const path2 = document.createElementNS(SVG_NS, 'path');
+            path2.setAttribute('d', 'M 544.191,89.5 C 544.191,89.5 545.5,88.5 546.563,89.0 C 546.703,89.05 546.82,89.1 546.82,89.12 C 546.82,89.15 546.5,89.8 546.45,89.9');
+            path2.setAttribute('fill', 'none');
+            path2.setAttribute('stroke', '#000');
+            path2.setAttribute('stroke-width', '1.2');
+            path2.setAttribute('stroke-linecap', 'round');
+
+            g2.appendChild(path1);
+            g2.appendChild(path2);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        function draw64thRestV3(svgId) {
+            const svg = document.getElementById(svgId);
+            addStaffLine(svg);
+            const x = 40, y = 50;
+            
+            const BASE_W = 12.66, BASE_H = 26.65, INTERNAL_SCALE = 1.6;
+            const H_TARGET = 52.62 * 0.70;
+            const OUTER_SCALE = H_TARGET / (BASE_H * INTERNAL_SCALE);
+            const widthPx = BASE_W * INTERNAL_SCALE * OUTER_SCALE;
+            const heightPx = H_TARGET;
+            const translateX = x - widthPx / 2;
+            const translateY = y - (heightPx * 0.48);
+
+            const outer = document.createElementNS(SVG_NS, 'g');
+            outer.setAttribute('transform', `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${OUTER_SCALE})`);
+            const g1 = document.createElementNS(SVG_NS, 'g');
+            g1.setAttribute('transform', 'translate(-481.99253,-144.99198)');
+            const g2 = document.createElementNS(SVG_NS, 'g');
+            g2.setAttribute('transform', `matrix(${INTERNAL_SCALE},0,0,${INTERNAL_SCALE},-492.20747,10.83713)`);
+            
+            const path1 = document.createElementNS(SVG_NS, 'path');
+            path1.setAttribute('d', 'M 544.191,74.847 C 543.672,74.945 543.273,75.304 543.098,75.8 C 543.055,75.96 543.055,75.999 543.055,76.218 C 543.055,76.519 543.074,76.679 543.215,76.917 C 543.414,77.316 543.832,77.636 544.313,77.753 C 544.809,77.894 545.605,77.792 546.563,77.476 C 546.703,77.417 546.82,77.374 546.82,77.394 C 546.82,77.417 545.926,80.324 545.887,80.425 C 545.785,80.683 545.445,81.16 545.148,81.46 C 544.871,81.738 544.73,81.8 544.512,81.699 C 544.332,81.601 544.273,81.499 544.152,80.96 C 544.051,80.562 543.973,80.343 543.813,80.187 C 543.395,79.726 542.676,79.667 542.121,80.027 C 541.859,80.206 541.66,80.484 541.543,80.785 C 541.5,80.941 541.5,80.984 541.5,81.202 C 541.5,81.499 541.523,81.66 541.66,81.898 C 541.859,82.296 542.277,82.617 542.758,82.734 C 542.977,82.796 543.535,82.796 543.914,82.734 C 544.23,82.675 544.609,82.577 544.988,82.456 C 545.148,82.398 545.289,82.359 545.289,82.378 C 545.289,82.378 543.336,88.734 543.297,88.831 C 543.297,88.851 543.453,88.972 543.613,89.011 C 543.773,89.074 543.934,89.074 544.094,89.011 C 544.25,88.972 544.41,88.874 544.41,88.812 C 544.43,88.792 545.227,85.785 546.203,82.136 L 547.977,75.503 L 547.938,75.445 C 547.859,75.324 547.699,75.304 547.559,75.363 C 547.48,75.402 547.48,75.402 547.242,75.761 C 547.043,76.081 546.762,76.417 546.602,76.577 C 546.383,76.757 546.266,76.796 546.066,76.718 C 545.887,76.62 545.824,76.519 545.707,75.98 C 545.586,75.445 545.445,75.202 545.148,75.003 C 544.871,74.824 544.512,74.765 544.191,74.847 z ');
+            path1.setAttribute('fill', '#000');
+            path1.setAttribute('stroke', '#000');
+            path1.setAttribute('stroke-width', '0.6');
+            
+            const path2 = document.createElementNS(SVG_NS, 'path');
+            path2.setAttribute('d', 'M 544.191,89.5 C 544.191,89.5 545.5,88.5 546.563,89.0 C 546.703,89.05 546.82,89.1 546.82,89.12 C 546.82,89.15 546.5,89.8 546.45,89.9');
+            path2.setAttribute('fill', 'none');
+            path2.setAttribute('stroke', '#000');
+            path2.setAttribute('stroke-width', '1.2');
+            path2.setAttribute('stroke-linecap', 'round');
+
+            const path3 = document.createElementNS(SVG_NS, 'path');
+            path3.setAttribute('d', 'M 544.191,96.0 C 544.191,96.0 545.5,95.0 546.563,95.5 C 546.703,95.55 546.82,95.6 546.82,95.62 C 546.82,95.65 546.5,96.3 546.45,96.4');
+            path3.setAttribute('fill', 'none');
+            path3.setAttribute('stroke', '#000');
+            path3.setAttribute('stroke-width', '1.2');
+            path3.setAttribute('stroke-linecap', 'round');
+
+            g2.appendChild(path1);
+            g2.appendChild(path2);
+            g2.appendChild(path3);
+            g1.appendChild(g2);
+            outer.appendChild(g1);
+            svg.appendChild(outer);
+        }
+
+        // Draw all tests
+        draw8thRest('eighth-current');
+        draw16thRest('sixteenth-current');
+        draw32ndRestCurrent('thirtysecond-current');
+        draw64thRestCurrent('sixtyfourth-current');
+        draw32ndRestV2('thirtysecond-v2');
+        draw64thRestV2('sixtyfourth-v2');
+        draw32ndRestV3('thirtysecond-v3');
+        draw64thRestV3('sixtyfourth-v3');
+    </script>
+</body>
+</html>

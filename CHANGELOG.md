@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- Updated README with troubleshooting, glossary, testing, and roadmap
+- Synchronized English/French docs (sections and examples)
+- Clarified analyzer feature flag instructions and cross-segment beaming
+- Aligned package.json license to GPL-3.0 to match LICENSE and docs
+
 ### 🚧 v2.0.0 Architecture Refactoring in Progress
 **Note**: Major refactoring toward clean Parser → Analyzer → Renderer architecture.
 - See `REFACTORING_PLAN.md` for details
