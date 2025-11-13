@@ -1834,6 +1834,42 @@ var SVGRenderer = class {
       lineAccumulated[lineIndex] += mWidth;
     });
     DebugLogger.log("\u{1F3B5} Note positions collected", { count: notePositions.length });
+    DebugLogger.log("\u{1F527} Post-processing tie markers for automatic line breaks");
+    for (let i = 0; i < notePositions.length - 1; i++) {
+      const cur = notePositions[i];
+      if (cur.tieStart && !cur.tieToVoid) {
+        let crossesLine = false;
+        let foundEnd = false;
+        for (let j = i + 1; j < notePositions.length; j++) {
+          const candidate = notePositions[j];
+          const curMeasurePos = measurePositions.find((mp) => mp.globalIndex === cur.measureIndex);
+          const candMeasurePos = measurePositions.find((mp) => mp.globalIndex === candidate.measureIndex);
+          if (curMeasurePos && candMeasurePos && curMeasurePos.lineIndex !== candMeasurePos.lineIndex) {
+            crossesLine = true;
+          }
+          if (candidate.tieEnd || candidate.tieFromVoid) {
+            foundEnd = true;
+            if (crossesLine) {
+              DebugLogger.log(`\u{1F527} Detected cross-line tie at note ${i}`, {
+                from: { measure: cur.measureIndex, line: curMeasurePos == null ? void 0 : curMeasurePos.lineIndex },
+                to: { measure: candidate.measureIndex, line: candMeasurePos == null ? void 0 : candMeasurePos.lineIndex }
+              });
+              cur.tieToVoid = true;
+              if (!candidate.tieFromVoid) {
+                candidate.tieFromVoid = true;
+              }
+            }
+            break;
+          }
+        }
+        if (!foundEnd && crossesLine) {
+          DebugLogger.log(`\u{1F527} Detected incomplete cross-line tie at note ${i}`, {
+            measure: cur.measureIndex
+          });
+          cur.tieToVoid = true;
+        }
+      }
+    }
     this.detectAndDrawTies(svg, notePositions, width, tieManager);
     return svg;
   }

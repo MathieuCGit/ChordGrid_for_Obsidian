@@ -248,6 +248,65 @@ export class SVGRenderer {
 
   DebugLogger.log('🎵 Note positions collected', { count: notePositions.length });
   
+    // Post-process tie markers to handle automatic line breaks
+    // The parser only marks tieToVoid/tieFromVoid based on explicit \n in input,
+    // but the renderer may add automatic line breaks based on width constraints.
+    // We need to detect when a tie crosses such a boundary and update the markers.
+    DebugLogger.log('🔧 Post-processing tie markers for automatic line breaks');
+    
+    for (let i = 0; i < notePositions.length - 1; i++) {
+      const cur = notePositions[i];
+      
+      // If current note has tieStart but no tieToVoid marker
+      if (cur.tieStart && !cur.tieToVoid) {
+        // Check if we're crossing a line boundary before finding the matching tieEnd
+        let crossesLine = false;
+        let foundEnd = false;
+        
+        for (let j = i + 1; j < notePositions.length; j++) {
+          const candidate = notePositions[j];
+          
+          // Check if line index changes (indicates line break)
+          const curMeasurePos = measurePositions.find(mp => mp.globalIndex === cur.measureIndex);
+          const candMeasurePos = measurePositions.find(mp => mp.globalIndex === candidate.measureIndex);
+          
+          if (curMeasurePos && candMeasurePos && curMeasurePos.lineIndex !== candMeasurePos.lineIndex) {
+            crossesLine = true;
+          }
+          
+          // Found the matching tieEnd or tieFromVoid
+          if (candidate.tieEnd || candidate.tieFromVoid) {
+            foundEnd = true;
+            
+            if (crossesLine) {
+              // This tie crosses a line boundary - mark it appropriately
+              DebugLogger.log(`🔧 Detected cross-line tie at note ${i}`, {
+                from: { measure: cur.measureIndex, line: curMeasurePos?.lineIndex },
+                to: { measure: candidate.measureIndex, line: candMeasurePos?.lineIndex }
+              });
+              
+              // Mark current note as tieToVoid (continues beyond this line)
+              cur.tieToVoid = true;
+              
+              // Mark target note as tieFromVoid (comes from previous line)
+              if (!candidate.tieFromVoid) {
+                candidate.tieFromVoid = true;
+              }
+            }
+            break;
+          }
+        }
+        
+        // If we never found a matching end and we cross lines, mark as tieToVoid
+        if (!foundEnd && crossesLine) {
+          DebugLogger.log(`🔧 Detected incomplete cross-line tie at note ${i}`, {
+            measure: cur.measureIndex
+          });
+          cur.tieToVoid = true;
+        }
+      }
+    }
+  
   // draw ties using collected notePositions and the TieManager for cross-line ties
   this.detectAndDrawTies(svg, notePositions, width, tieManager);
 
