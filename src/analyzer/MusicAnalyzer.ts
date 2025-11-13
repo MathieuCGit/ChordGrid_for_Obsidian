@@ -124,6 +124,16 @@ export class MusicAnalyzer {
     }
     if (beamableIdxs.length === 0) return beamGroups;
 
+    DebugLogger.log('🎵 Analyzing beams', {
+      totalBeamable: beamableIdxs.length,
+      notes: beamableIdxs.map(idx => ({
+        index: idx,
+        segmentIndex: allNotes[idx].segmentIndex,
+        value: allNotes[idx].value,
+        absoluteIndex: allNotes[idx].absoluteIndex
+      }))
+    });
+
     // 2) Split into segments separated by hard breaks (beat boundary or segment leadingSpace)
     const segments: number[][] = [];
     let seg: number[] = [beamableIdxs[0]];
@@ -138,6 +148,11 @@ export class MusicAnalyzer {
       }
     }
     if (seg.length) segments.push(seg);
+
+    DebugLogger.log('🎵 Beam segments after hard breaks', {
+      segmentCount: segments.length,
+      segments: segments.map(s => s.map(idx => allNotes[idx].absoluteIndex))
+    });
 
     // 3) For each segment, compute block levels between adjacent notes (rests-in-between)
     for (const noteIndices of segments) {
@@ -316,13 +331,27 @@ export class MusicAnalyzer {
   }
 
   private isHardBreakBetween(a: NoteWithPosition, b: NoteWithPosition, measure: ParsedMeasure): boolean {
-    // Beat boundary
-    if ((a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) return true;
+    // Beat boundary within same segment
+    if (a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) {
+      DebugLogger.log('🔍 Beat boundary within segment', {
+        fromBeat: a.beatIndex,
+        toBeat: b.beatIndex,
+        segment: a.segmentIndex
+      });
+      return true;
+    }
+    
     // Segment boundary with leadingSpace
     if (b.segmentIndex > a.segmentIndex) {
       const nextSegment = measure.segments[b.segmentIndex];
+      DebugLogger.log('🔍 Checking segment boundary', {
+        fromSegment: a.segmentIndex,
+        toSegment: b.segmentIndex,
+        nextSegmentHasLeadingSpace: nextSegment.leadingSpace
+      });
       return !!nextSegment.leadingSpace;
     }
+    
     return false;
   }
   
