@@ -348,11 +348,14 @@ export class SVGRenderer {
               // This tie crosses a line boundary!
               DebugLogger.log(`🔧 Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
               
+              // Mark the start note as tieToVoid
               cur.tieToVoid = true;
               // If target already has tieFromVoid, keep it; otherwise set it
               if (!target.tieFromVoid) {
                 target.tieFromVoid = true;
               }
+              // Clear the normal tieStart flag to avoid double drawing
+              cur.tieStart = false;
             }
             break; // Found the matching target, stop searching
           }
@@ -441,12 +444,25 @@ export class SVGRenderer {
         startY = cur.y - 8;
       }
 
-      if (cur.tieStart) {
-        DebugLogger.log(`Found tieStart at index ${i}`, { 
+      if (cur.tieStart || cur.tieToVoid) {
+        DebugLogger.log(`Found tieStart/tieToVoid at index ${i}`, { 
           measure: cur.measureIndex, 
           chord: cur.chordIndex, 
-          beat: cur.beatIndex 
+          beat: cur.beatIndex,
+          tieStart: cur.tieStart,
+          tieToVoid: cur.tieToVoid
         });
+        
+        // If already marked as tieToVoid by post-processing, draw half-tie immediately
+        if (cur.tieToVoid) {
+          DebugLogger.log(`Drawing tieToVoid for index ${i} (post-processed)`);
+          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
+          matched.add(i);
+          continue;
+        }
+        
+        // Otherwise, it's a normal tieStart - search for matching tieEnd
         
         // search for a direct tieEnd after i
         let found = -1;
@@ -484,26 +500,36 @@ export class SVGRenderer {
         }
 
         if (foundFromVoid >= 0) {
-          DebugLogger.log(`✅ Matched cross-line tieStart[${i}] with tieFromVoid[${foundFromVoid}] — drawing half to measure edge and deferring start-of-line half`);
-          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
-          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
-          matched.add(i);
-          // Do not mark the tieFromVoid as matched here; let the start-of-line branch resolve pending and draw the second half
+          const tgt = notePositions[foundFromVoid];
+          // Determine if this pair crosses a visual line
+          const curMP = measurePositions.find(mp => mp.globalIndex === cur.measureIndex);
+          const tgtMP = measurePositions.find(mp => mp.globalIndex === tgt.measureIndex);
+          const crossesLine = !!(curMP && tgtMP && curMP.lineIndex !== tgtMP.lineIndex);
+
+          if (crossesLine) {
+            DebugLogger.log(`✅ Matched cross-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] — split into two halves`);
+            const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+            tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
+            matched.add(i);
+            // Don't mark the target to allow the start-of-line branch to draw the second half
+          } else {
+            DebugLogger.log(`✅ Matched same-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] — drawing full curve`);
+            const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
+            let endY: number;
+            if (tgt.headLeftX !== undefined) {
+              const halfT = Math.abs(tgt.headLeftX - tgt.x);
+              endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+            } else {
+              endY = tgt.y - 8;
+            }
+            drawCurve(startX, startY, endX, endY, false);
+            matched.add(i);
+            matched.add(foundFromVoid);
+          }
           continue;
         }
 
-        DebugLogger.log(`No tieFromVoid found, checking tieToVoid flag`);
-        
-        // still no match: if this ties-to-void, draw half-tie to margin and register pending
-        if (cur.tieToVoid) {
-          DebugLogger.log(`Drawing tieToVoid for index ${i}`);
-          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
-          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
-          matched.add(i);
-          continue;
-        }
-        
-        DebugLogger.warn(`tieStart[${i}] has no match and no tieToVoid flag`);
+        DebugLogger.log(`No tieFromVoid found, already handled or no match`);
       }
 
       // If this note marks the start of a tie from the previous line
