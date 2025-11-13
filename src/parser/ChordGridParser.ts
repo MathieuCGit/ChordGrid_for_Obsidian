@@ -63,7 +63,7 @@ export class ChordGridParser {
       
       // Marquer la dernière mesure de chaque ligne
       if (measures.length > 0 && lineIndex < lines.length - 1) {
-        measures[measures.length - 1].lineBreakAfter = true;
+        measures[measures.length - 1].isLineBreak = true;
       }
       
       allMeasures.push(...measures);
@@ -153,7 +153,7 @@ export class ChordGridParser {
         segments,
         timeSignature: result.grid.timeSignature,
         barline: m.barline,
-        lineBreakAfter: m.lineBreakAfter,
+        isLineBreak: m.isLineBreak,
         source: m.source,
       } as AnalyzerParsedMeasure;
     });
@@ -289,7 +289,7 @@ export class ChordGridParser {
         chord: firstChord,  // garder pour compatibilité
         chordSegments,     // nouvelle propriété pour tous les accords
         barline: bar,
-        lineBreakAfter: false,
+        isLineBreak: false,
         source: anySource || text
       });
     }

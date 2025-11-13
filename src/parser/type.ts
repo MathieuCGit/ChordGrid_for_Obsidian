@@ -131,7 +131,7 @@ export interface Measure {
   beats: Beat[];
   chord: string;
   barline: BarlineType;
-  lineBreakAfter: boolean;
+  isLineBreak: boolean;
   chordSegments: ChordSegment[];
   source?: string;
 }

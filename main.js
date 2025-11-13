@@ -156,7 +156,7 @@ var ChordGridParser = class {
       const line = lines[lineIndex];
       const measures = this.parseLine(line, lineIndex === 0);
       if (measures.length > 0 && lineIndex < lines.length - 1) {
-        measures[measures.length - 1].lineBreakAfter = true;
+        measures[measures.length - 1].isLineBreak = true;
       }
       allMeasures.push(...measures);
     }
@@ -232,7 +232,7 @@ var ChordGridParser = class {
         segments,
         timeSignature: result.grid.timeSignature,
         barline: m.barline,
-        lineBreakAfter: m.lineBreakAfter,
+        isLineBreak: m.isLineBreak,
         source: m.source
       };
     });
@@ -325,7 +325,7 @@ var ChordGridParser = class {
         chordSegments,
         // nouvelle propriété pour tous les accords
         barline: bar,
-        lineBreakAfter: false,
+        isLineBreak: false,
         source: anySource || text
       });
     }
@@ -1786,7 +1786,7 @@ var SVGRenderer = class {
             segments,
             timeSignature: grid.timeSignature,
             barline: m.barline || "|",
-            lineBreakAfter: m.lineBreakAfter || false,
+            isLineBreak: m.isLineBreak || false,
             source: m.source || ""
           };
           const analyzed = analyzer.analyze(parsedMeasure);
@@ -1834,43 +1834,7 @@ var SVGRenderer = class {
       lineAccumulated[lineIndex] += mWidth;
     });
     DebugLogger.log("\u{1F3B5} Note positions collected", { count: notePositions.length });
-    DebugLogger.log("\u{1F527} Post-processing tie markers for automatic line breaks");
-    for (let i = 0; i < notePositions.length - 1; i++) {
-      const cur = notePositions[i];
-      if (cur.tieStart && !cur.tieToVoid) {
-        let crossesLine = false;
-        let foundEnd = false;
-        for (let j = i + 1; j < notePositions.length; j++) {
-          const candidate = notePositions[j];
-          const curMeasurePos = measurePositions.find((mp) => mp.globalIndex === cur.measureIndex);
-          const candMeasurePos = measurePositions.find((mp) => mp.globalIndex === candidate.measureIndex);
-          if (curMeasurePos && candMeasurePos && curMeasurePos.lineIndex !== candMeasurePos.lineIndex) {
-            crossesLine = true;
-          }
-          if (candidate.tieEnd || candidate.tieFromVoid) {
-            foundEnd = true;
-            if (crossesLine) {
-              DebugLogger.log(`\u{1F527} Detected cross-line tie at note ${i}`, {
-                from: { measure: cur.measureIndex, line: curMeasurePos == null ? void 0 : curMeasurePos.lineIndex },
-                to: { measure: candidate.measureIndex, line: candMeasurePos == null ? void 0 : candMeasurePos.lineIndex }
-              });
-              cur.tieToVoid = true;
-              if (!candidate.tieFromVoid) {
-                candidate.tieFromVoid = true;
-              }
-            }
-            break;
-          }
-        }
-        if (!foundEnd && crossesLine) {
-          DebugLogger.log(`\u{1F527} Detected incomplete cross-line tie at note ${i}`, {
-            measure: cur.measureIndex
-          });
-          cur.tieToVoid = true;
-        }
-      }
-    }
-    this.detectAndDrawTies(svg, notePositions, width, tieManager);
+    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions);
     return svg;
   }
   /**
@@ -1908,9 +1872,30 @@ var SVGRenderer = class {
    * @param notePositions - Tableau des positions de toutes les notes
    * @param svgWidth - Largeur totale du SVG
    * @param tieManager - Gestionnaire de liaisons entre lignes
+   * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
    */
-  detectAndDrawTies(svg, notePositions, svgWidth, tieManager) {
+  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions) {
     DebugLogger.log("\u{1F517} Starting tie detection and drawing");
+    DebugLogger.log("\u{1F527} Post-processing ties for line breaks");
+    for (let i = 0; i < notePositions.length; i++) {
+      const cur = notePositions[i];
+      if (cur.tieStart && !cur.tieToVoid) {
+        const curMeasurePos = measurePositions.find((mp) => mp.globalIndex === cur.measureIndex);
+        if (!curMeasurePos) continue;
+        for (let j = i + 1; j < notePositions.length; j++) {
+          const target = notePositions[j];
+          if (target.tieEnd) {
+            const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
+            if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
+              DebugLogger.log(`\u{1F527} Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
+              cur.tieToVoid = true;
+              target.tieFromVoid = true;
+            }
+            break;
+          }
+        }
+      }
+    }
     const matched = /* @__PURE__ */ new Set();
     const tieNotes = notePositions.filter((n) => n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
     DebugLogger.log("Notes with tie markers", {

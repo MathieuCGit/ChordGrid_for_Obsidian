@@ -14,7 +14,7 @@ import { Beat } from './Beat';
  * - chord : Accord principal de la mesure (pour compatibilité)
  * - chordSegments : Segments d'accords multiples dans la mesure
  * - barline : Type de barre de mesure (simple, double, reprise début/fin)
- * - lineBreakAfter : Indique si un saut de ligne doit suivre cette mesure
+ * - isLineBreak : Indique si un saut de ligne doit suivre cette mesure
  * - source : Texte source ayant généré cette mesure (pour débogage)
  * 
  * @example
@@ -31,7 +31,7 @@ export class Measure implements IMeasure {
   beats: IBeat[];
   chord: string;
   barline: BarlineType;
-  lineBreakAfter: boolean;
+  isLineBreak: boolean;
   chordSegments: ChordSegment[];
   source?: string;
 
@@ -44,7 +44,7 @@ export class Measure implements IMeasure {
     this.beats = (data.beats || []).map(b => new Beat(b.notes, (b as any).chord)) as unknown as IBeat[];
     this.chord = data.chord || '';
     this.barline = data.barline || (BarlineType.Single as BarlineType);
-    this.lineBreakAfter = Boolean(data.lineBreakAfter);
+    this.isLineBreak = Boolean((data as any).isLineBreak || (data as any).lineBreakAfter);
     this.chordSegments = data.chordSegments || [];
     this.source = data.source;
   }

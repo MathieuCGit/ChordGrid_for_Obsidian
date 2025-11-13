@@ -58,7 +58,7 @@ export interface ParsedMeasure {
   segments: ParsedSegment[];
     timeSignature?: TimeSignature;  // Optional time signature for this measure
   barline: BarlineType;
-  lineBreakAfter: boolean;
+  isLineBreak: boolean;
   source: string;
 }
 

@@ -195,7 +195,7 @@ export class SVGRenderer {
             segments,
             timeSignature: grid.timeSignature,
             barline: (m as any).barline || '|',
-            lineBreakAfter: (m as any).lineBreakAfter || false,
+            isLineBreak: (m as any).isLineBreak || false,
             source: (m as any).source || ''
           };
           const analyzed = analyzer.analyze(parsedMeasure as any);
@@ -248,67 +248,8 @@ export class SVGRenderer {
 
   DebugLogger.log('🎵 Note positions collected', { count: notePositions.length });
   
-    // Post-process tie markers to handle automatic line breaks
-    // The parser only marks tieToVoid/tieFromVoid based on explicit \n in input,
-    // but the renderer may add automatic line breaks based on width constraints.
-    // We need to detect when a tie crosses such a boundary and update the markers.
-    DebugLogger.log('🔧 Post-processing tie markers for automatic line breaks');
-    
-    for (let i = 0; i < notePositions.length - 1; i++) {
-      const cur = notePositions[i];
-      
-      // If current note has tieStart but no tieToVoid marker
-      if (cur.tieStart && !cur.tieToVoid) {
-        // Check if we're crossing a line boundary before finding the matching tieEnd
-        let crossesLine = false;
-        let foundEnd = false;
-        
-        for (let j = i + 1; j < notePositions.length; j++) {
-          const candidate = notePositions[j];
-          
-          // Check if line index changes (indicates line break)
-          const curMeasurePos = measurePositions.find(mp => mp.globalIndex === cur.measureIndex);
-          const candMeasurePos = measurePositions.find(mp => mp.globalIndex === candidate.measureIndex);
-          
-          if (curMeasurePos && candMeasurePos && curMeasurePos.lineIndex !== candMeasurePos.lineIndex) {
-            crossesLine = true;
-          }
-          
-          // Found the matching tieEnd or tieFromVoid
-          if (candidate.tieEnd || candidate.tieFromVoid) {
-            foundEnd = true;
-            
-            if (crossesLine) {
-              // This tie crosses a line boundary - mark it appropriately
-              DebugLogger.log(`🔧 Detected cross-line tie at note ${i}`, {
-                from: { measure: cur.measureIndex, line: curMeasurePos?.lineIndex },
-                to: { measure: candidate.measureIndex, line: candMeasurePos?.lineIndex }
-              });
-              
-              // Mark current note as tieToVoid (continues beyond this line)
-              cur.tieToVoid = true;
-              
-              // Mark target note as tieFromVoid (comes from previous line)
-              if (!candidate.tieFromVoid) {
-                candidate.tieFromVoid = true;
-              }
-            }
-            break;
-          }
-        }
-        
-        // If we never found a matching end and we cross lines, mark as tieToVoid
-        if (!foundEnd && crossesLine) {
-          DebugLogger.log(`🔧 Detected incomplete cross-line tie at note ${i}`, {
-            measure: cur.measureIndex
-          });
-          cur.tieToVoid = true;
-        }
-      }
-    }
-  
   // draw ties using collected notePositions and the TieManager for cross-line ties
-  this.detectAndDrawTies(svg, notePositions, width, tieManager);
+  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions);
 
     return svg;
   }
@@ -349,14 +290,53 @@ export class SVGRenderer {
    * @param notePositions - Tableau des positions de toutes les notes
    * @param svgWidth - Largeur totale du SVG
    * @param tieManager - Gestionnaire de liaisons entre lignes
+   * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
    */
   private detectAndDrawTies(
     svg: SVGElement,
     notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[],
     svgWidth: number,
-    tieManager: TieManager
+    tieManager: TieManager,
+    measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[]
   ) {
     DebugLogger.log('🔗 Starting tie detection and drawing');
+    
+    // POST-PROCESSING: Detect ties crossing line boundaries
+    // The parser marks tieStart/tieEnd based on syntax, but doesn't know about
+    // automatic line breaks added by the renderer based on width.
+    // We need to transform tieStart->tieEnd pairs into tieToVoid->tieFromVoid
+    // when they cross a line boundary.
+    DebugLogger.log('🔧 Post-processing ties for line breaks');
+    
+    for (let i = 0; i < notePositions.length; i++) {
+      const cur = notePositions[i];
+      
+      // Only process notes with tieStart that haven't been marked as tieToVoid yet
+      if (cur.tieStart && !cur.tieToVoid) {
+        // Find the line index of this note's measure
+        const curMeasurePos = measurePositions.find(mp => mp.globalIndex === cur.measureIndex);
+        if (!curMeasurePos) continue;
+        
+        // Search for the matching tieEnd
+        for (let j = i + 1; j < notePositions.length; j++) {
+          const target = notePositions[j];
+          
+          if (target.tieEnd) {
+            // Found the matching tieEnd - check if it's on a different line
+            const targetMeasurePos = measurePositions.find(mp => mp.globalIndex === target.measureIndex);
+            
+            if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
+              // This tie crosses a line boundary!
+              DebugLogger.log(`🔧 Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
+              
+              cur.tieToVoid = true;
+              target.tieFromVoid = true;
+            }
+            break; // Found the matching tieEnd, stop searching
+          }
+        }
+      }
+    }
     
     const matched = new Set<number>();
     
