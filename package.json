@@ -1,6 +1,6 @@
 {
   "name": "obsidian-chord-grid",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "Obsidian plugin to render chord grids with rhythmic notation (SVG).",
   "main": "main.js",
   "scripts": {
