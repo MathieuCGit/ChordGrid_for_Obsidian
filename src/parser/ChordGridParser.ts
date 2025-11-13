@@ -217,11 +217,17 @@ export class ChordGridParser {
     // Capture aussi les espaces entre les groupes
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
 
-    // Filter out empty tokens (these come from leading or consecutive barlines)
-    const nonEmptyTokens = tokens.filter(t => t.content.trim().length > 0);
+    // Don't filter out empty tokens yet - we need to know if they're at the start
+    // to correctly determine isFirstMeasureOfLine for tie logic
 
-    for (let ti = 0; ti < nonEmptyTokens.length; ti++) {
-      const t = nonEmptyTokens[ti];
+    for (let ti = 0; ti < tokens.length; ti++) {
+      const t = tokens[ti];
+      
+      // Skip empty tokens but don't add them as measures
+      if (t.content.trim().length === 0) {
+        continue;
+      }
+      
       const text = t.content;
       const bar = t.bar as BarlineType;
 
@@ -231,8 +237,10 @@ export class ChordGridParser {
 
       let m2: RegExpExecArray | null;
       // Determine whether this measure is first/last on the line for tie logic
-      const isFirstMeasureOfLine = ti === 0;
-      const isLastMeasureOfLine = ti === nonEmptyTokens.length - 1;
+      // Check if all previous tokens were empty (leading barlines)
+      const isFirstMeasureOfLine = tokens.slice(0, ti).every(prev => prev.content.trim().length === 0);
+      // Check if all following tokens are empty (trailing barlines)
+      const isLastMeasureOfLine = tokens.slice(ti + 1).every(next => next.content.trim().length === 0);
 
       const chordSegments: ChordSegment[] = [];
       

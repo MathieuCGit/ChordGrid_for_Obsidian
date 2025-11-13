@@ -272,17 +272,19 @@ var ChordGridParser = class {
     const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
-    const nonEmptyTokens = tokens.filter((t) => t.content.trim().length > 0);
-    for (let ti = 0; ti < nonEmptyTokens.length; ti++) {
-      const t = nonEmptyTokens[ti];
+    for (let ti = 0; ti < tokens.length; ti++) {
+      const t = tokens[ti];
+      if (t.content.trim().length === 0) {
+        continue;
+      }
       const text = t.content;
       const bar = t.bar;
       const beats = [];
       let firstChord = "";
       let anySource = "";
       let m2;
-      const isFirstMeasureOfLine = ti === 0;
-      const isLastMeasureOfLine = ti === nonEmptyTokens.length - 1;
+      const isFirstMeasureOfLine = tokens.slice(0, ti).every((prev) => prev.content.trim().length === 0);
+      const isLastMeasureOfLine = tokens.slice(ti + 1).every((next) => next.content.trim().length === 0);
       const chordSegments = [];
       if (text.includes("[")) {
         while ((m2 = segmentRe.exec(text)) !== null) {

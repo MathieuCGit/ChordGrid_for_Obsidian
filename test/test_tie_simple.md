@@ -4,8 +4,8 @@
 
 ```chordgrid
 4/4
-C[4 4 4 4_]
-D[4 4 4 4]|
+| C[4 4 4 4_] |
+| D[4 4 4 4] |
 ```
 
 **Attendu** : Une liaison doit partir de la dernière noire du Do (première ligne) et arriver à la première noire du Ré (deuxième ligne).
