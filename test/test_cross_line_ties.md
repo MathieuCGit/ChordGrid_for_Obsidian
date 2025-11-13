@@ -8,11 +8,11 @@ Une liaison simple qui traverse un changement de ligne explicite dans l'input :
 
 ```chordgrid
 4/4
-C[4_]
-|F[4]|
+C[4 4 4 4_]
+|F[4 4 4 4]|
 ```
 
-**Attendu**: La liaison doit partir du Do, continuer vers la marge droite, puis reprendre depuis la marge gauche jusqu'au Fa.
+**Attendu**: La liaison doit partir de la dernière noire du Do, continuer vers la marge droite, puis reprendre depuis la marge gauche jusqu'à la première noire du Fa.
 
 ## Test 2: Liaison avec changement de ligne automatique (wrap)
 
@@ -20,7 +20,7 @@ Beaucoup de mesures pour forcer un wrap automatique basé sur la largeur, avec u
 
 ```chordgrid
 4/4
-C[4 4 4 4]|D[4 4 4 4]|E[4 4 4 4]|F[4_ 4 4 4]|G[4 4 4 4]|A[4 4 4 4]|B[4 4 4 4]|C[4 4 4 4]|
+C[4 4 4 4]|D[4 4 4 4]|E[4 4 4 4]|F[4 4 4 4_]|G[4 4 4 4]|A[4 4 4 4]|B[4 4 4 4]|C[4 4 4 4]|
 ```
 
 **Attendu**: Selon la largeur disponible, un changement de ligne automatique devrait survenir. Si la liaison (marquée par `_`) se trouve avant le changement de ligne, elle doit être rendue correctement avec tieToVoid/tieFromVoid.
@@ -29,10 +29,10 @@ C[4 4 4 4]|D[4 4 4 4]|E[4 4 4 4]|F[4_ 4 4 4]|G[4 4 4 4]|A[4 4 4 4]|B[4 4 4 4]|C[
 
 ```chordgrid
 4/4
-C[4_]
-|D[4_]
-|E[4_]
-|F[4]|
+C[4 4 4 4_]
+|D[4 4 4 4_]
+|E[4 4 4 4_]
+|F[4 4 4 4]|
 ```
 
 **Attendu**: 
@@ -46,7 +46,7 @@ Chaque liaison doit être correctement rendue vers la marge puis reprise depuis 
 
 ```chordgrid
 4/4
-C[4_ 4]|D[4_ 4]|E[4_ 4]|F[4]|
+C[4_ 4 4 4]|D[4_ 4 4 4]|E[4_ 4 4 4]|F[4 4 4 4]|
 ```
 
 **Attendu**: Toutes les liaisons sont sur la même ligne, donc pas de tieToVoid/tieFromVoid. Les liaisons doivent être rendues normalement entre notes adjacentes.
@@ -55,11 +55,11 @@ C[4_ 4]|D[4_ 4]|E[4_ 4]|F[4]|
 
 ```chordgrid
 4/4
-C[8_-8]
-|D[8 8]|
+C[8 8 8 8 8 8_-8]
+|D[8 8 8 8 8 8 8 8]|
 ```
 
-**Attendu**: La liaison va du premier Do (croche) jusqu'à la note qui suit le silence, avec un changement de ligne au milieu.
+**Attendu**: La liaison va de l'avant-dernière croche (avant le silence) jusqu'à la première croche de D, avec un changement de ligne au milieu.
 
 ## Test 6: Vérification du zoom dynamique
 
