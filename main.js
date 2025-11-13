@@ -1411,11 +1411,18 @@ var MusicAnalyzer = class {
         const aAbs = allNotes[aIdx].absoluteIndex;
         const bAbs = allNotes[bIdx].absoluteIndex;
         let blockFromLevel = Infinity;
+        const aLevel = this.getBeamLevel(allNotes[aIdx].value);
+        const bLevel = this.getBeamLevel(allNotes[bIdx].value);
+        const notesLevel = Math.min(aLevel, bLevel);
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find((n) => n.absoluteIndex === t);
           if (mid && mid.isRest) {
-            const lv = this.getBeamLevel(mid.value);
-            blockFromLevel = Math.min(blockFromLevel, lv);
+            const restLevel = this.getBeamLevel(mid.value);
+            if (restLevel === notesLevel - 1) {
+              blockFromLevel = Math.min(blockFromLevel, notesLevel);
+            } else {
+              blockFromLevel = Math.min(blockFromLevel, restLevel);
+            }
           }
         }
         blocks.push(blockFromLevel);

@@ -149,12 +149,30 @@ export class MusicAnalyzer {
         const aAbs = allNotes[aIdx].absoluteIndex;
         const bAbs = allNotes[bIdx].absoluteIndex;
         let blockFromLevel = Infinity;
+        
+        // Get the levels of the adjacent notes
+        const aLevel = this.getBeamLevel(allNotes[aIdx].value);
+        const bLevel = this.getBeamLevel(allNotes[bIdx].value);
+        const notesLevel = Math.min(aLevel, bLevel);
+        
         // Scan between aAbs and bAbs for rests
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find(n => n.absoluteIndex === t);
           if (mid && (mid as any).isRest) {
-            const lv = this.getBeamLevel((mid as any).value);
-            blockFromLevel = Math.min(blockFromLevel, lv);
+            const restLevel = this.getBeamLevel((mid as any).value);
+            
+            // Exception: if a rest can be decomposed into units matching the adjacent notes,
+            // maintain the beam at the notes' level and only break higher levels
+            // Example: 16-816 (rest -8 = two -16) → maintain level 1, break level 2+
+            // Rule: if rest level = notes level - 1, only block from notes level
+            if (restLevel === notesLevel - 1) {
+              // Rest is one level below notes (e.g., -8 between two 16)
+              // Block only from the notes' level and above
+              blockFromLevel = Math.min(blockFromLevel, notesLevel);
+            } else {
+              // Normal case: rest blocks from its own level
+              blockFromLevel = Math.min(blockFromLevel, restLevel);
+            }
           }
         }
         blocks.push(blockFromLevel);
