@@ -120,7 +120,7 @@ export class NoteRenderer {
         this.drawSlashNotehead(svg, x, y);
         
         if (element.dotted) {
-          this.drawDot(svg, x + 12, y);
+          this.drawDot(svg, x + 12, y - 4);
         }
         
         if (element.value >= 2) {

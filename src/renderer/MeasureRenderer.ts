@@ -427,9 +427,9 @@ export class MeasureRenderer {
 
         if (nv.dotted) {
             const dot = document.createElementNS(SVG_NS, 'circle');
-            dot.setAttribute('cx', (centerX + 8).toString());
-            dot.setAttribute('cy', staffLineY.toString());
-            dot.setAttribute('r', '2');
+            dot.setAttribute('cx', (centerX + 10).toString());
+            dot.setAttribute('cy', (staffLineY - 4).toString());
+            dot.setAttribute('r', '1.5');
             dot.setAttribute('fill', '#000');
             svg.appendChild(dot);
         }
@@ -466,9 +466,9 @@ export class MeasureRenderer {
 
         if (nv.dotted) {
             const dot = document.createElementNS(SVG_NS, 'circle');
-            dot.setAttribute('cx', (x + 8).toString());
-            dot.setAttribute('cy', staffLineY.toString());
-            dot.setAttribute('r', '2');
+            dot.setAttribute('cx', (x + 10).toString());
+            dot.setAttribute('cy', (staffLineY - 4).toString());
+            dot.setAttribute('r', '1.5');
             dot.setAttribute('fill', '#000');
             svg.appendChild(dot);
         }
