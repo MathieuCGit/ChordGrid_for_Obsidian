@@ -9,7 +9,7 @@ Une liaison simple qui traverse un changement de ligne explicite dans l'input :
 ```chordgrid
 4/4
 C[4 4 4 4_]
-|F[4 4 4 4]|
+F[4 4 4 4]|
 ```
 
 **Attendu**: La liaison doit partir de la dernière noire du Do, continuer vers la marge droite, puis reprendre depuis la marge gauche jusqu'à la première noire du Fa.
@@ -30,9 +30,9 @@ C[4 4 4 4]|D[4 4 4 4]|E[4 4 4 4]|F[4 4 4 4_]|G[4 4 4 4]|A[4 4 4 4]|B[4 4 4 4]|C[
 ```chordgrid
 4/4
 C[4 4 4 4_]
-|D[4 4 4 4_]
-|E[4 4 4 4_]
-|F[4 4 4 4]|
+D[4 4 4 4_]
+E[4 4 4 4_]
+F[4 4 4 4]|
 ```
 
 **Attendu**: 
@@ -56,7 +56,7 @@ C[4_ 4 4 4]|D[4_ 4 4 4]|E[4_ 4 4 4]|F[4 4 4 4]|
 ```chordgrid
 4/4
 C[8 8 8 8 8 8_-8]
-|D[8 8 8 8 8 8 8 8]|
+D[8 8 8 8 8 8 8 8]|
 ```
 
 **Attendu**: La liaison va de l'avant-dernière croche (avant le silence) jusqu'à la première croche de D, avec un changement de ligne au milieu.
