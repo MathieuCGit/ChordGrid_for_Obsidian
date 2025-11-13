@@ -291,6 +291,8 @@ export class ChordGridParser {
       }
 
           console.log("Parsed chords:", chordSegments.map(s => s.chord));
+          console.log("First chord for measure:", firstChord);
+          console.log("Beats count:", beats.length);
 
       measures.push({
         beats,
@@ -409,6 +411,8 @@ class BeamAndTieAnalyzer {
     let currentBeat: NoteElement[] = [];
     let i = 0;
     
+    let pendingTieFromVoid = false;
+    
     while (i < rhythmStr.length) {
       // Gestion des underscores (liaisons)
       if (rhythmStr[i] === '_') {
@@ -417,6 +421,8 @@ class BeamAndTieAnalyzer {
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
           // Liaison depuis le vide (début de ligne)
+          // Marquer que la prochaine note doit avoir tieFromVoid
+          pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
         } else {
           this.markTieStart(currentBeat);
@@ -448,9 +454,10 @@ class BeamAndTieAnalyzer {
       // Lecture d'une valeur de note
       const note = this.parseNote(rhythmStr, i);
       
-      // NEW: Gestion liaison depuis le vide
-      if (i === 0 && isFirstMeasureOfLine && rhythmStr[0] === '_') {
+      // Gestion liaison depuis le vide (si un _ était en début de ligne)
+      if (pendingTieFromVoid) {
         note.tieFromVoid = true;
+        pendingTieFromVoid = false;
       }
       
       // Gestion de la liaison entrante normale

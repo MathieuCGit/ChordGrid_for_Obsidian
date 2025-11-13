@@ -99,15 +99,8 @@ export class SVGRenderer {
     let currentLineWidth = 0;
 
     grid.measures.forEach((measure, mi) => {
-      if ((measure as any).isLineBreak) {
-        DebugLogger.log('↵ Line break detected');
-        currentLine++;
-        measuresInCurrentLine = 0;
-        currentLineWidth = 0;
-        return;
-      }
-
       const mWidth = dynamicMeasureWidths[mi];
+
       // wrap if adding this measure would exceed budget
       if (measuresInCurrentLine > 0 && (currentLineWidth + mWidth) > maxLineWidth) {
         DebugLogger.log(`↵ Auto line break (${measuresInCurrentLine} measures)`);
@@ -116,9 +109,21 @@ export class SVGRenderer {
         currentLineWidth = 0;
       }
 
+      // Always render the measure first
+      const isLineStart = measuresInCurrentLine === 0;
+      // mark on the measure so MeasureRenderer can draw a left bar when first in line
+      (measure as any).__isLineStart = isLineStart;
       measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++, width: mWidth });
       measuresInCurrentLine++;
       currentLineWidth += mWidth;
+
+      // Then, if this measure is marked as an explicit line break, move to next line
+      if ((measure as any).isLineBreak) {
+        DebugLogger.log('↵ Line break detected');
+        currentLine++;
+        measuresInCurrentLine = 0;
+        currentLineWidth = 0;
+      }
     });
 
     DebugLogger.log('📊 Layout calculated', { 
@@ -128,9 +133,9 @@ export class SVGRenderer {
 
     const lines = currentLine + 1;
     // Compute SVG width as max line accumulation plus margins
-    const linesWidths: number[] = [];
+    const linesWidths: number[] = new Array(lines).fill(0);
     measurePositions.forEach(p => {
-      linesWidths[p.lineIndex] = (linesWidths[p.lineIndex] || 0) + p.width;
+      linesWidths[p.lineIndex] += p.width;
     });
     const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
     const height = lines * (measureHeight + 20) + 20;
@@ -300,12 +305,25 @@ export class SVGRenderer {
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[]
   ) {
     DebugLogger.log('🔗 Starting tie detection and drawing');
+    // Precompute visual X bounds for each measure to draw half-ties to the measure edge
+    const lineStartPadding = 40; // must match createSVG lineAccumulated init
+    const maxLineIndex = Math.max(0, ...measurePositions.map(m => m.lineIndex));
+    const lineOffsets: number[] = new Array(maxLineIndex + 1).fill(lineStartPadding);
+    const measureXB: Record<number, { xStart: number; xEnd: number; y: number }> = {};
+    measurePositions
+      .sort((a, b) => a.globalIndex - b.globalIndex)
+      .forEach(mp => {
+        const xStart = lineOffsets[mp.lineIndex];
+        const xEnd = xStart + mp.width;
+        const y = mp.lineIndex * (120 + 20) + 20; // measureHeight(120) + v-gap(20) + top(20)
+        measureXB[mp.globalIndex] = { xStart, xEnd, y };
+        lineOffsets[mp.lineIndex] += mp.width;
+      });
     
     // POST-PROCESSING: Detect ties crossing line boundaries
-    // The parser marks tieStart/tieEnd based on syntax, but doesn't know about
-    // automatic line breaks added by the renderer based on width.
-    // We need to transform tieStart->tieEnd pairs into tieToVoid->tieFromVoid
-    // when they cross a line boundary.
+    // The parser marks tieStart/tieEnd (or tieFromVoid) based on syntax.
+    // For explicit line breaks (\n), the user writes "4_" and "_4" so parser already sets tieFromVoid.
+    // For automatic wraps, we need to transform tieStart->tieEnd pairs into tieToVoid->tieFromVoid.
     DebugLogger.log('🔧 Post-processing ties for line breaks');
     
     for (let i = 0; i < notePositions.length; i++) {
@@ -317,12 +335,13 @@ export class SVGRenderer {
         const curMeasurePos = measurePositions.find(mp => mp.globalIndex === cur.measureIndex);
         if (!curMeasurePos) continue;
         
-        // Search for the matching tieEnd
+        // Search for the matching tieEnd or tieFromVoid
         for (let j = i + 1; j < notePositions.length; j++) {
           const target = notePositions[j];
           
-          if (target.tieEnd) {
-            // Found the matching tieEnd - check if it's on a different line
+          // Match either tieEnd (normal) or tieFromVoid (explicit cross-line)
+          if (target.tieEnd || target.tieFromVoid) {
+            // Found the matching target - check if it's on a different line
             const targetMeasurePos = measurePositions.find(mp => mp.globalIndex === target.measureIndex);
             
             if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
@@ -330,9 +349,12 @@ export class SVGRenderer {
               DebugLogger.log(`🔧 Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
               
               cur.tieToVoid = true;
-              target.tieFromVoid = true;
+              // If target already has tieFromVoid, keep it; otherwise set it
+              if (!target.tieFromVoid) {
+                target.tieFromVoid = true;
+              }
             }
-            break; // Found the matching tieEnd, stop searching
+            break; // Found the matching target, stop searching
           }
         }
       }
@@ -378,14 +400,28 @@ export class SVGRenderer {
       svg.appendChild(path);
     };
 
-    const drawHalfToMargin = (startX: number, startY: number, svgW: number) => {
-      const marginX = svgW - 16;
-      DebugLogger.log('Drawing half-tie to margin (tieToVoid)', { 
-        from: { x: startX, y: startY }, 
-        toMargin: marginX 
+    const drawHalfToMeasureRight = (measureIdx: number, startX: number, startY: number) => {
+      const bounds = measureXB[measureIdx];
+      const marginX = bounds ? bounds.xEnd - 8 : (svgWidth - 16);
+      DebugLogger.log('Drawing half-tie to measure right edge (tieToVoid)', {
+        from: { x: startX, y: startY },
+        to: { x: marginX, y: startY },
+        measureIdx
       });
       drawCurve(startX, startY, marginX, startY, true);
       return { x: marginX, y: startY };
+    };
+
+    const drawHalfFromMeasureLeft = (measureIdx: number, endX: number, endY: number) => {
+      const bounds = measureXB[measureIdx];
+      // Slightly reduce the inset to start closer to the left barline
+      const startX = bounds ? bounds.xStart + 4 : 16;
+      DebugLogger.log('Drawing half-tie from measure left edge (tieFromVoid)', {
+        from: { x: startX, y: endY },
+        to: { x: endX, y: endY },
+        measureIdx
+      });
+      drawCurve(startX, endY, endX, endY, true);
     };
 
     // Primary pass: match each tieStart to the next available tieEnd (temporal order)
@@ -448,19 +484,11 @@ export class SVGRenderer {
         }
 
         if (foundFromVoid >= 0) {
-          DebugLogger.log(`✅ Matched tieStart[${i}] -> tieFromVoid[${foundFromVoid}]`);
-          const tgt = notePositions[foundFromVoid];
-          const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
-          let endY: number;
-          if (tgt.headLeftX !== undefined) {
-            const halfT = Math.abs(tgt.headLeftX - tgt.x);
-            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
-          } else {
-            endY = tgt.y - 8;
-          }
-          drawCurve(startX, startY, endX, endY, true);
+          DebugLogger.log(`✅ Matched cross-line tieStart[${i}] with tieFromVoid[${foundFromVoid}] — drawing half to measure edge and deferring start-of-line half`);
+          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
-          matched.add(foundFromVoid);
+          // Do not mark the tieFromVoid as matched here; let the start-of-line branch resolve pending and draw the second half
           continue;
         }
 
@@ -469,7 +497,7 @@ export class SVGRenderer {
         // still no match: if this ties-to-void, draw half-tie to margin and register pending
         if (cur.tieToVoid) {
           DebugLogger.log(`Drawing tieToVoid for index ${i}`);
-          const pending = drawHalfToMargin(startX, startY, svgWidth);
+          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
           tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
           continue;
@@ -483,8 +511,7 @@ export class SVGRenderer {
         DebugLogger.log(`Found tieFromVoid at index ${i}`, { 
           measure: cur.measureIndex 
         });
-        
-        const pending = tieManager.resolvePendingFor(cur.measureIndex);
+
         let endX = (cur.headLeftX !== undefined) ? cur.headLeftX : cur.x;
         let endY: number;
         if (cur.headLeftX !== undefined) {
@@ -494,17 +521,9 @@ export class SVGRenderer {
           endY = cur.y - 8;
         }
 
-        if (pending) {
-          DebugLogger.log(`✅ Resolved pending tie for tieFromVoid[${i}]`, pending);
-          drawCurve(pending.x, pending.y, endX, endY, true);
-          matched.add(i);
-        } else {
-          DebugLogger.log(`⚠️ No pending tie found, drawing from left margin`);
-          // nothing to resolve: draw a short half-tie from left margin into the note
-          const leftMarginX = 16;
-          drawCurve(leftMarginX, endY, endX, endY, true);
-          matched.add(i);
-        }
+        // Always draw the start-of-line half from measure left edge into the note.
+        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY);
+        matched.add(i);
       }
     }
     

@@ -104,7 +104,7 @@ export class MeasureRenderer {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - 2;
 
-        if (measureIndex === 0) {
+        if (measureIndex === 0 || (this.measure as any).__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, 120);
         } else if ((this.measure as any).isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);

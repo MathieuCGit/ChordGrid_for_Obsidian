@@ -7,9 +7,8 @@ Ce fichier teste les liaisons lorsqu'un changement de ligne survient, soit expli
 Une liaison simple qui traverse un changement de ligne explicite dans l'input :
 
 ```chordgrid
-4/4
-| C[4 4 4 4_] |
-| F[4 4 4 4] |
+4/4 | C[4 4 4 4_] |
+| [_4] F[4 4 4] |
 ```
 
 **Attendu**: La liaison doit partir de la dernière noire du Do, continuer vers la marge droite, puis reprendre depuis la marge gauche jusqu'à la première noire du Fa.
@@ -19,20 +18,18 @@ Une liaison simple qui traverse un changement de ligne explicite dans l'input :
 Beaucoup de mesures pour forcer un wrap automatique basé sur la largeur, avec une liaison qui traverse :
 
 ```chordgrid
-4/4
-C[4 4 4 4]|D[4 4 4 4]|E[4 4 4 4]|F[4 4 4 4_]|G[4 4 4 4]|A[4 4 4 4]|B[4 4 4 4]|C[4 4 4 4]|
+4/4 | C[4 4 4 4] | D[4 4 4 4] | E[4 4 4 4] | F[4 4 4 4_] | [_4] G[4 4 4] | A[4 4 4 4] | B[4 4 4 4] | C[4 4 4 4] |
 ```
 
-**Attendu**: Selon la largeur disponible, un changement de ligne automatique devrait survenir. Si la liaison (marquée par `_`) se trouve avant le changement de ligne, elle doit être rendue correctement avec tieToVoid/tieFromVoid.
+**Attendu**: Selon la largeur disponible, un changement de ligne automatique devrait survenir entre les mesures. Si le wrap se produit entre F et G, la liaison doit être rendue correctement avec tieToVoid (fin F) et tieFromVoid (début de la mesure suivante avec `[_4]`).
 
 ## Test 3: Multiples liaisons consécutives avec changements de ligne
 
 ```chordgrid
-4/4
-| C[4 4 4 4_] |
-| D[4 4 4 4_] |
-| E[4 4 4 4_] |
-| F[4 4 4 4] |
+4/4 | C[4 4 4 4_] |
+| [_4] D[4 4 4_] |
+| [_4] E[4 4 4_] |
+| [_4] F[4 4 4] |
 ```
 
 **Attendu**: 
@@ -45,32 +42,37 @@ Chaque liaison doit être correctement rendue vers la marge puis reprise depuis 
 ## Test 4: Liaison normale dans la même ligne
 
 ```chordgrid
-4/4
-C[4_ 4 4 4]|D[4_ 4 4 4]|E[4_ 4 4 4]|F[4 4 4 4]|
+4/4 | C[4_4 4 4] | D[4_4 4 4] | E[4_4 4 4] | F[4 4 4 4] |
 ```
 
 **Attendu**: Toutes les liaisons sont sur la même ligne, donc pas de tieToVoid/tieFromVoid. Les liaisons doivent être rendues normalement entre notes adjacentes.
 
-## Test 5: Liaison avec silences et changement de ligne
+## Test 5: Liaison avec changement de ligne
 
 ```chordgrid
-4/4
-| C[8 8 8 8 8 8_-8] |
-| D[8 8 8 8 8 8 8 8] |
+4/4 | C[88 88 88 88_] |
+| [_8]D[8 88 88 88] |
 ```
 
-**Attendu**: La liaison va de l'avant-dernière croche (avant le silence) jusqu'à la première croche de D, avec un changement de ligne au milieu.
+**Attendu**: La liaison va de la dernière croche du Do jusqu'à la première croche du Ré, avec un changement de ligne au milieu. La ligature relie les deux premières croches malgré le changement d'accord.
 
 ## Test 6: Vérification du zoom dynamique
 
 Pour tester que les tailles sont bien gérées dynamiquement (préparation pour le futur outil de zoom) :
 
 ```chordgrid
-4/4
-C[16161616 16161616]|D[32323232 32323232 32323232 32323232]|E[4 4 4 4]|F[2 2]|G[1]|
+4/4 | C[16161616 16161616] | D[32323232 32323232 32323232 32323232] | E[4 4 4 4] | F[2 2] | G[1] |
 ```
 
 **Attendu**: Les mesures doivent avoir des largeurs différentes selon leur densité rythmique. Le changement de ligne automatique doit s'adapter dynamiquement.
+
+## Test 7: Changement de métrique avec liaison
+
+```chordgrid
+4/4 | C[4 4 4 4_] | 3/4 | [_4] D[4 4] |
+```
+
+**Attendu**: La liaison traverse le changement de métrique. La première mesure est en 4/4, la deuxième en 3/4.
 
 ## Notes de vérification
 
