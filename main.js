@@ -171,13 +171,34 @@ var ChordGridParser = class {
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       let foundQuarterNotes = 0;
+      const countedTuplets = /* @__PURE__ */ new Set();
       for (const beat of measure.beats) {
         for (const n of beat.notes) {
           if (!n.value) continue;
-          const baseWhole = 1 / n.value;
-          const dottedMultiplier = n.dotted ? 1.5 : 1;
-          const whole = baseWhole * dottedMultiplier;
-          foundQuarterNotes += whole * 4;
+          if (n.tuplet && !countedTuplets.has(n.tuplet.groupId)) {
+            countedTuplets.add(n.tuplet.groupId);
+            let tupletNoteDuration = 0;
+            let tupletNoteCount = 0;
+            for (const tupletBeat of measure.beats) {
+              for (const tupletNote of tupletBeat.notes) {
+                if (tupletNote.tuplet && tupletNote.tuplet.groupId === n.tuplet.groupId) {
+                  const baseWhole = 1 / tupletNote.value;
+                  const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
+                  tupletNoteDuration += baseWhole * dottedMultiplier;
+                  tupletNoteCount++;
+                }
+              }
+            }
+            const normalCount = Math.pow(2, Math.floor(Math.log2(n.tuplet.count)));
+            const tupletRatio = normalCount / n.tuplet.count;
+            const actualDuration = tupletNoteDuration * tupletRatio;
+            foundQuarterNotes += actualDuration * 4;
+          } else if (!n.tuplet) {
+            const baseWhole = 1 / n.value;
+            const dottedMultiplier = n.dotted ? 1.5 : 1;
+            const whole = baseWhole * dottedMultiplier;
+            foundQuarterNotes += whole * 4;
+          }
         }
       }
       const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);

@@ -85,13 +85,50 @@ export class ChordGridParser {
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       let foundQuarterNotes = 0;
+      
+      // Track tuplets we've already counted to avoid double-counting
+      const countedTuplets = new Set<string>();
+      
       for (const beat of measure.beats) {
         for (const n of beat.notes) {
           if (!n.value) continue;
-          const baseWhole = 1 / n.value; // fraction of whole note
-          const dottedMultiplier = n.dotted ? 1.5 : 1;
-          const whole = baseWhole * dottedMultiplier;
-          foundQuarterNotes += whole * 4; // convert to quarter-note units
+          
+          // Handle tuplets specially
+          if (n.tuplet && !countedTuplets.has(n.tuplet.groupId)) {
+            countedTuplets.add(n.tuplet.groupId);
+            
+            // Count all notes in this tuplet group
+            let tupletNoteDuration = 0;
+            let tupletNoteCount = 0;
+            
+            for (const tupletBeat of measure.beats) {
+              for (const tupletNote of tupletBeat.notes) {
+                if (tupletNote.tuplet && tupletNote.tuplet.groupId === n.tuplet.groupId) {
+                  const baseWhole = 1 / tupletNote.value;
+                  const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
+                  tupletNoteDuration += baseWhole * dottedMultiplier;
+                  tupletNoteCount++;
+                }
+              }
+            }
+            
+            // Calculate tuplet ratio
+            // For a triplet (3 notes in the time of 2): ratio = 2/3
+            // General formula: N notes of value V take the time of (power-of-2 ≤ N) notes
+            const normalCount = Math.pow(2, Math.floor(Math.log2(n.tuplet.count)));
+            const tupletRatio = normalCount / n.tuplet.count;
+            
+            // Apply tuplet ratio to get actual duration
+            const actualDuration = tupletNoteDuration * tupletRatio;
+            foundQuarterNotes += actualDuration * 4; // convert to quarter-note units
+          } else if (!n.tuplet) {
+            // Regular note (not in a tuplet)
+            const baseWhole = 1 / n.value; // fraction of whole note
+            const dottedMultiplier = n.dotted ? 1.5 : 1;
+            const whole = baseWhole * dottedMultiplier;
+            foundQuarterNotes += whole * 4; // convert to quarter-note units
+          }
+          // Skip notes already counted as part of a tuplet
         }
       }
 
