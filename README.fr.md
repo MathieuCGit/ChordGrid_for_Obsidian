@@ -24,6 +24,7 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 4/4 ||: Am[88 4 4 88] | C[88 4 4 88] :||
 ```
 ````
+<img width="592" height="173" alt="image" src="https://github.com/user-attachments/assets/c876d0c9-e121-44d9-92e0-6baddd0433c5" />
 
 ### Syntaxe
 
@@ -55,7 +56,10 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 - `-32` = trente-deuxième de soupir
 - `-64` = soixante-quatrième de soupir
 
-Exemple : `C[4 -4 8 8]` = noire, soupir de noire, deux croches
+Exemple : `C[4 -4 88_4]` = noire, soupir de noire, deux croches avec la dernière croche liée à la dernière noire.
+
+<img width="283" height="153" alt="image" src="https://github.com/user-attachments/assets/37859674-5513-4d12-a3de-e601843c7a22" />
+
 
 > Les silences coupent les groupes de ligatures. Exemple : `[88-88]` produit deux groupes distincts.
 
