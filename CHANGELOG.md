@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2025-11-14
+
+### Fixed
+- Whole rest (`-1`) now properly centered horizontally in measure
+- Whole rest symbol now aligned flush with staff line (removed 2px gap)
+
 ## [2.0.0] - 2025-11-14
 
 ### 🎉 Architecture Refactoring - **BREAKING CHANGES**
