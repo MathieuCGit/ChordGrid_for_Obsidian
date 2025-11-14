@@ -572,12 +572,30 @@ class BeamAndTieAnalyzer {
             // Split par espace pour gérer les sous-groupes
             const subGroups = inner.split(' ');
             let tupletNoteIndex = 0;
+            
             for (let g = 0; g < subGroups.length; g++) {
               const group = subGroups[g];
               let k = 0;
               let isFirstNoteOfThisSubGroup = true;
+              let pendingTieFromPrevious = false;
               
               while (k < group.length) {
+                // Gestion des underscores (liaisons) dans les tuplets
+                if (group[k] === '_') {
+                  if (k === 0) {
+                    // Underscore au début du sous-groupe
+                    // La note précédente doit être liée à la suivante
+                    pendingTieFromPrevious = true;
+                  } else {
+                    // Underscore après une note : marquer la liaison
+                    if (currentBeat.length > 0) {
+                      this.markTieStart(currentBeat);
+                    }
+                  }
+                  k++;
+                  continue;
+                }
+                
                 // Parse chaque note du sous-groupe
                 let note: NoteElement;
                 if (group[k] === '-') {
@@ -588,7 +606,20 @@ class BeamAndTieAnalyzer {
                   note = this.parseNote(group, k);
                   k += (note.length ?? 0);
                 }
-                // Ajout propriété tuplet
+                
+                // Si un underscore précédait cette note
+                if (pendingTieFromPrevious) {
+                  note.tieEnd = true;
+                  pendingTieFromPrevious = false;
+                }
+                
+                // Check if previous note had tieStart (from markTieStart)
+                if (this.tieContext.lastNote?.tieStart) {
+                  note.tieEnd = true;
+                  this.tieContext.lastNote = null;
+                }
+                
+                // Ajout propriété tuplet (use tupletCount from annotation)
                 note.tuplet = {
                   count: tupletCount,
                   groupId: `T${i}_${closeIdx}`,

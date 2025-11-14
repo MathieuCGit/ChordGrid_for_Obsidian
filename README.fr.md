@@ -69,8 +69,19 @@ Exemple : `C[4 -4 88_4]` = noire, soupir de noire, deux croches avec la dernièr
 - Les nombres collés décrivent un battement groupé (ex: `88` = 2 croches liées)
 - Les espaces séparent les groupes de ligature
 - Le point `.` crée une note pointée (`4.` noire pointée, `8.` croche pointée)
-- Le `_` crée une liaison (tie). Exemple : `[88_4]` lie la dernière croche au début de la noire suivante
-- On peut lier à travers une barre de mesure : `C[2 4_88_] | [_8]`
+
+**Liaisons (Ties) :**
+- Utilisez le tiret bas `_` pour créer des liaisons entre notes
+- `_` **après** une note = la note démarre une liaison (émet)
+- `_` **avant** une note = la note reçoit une liaison (termine)
+- Exemples :
+  - `[88_4]` = liaison entre la dernière croche et la noire
+  - `[2 4_88_]` = liaison de la noire vers les deux croches
+  - `C[2 4_88_] | [_8]` = liaison à travers la barre de mesure (dernière croche de la mesure 1 liée à la première croche de la mesure 2)
+  - `{8_8_8}3` = les trois notes du triolet liées ensemble
+  - `4_{8 8 8}3` = noire liée à la première note du triolet
+  - `{8 8 8_}3 4` = dernière note du triolet liée à la noire suivante
+  - `| 4_ | {_8 8 8}3 |` = liaison cross-mesure vers un tuplet
 
 **Triolets et tuplets (v2.1+) :**
 Les tuplets permettent de grouper des notes pour jouer N notes dans le temps normalement occupé par un nombre différent. Syntaxe : `{notes}N` où N est le nombre du tuplet.
@@ -78,6 +89,12 @@ Les tuplets permettent de grouper des notes pour jouer N notes dans le temps nor
 - **Notation compacte** (notes collées) : `{888}3` = triolet avec toutes les notes liées par une ligature
 - **Notation espacée** (notes séparées) : `{8 8 8}3` = triolet avec crochets indépendants
 - **Ligatures multi-niveaux** : `{161616 161616}6` = 6 doubles-croches groupées en 2×3, avec ligature niveau 1 reliant les 6 notes et ligatures niveau 2 en deux segments
+- **Liaisons dans les tuplets** : `{8_8_8}3` = triolet avec toutes les notes liées
+- **Liaisons traversant les tuplets** :
+  - `4_{8 8 8}3` = noire liée au début du triolet
+  - `{8 8 8_}3 4` = triolet lié à la note suivante
+  - `| 4_ | {_8 8 8}3 |` = liaison cross-mesure vers un tuplet
+- **Patterns de liaisons complexes** : `4_{8_8_8}3_4` = liaison continue à travers tout le tuplet
 
 Exemples :
 - `{888}3` = triolet de croches (ligature complète)
@@ -86,6 +103,8 @@ Exemples :
 - `{8 -8 8}3` = triolet avec silence au milieu
 - `{161616}3` = triolet de doubles-croches
 - `{161616 161616}6` = sextolet avec ligatures multi-niveaux avancées
+- `{8_8_8}3` = triolet avec toutes les notes liées (legato)
+- `{8_8 8}3` = triolet avec les deux premières notes liées
 - Mesure complète en 4/4 : `| [{888}3 {888}3 {888}3 {888}3] |`
 
 Rappel :
@@ -117,6 +136,10 @@ Rappel :
 | `{888}3` | Triolet de croches (ligature complète) |
 | `{8 8 8}3` | Triolet de croches (crochets séparés) |
 | `{161616 161616}6` | Sextolet avec ligatures multi-niveaux (2×3) |
+| `{8_8_8}3` | Triolet avec toutes les notes liées |
+| `4_{8 8 8}3` | Noire liée à la première note du triolet |
+| `{8 8 8_}3 4` | Dernière note du triolet liée à la noire |
+| `| 4_ | {_8 8 8}3 |` | Liaison cross-mesure vers un tuplet |
 
 ### Exemples
 
@@ -161,6 +184,16 @@ Rappel :
 4/4 | C[{888}3 4] | G[{161616}3 {161616}3] | Am[{444}3] | F[{888}3 {888}3 {888}3] |
 ```
 
+**Tuplets avec liaisons (v2.1+) :**
+```chordgrid
+4/4 | C[{8_8_8}3] | G[4_{8 8 8}3] | Am[{8 8 8_}3 4] |
+```
+
+**Liaisons cross-mesure avec tuplets (v2.1+) :**
+```chordgrid
+4/4 | C[4 4 4 4_] | D[{_8 8 8_}3 _4 4 4] |
+```
+
 **Attention aux espaces avant un accord :**
 ```chordgrid
 [_8] G[8 4 4 4]
@@ -197,19 +230,19 @@ L'espace avant `G` casse la ligature.
 
 ### Limitations actuelles
 
-- Overlay d'analyse expérimental (fallback legacy)
-- Pas encore de dynamiques, articulations, appoggiatures, tuplets
+- Pas encore de dynamiques, articulations, appoggiatures
 - Pas d'export (PDF/PNG/MIDI) pour le moment
-- Cas très complexes avec notes pointées + silences : décisions limitées en mode legacy
+- Métriques complexes en cours d'implémentation
 
 ### Feuille de route (haut niveau)
 | Jalon | Contenu |
 |-------|---------|
 | v1.x Maintenance | Stabilité, corrections, polissage de la doc |
-| v2.0 Analyseur | Séparation Parser → Analyzer → Renderer, beaming unifié |
-| v2.1 Tuplets & appoggiatures | Extension du modèle de durée |
-| v2.2 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
-| v2.3 Export | Export PNG / SVG propre + POC MIDI |
+| v2.0 Analyseur | ✅ Séparation Parser → Analyzer → Renderer, beaming unifié |
+| v2.1 Tuplets & métriques complexes | 🚧 Implémentation complète des tuplets (ratios personnalisables), support des signatures temporelles complexes |
+| v2.2 Appoggiatures & ornements | Extension du modèle pour les notes d'agrément |
+| v2.3 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
+| v2.4 Export | Export PNG / SVG propre + POC MIDI |
 | v3.0 Édition | Édition interactive dans la note |
 
 ## Architecture (refonte v2.0 – ✅ Terminée)
