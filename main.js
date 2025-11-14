@@ -386,12 +386,53 @@ var BeamAndTieAnalyzer = class {
     };
   }
   analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const beats = [];
     let currentBeat = [];
     let i = 0;
     let pendingTieFromVoid = false;
     while (i < rhythmStr.length) {
+      if (rhythmStr[i] === "{") {
+        const closeIdx = rhythmStr.indexOf("}", i);
+        if (closeIdx > i) {
+          let numStr = "";
+          let j = closeIdx + 1;
+          while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+            numStr += rhythmStr[j];
+            j++;
+          }
+          const tupletCount = parseInt(numStr, 10);
+          if (tupletCount > 0) {
+            const inner = rhythmStr.slice(i + 1, closeIdx);
+            const subGroups = inner.split(" ");
+            let tupletNoteIndex = 0;
+            for (let g = 0; g < subGroups.length; g++) {
+              const group = subGroups[g];
+              let k = 0;
+              while (k < group.length) {
+                let note2;
+                if (group[k] === "-") {
+                  note2 = this.parseNote(group, k + 1);
+                  note2.isRest = true;
+                  k += ((_a = note2.length) != null ? _a : 0) + 1;
+                } else {
+                  note2 = this.parseNote(group, k);
+                  k += (_b = note2.length) != null ? _b : 0;
+                }
+                note2.tuplet = {
+                  count: tupletCount,
+                  groupId: `T${i}_${closeIdx}`,
+                  position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle"
+                };
+                currentBeat.push(note2);
+                tupletNoteIndex++;
+              }
+            }
+            i = j;
+            continue;
+          }
+        }
+      }
       if (rhythmStr[i] === "_") {
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
           this.markTieToVoid(currentBeat);
@@ -417,7 +458,7 @@ var BeamAndTieAnalyzer = class {
         const note2 = this.parseNote(rhythmStr, i);
         note2.isRest = true;
         currentBeat.push(note2);
-        i += (_a = note2.length) != null ? _a : 0;
+        i += (_c = note2.length) != null ? _c : 0;
         continue;
       }
       const note = this.parseNote(rhythmStr, i);
@@ -425,12 +466,12 @@ var BeamAndTieAnalyzer = class {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      if ((_b = this.tieContext.lastNote) == null ? void 0 : _b.tieStart) {
+      if ((_d = this.tieContext.lastNote) == null ? void 0 : _d.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
       currentBeat.push(note);
-      i += (_c = note.length) != null ? _c : 0;
+      i += (_e = note.length) != null ? _e : 0;
     }
     if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));

@@ -54,13 +54,14 @@ export class NoteRenderer {
    * 
    * @param svg - Élément SVG parent
    * @param group - Groupe de ligature avec indices de début et fin
-   * @param spacing - Espacement entre notes
+   * @param spacing - Espacement de base entre notes (pour compatibilité)
+   * @param notePositions - Positions X précalculées de chaque note
    */
-  private drawBeamGroup(svg: SVGElement, group: BeamGroup, spacing: number) {
+  private drawBeamGroup(svg: SVGElement, group: BeamGroup, spacing: number, notePositions: number[]) {
     // group.startIndex et group.endIndex sont les VRAIS indices dans beat.notes
     const notes = this.beat.notes.slice(group.startIndex, group.endIndex + 1);
-    const startX = this.x + group.startIndex * spacing;
-    const endX = this.x + group.endIndex * spacing;
+    const startX = notePositions[group.startIndex];
+    const endX = notePositions[group.endIndex];
     
     console.log(`Dessiner ligature du groupe:`, {
       startIndex: group.startIndex,
@@ -69,8 +70,7 @@ export class NoteRenderer {
       startX,
       endX,
       width: endX - startX,
-      x: this.x,
-      spacing
+      notePositions: notePositions.slice(group.startIndex, group.endIndex + 1)
     });
     
     // Calculer le nombre de ligatures nécessaires
@@ -80,7 +80,11 @@ export class NoteRenderer {
     
     for (let beamLevel = 0; beamLevel < maxBeams; beamLevel++) {
       console.log(`Dessiner niveau ${beamLevel + 1} de ligature`);
-      this.drawBeamLevel(svg, notes, startX, spacing, beamLevel);
+      // Calculer l'espacement moyen dans ce groupe pour les beams
+      const avgSpacing = notePositions.length > group.startIndex + 1 
+        ? (notePositions[group.endIndex] - notePositions[group.startIndex]) / (group.endIndex - group.startIndex)
+        : spacing;
+      this.drawBeamLevel(svg, notes, startX, avgSpacing, beamLevel);
     }
   }
   
@@ -91,21 +95,29 @@ export class NoteRenderer {
    * 1. Dessine chaque note ou silence
    * 2. Ajoute les hampes et crochets individuels si nécessaire
    * 3. Dessine les groupes de ligatures pour les notes groupées
+   * 4. Dessine les brackets de tuplets si présents
    * 
    * @param svg - Élément SVG parent
    */
   render(svg: SVGElement) {
-    const noteSpacing = 20;
+    const baseNoteSpacing = 20;
+    
+    // Détecter les groupes de tuplets
+    const tupletGroups = this.detectTupletGroups();
     
     console.log('Rendu beat:', {
-      notes: this.beat.notes.map(n => ({ value: n.value, isRest: n.isRest })),
+      notes: this.beat.notes.map(n => ({ value: n.value, isRest: n.isRest, tuplet: n.tuplet })),
       hasBeam: this.beat.hasBeam,
-      beamGroups: this.beat.beamGroups
+      beamGroups: this.beat.beamGroups,
+      tupletGroups
     });
+    
+    // Calculer les positions X de chaque note en tenant compte des tuplets
+    const notePositions = this.calculateNotePositions(baseNoteSpacing, tupletGroups);
     
     // Dessiner toutes les notes/silences
     this.beat.notes.forEach((element, i) => {
-      const x = this.x + i * noteSpacing; // i est l'index réel dans beat.notes
+      const x = notePositions[i];
       const y = this.y + this.NOTE_Y;
       
       console.log(`Rendu élément ${i}:`, { 
@@ -137,7 +149,12 @@ export class NoteRenderer {
     // Dessiner les ligatures par groupe
     for (const group of this.beat.beamGroups) {
       console.log(`Traiter groupe de ligature:`, group);
-      this.drawBeamGroup(svg, group, noteSpacing);
+      this.drawBeamGroup(svg, group, baseNoteSpacing, notePositions);
+    }
+    
+    // Dessiner les brackets de tuplets
+    for (const tupletGroup of tupletGroups) {
+      this.drawTupletBracket(svg, tupletGroup, notePositions);
     }
   }
 
@@ -325,5 +342,115 @@ export class NoteRenderer {
       path.setAttribute('fill', 'none');
       svg.appendChild(path);
     }
+  }
+
+  /**
+   * Détecte tous les groupes de tuplets dans le beat.
+   * Retourne un tableau de groupes avec startIndex, endIndex, et count.
+   */
+  private detectTupletGroups(): Array<{startIndex: number, endIndex: number, count: number, groupId: string}> {
+    const groups: Array<{startIndex: number, endIndex: number, count: number, groupId: string}> = [];
+    const seenGroups = new Set<string>();
+    
+    this.beat.notes.forEach((note, i) => {
+      if (note.tuplet && !seenGroups.has(note.tuplet.groupId)) {
+        seenGroups.add(note.tuplet.groupId);
+        
+        // Trouver le début et la fin du groupe
+        const groupNotes = this.beat.notes.filter((n, idx) => 
+          n.tuplet && n.tuplet.groupId === note.tuplet!.groupId
+        );
+        
+        const startIndex = this.beat.notes.findIndex(n => 
+          n.tuplet && n.tuplet.groupId === note.tuplet!.groupId
+        );
+        const endIndex = startIndex + groupNotes.length - 1;
+        
+        groups.push({
+          startIndex,
+          endIndex,
+          count: note.tuplet.count,
+          groupId: note.tuplet.groupId
+        });
+      }
+    });
+    
+    return groups;
+  }
+
+  /**
+   * Calcule les positions X de chaque note en tenant compte des tuplets.
+   * Les notes dans un tuplet sont plus rapprochées (espacement réduit à 75%).
+   */
+  private calculateNotePositions(
+    baseSpacing: number, 
+    tupletGroups: Array<{startIndex: number, endIndex: number}>
+  ): number[] {
+    const positions: number[] = [];
+    let currentX = this.x;
+    
+    for (let i = 0; i < this.beat.notes.length; i++) {
+      // Vérifier si cette note est dans un tuplet
+      const inTuplet = tupletGroups.some(g => i >= g.startIndex && i <= g.endIndex);
+      const spacing = inTuplet ? baseSpacing * 0.75 : baseSpacing;
+      
+      positions.push(currentX);
+      currentX += spacing;
+    }
+    
+    return positions;
+  }
+
+  /**
+   * Dessine le bracket de tuplet avec son chiffre au-dessus du groupe de notes.
+   */
+  private drawTupletBracket(
+    svg: SVGElement, 
+    tupletGroup: {startIndex: number, endIndex: number, count: number}, 
+    notePositions: number[]
+  ) {
+    const startX = notePositions[tupletGroup.startIndex];
+    const endX = notePositions[tupletGroup.endIndex];
+    const bracketY = this.y + this.NOTE_Y - 35; // Au-dessus des hampes
+    
+    // Ligne horizontale du bracket
+    const bracket = document.createElementNS(SVG_NS, 'line');
+    bracket.setAttribute('x1', String(startX));
+    bracket.setAttribute('y1', String(bracketY));
+    bracket.setAttribute('x2', String(endX));
+    bracket.setAttribute('y2', String(bracketY));
+    bracket.setAttribute('stroke', '#000');
+    bracket.setAttribute('stroke-width', '1');
+    svg.appendChild(bracket);
+    
+    // Petites barres verticales aux extrémités
+    const leftBar = document.createElementNS(SVG_NS, 'line');
+    leftBar.setAttribute('x1', String(startX));
+    leftBar.setAttribute('y1', String(bracketY));
+    leftBar.setAttribute('x2', String(startX));
+    leftBar.setAttribute('y2', String(bracketY + 5));
+    leftBar.setAttribute('stroke', '#000');
+    leftBar.setAttribute('stroke-width', '1');
+    svg.appendChild(leftBar);
+    
+    const rightBar = document.createElementNS(SVG_NS, 'line');
+    rightBar.setAttribute('x1', String(endX));
+    rightBar.setAttribute('y1', String(bracketY));
+    rightBar.setAttribute('x2', String(endX));
+    rightBar.setAttribute('y2', String(bracketY + 5));
+    rightBar.setAttribute('stroke', '#000');
+    rightBar.setAttribute('stroke-width', '1');
+    svg.appendChild(rightBar);
+    
+    // Chiffre du tuplet centré
+    const centerX = (startX + endX) / 2;
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', String(centerX));
+    text.setAttribute('y', String(bracketY - 3));
+    text.setAttribute('font-size', '10');
+    text.setAttribute('font-weight', 'bold');
+    text.setAttribute('text-anchor', 'middle');
+    text.textContent = String(tupletGroup.count);
+    svg.appendChild(text);
   }
 }
