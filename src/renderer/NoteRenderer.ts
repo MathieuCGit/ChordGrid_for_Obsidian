@@ -348,8 +348,20 @@ export class NoteRenderer {
    * Détecte tous les groupes de tuplets dans le beat.
    * Retourne un tableau de groupes avec startIndex, endIndex, et count.
    */
-  private detectTupletGroups(): Array<{startIndex: number, endIndex: number, count: number, groupId: string}> {
-    const groups: Array<{startIndex: number, endIndex: number, count: number, groupId: string}> = [];
+  private detectTupletGroups(): Array<{
+    startIndex: number, 
+    endIndex: number, 
+    count: number, 
+    groupId: string,
+    ratio?: {numerator: number, denominator: number}
+  }> {
+    const groups: Array<{
+      startIndex: number, 
+      endIndex: number, 
+      count: number, 
+      groupId: string,
+      ratio?: {numerator: number, denominator: number}
+    }> = [];
     const seenGroups = new Set<string>();
     
     this.beat.notes.forEach((note, i) => {
@@ -370,7 +382,8 @@ export class NoteRenderer {
           startIndex,
           endIndex,
           count: note.tuplet.count,
-          groupId: note.tuplet.groupId
+          groupId: note.tuplet.groupId,
+          ratio: note.tuplet.ratio
         });
       }
     });
@@ -403,10 +416,16 @@ export class NoteRenderer {
 
   /**
    * Dessine le bracket de tuplet avec son chiffre au-dessus du groupe de notes.
+   * Si un ratio explicite est fourni (N:M), il sera affiché au lieu du simple count.
    */
   private drawTupletBracket(
     svg: SVGElement, 
-    tupletGroup: {startIndex: number, endIndex: number, count: number}, 
+    tupletGroup: {
+      startIndex: number, 
+      endIndex: number, 
+      count: number,
+      ratio?: {numerator: number, denominator: number}
+    }, 
     notePositions: number[]
   ) {
     const startX = notePositions[tupletGroup.startIndex];
@@ -443,6 +462,7 @@ export class NoteRenderer {
     svg.appendChild(rightBar);
     
     // Chiffre du tuplet centré
+    // Si un ratio explicite est fourni (ex: 5:4), l'afficher au lieu du count
     const centerX = (startX + endX) / 2;
     const text = document.createElementNS(SVG_NS, 'text');
     text.setAttribute('x', String(centerX));
@@ -450,7 +470,15 @@ export class NoteRenderer {
     text.setAttribute('font-size', '10');
     text.setAttribute('font-weight', 'bold');
     text.setAttribute('text-anchor', 'middle');
-    text.textContent = String(tupletGroup.count);
+    
+    if (tupletGroup.ratio) {
+      // Afficher le ratio explicite N:M
+      text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+    } else {
+      // Afficher seulement le count (comportement par défaut)
+      text.textContent = String(tupletGroup.count);
+    }
+    
     svg.appendChild(text);
   }
 }

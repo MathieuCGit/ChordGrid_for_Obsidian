@@ -4,7 +4,7 @@ Tests visuels pour vérifier le rendu des tuplets (triolets, quintolets, etc.)
 
 ## Test 1 : Triolet de croches simple
 
-```chord-grid
+```chordgrid
 C | {8 8 8}3 8 |
 ```
 
@@ -17,7 +17,7 @@ C | {8 8 8}3 8 |
 
 ## Test 2 : Triolet de noires
 
-```chord-grid
+```chordgrid
 Am | {4 4 4}3 |
 ```
 
@@ -30,7 +30,7 @@ Am | {4 4 4}3 |
 
 ## Test 3 : Quintolet de doubles-croches
 
-```chord-grid
+```chordgrid
 G | {16 16 16 16 16}5 |
 ```
 
@@ -43,7 +43,7 @@ G | {16 16 16 16 16}5 |
 
 ## Test 4 : Sextolet de croches
 
-```chord-grid
+```chordgrid
 D7 | {8 8 8 8 8 8}6 |
 ```
 
@@ -56,7 +56,7 @@ D7 | {8 8 8 8 8 8}6 |
 
 ## Test 5 : Plusieurs tuplets dans une mesure
 
-```chord-grid
+```chordgrid
 F | {8 8 8}3 {8 8 8}3 |
 ```
 
@@ -69,7 +69,7 @@ F | {8 8 8}3 {8 8 8}3 |
 
 ## Test 6 : Tuplet avec silences
 
-```chord-grid
+```chordgrid
 Bb | {8 r8 8}3 8 |
 ```
 
@@ -82,7 +82,7 @@ Bb | {8 r8 8}3 8 |
 
 ## Test 7 : Triolet de noires pointées
 
-```chord-grid
+```chordgrid
 Em | {4. 4. 4.}3 |
 ```
 
@@ -95,7 +95,7 @@ Em | {4. 4. 4.}3 |
 
 ## Test 8 : Mesure complexe avec tuplets et notes normales
 
-```chord-grid
+```chordgrid
 C | 4 {8 8 8}3 4 |
 ```
 
@@ -109,7 +109,7 @@ C | 4 {8 8 8}3 4 |
 
 ## Test 9 : Septolet
 
-```chord-grid
+```chordgrid
 A | {16 16 16 16 16 16 16}7 |
 ```
 
@@ -122,7 +122,7 @@ A | {16 16 16 16 16 16 16}7 |
 
 ## Test 10 : Tuplet sur plusieurs segments d'accords
 
-```chord-grid
+```chordgrid
 C | {8 8 | G | 8}3 |
 ```
 

@@ -73,11 +73,17 @@ export interface NoteElement {
    * - count : nombre de notes dans le tuplet (ex: 3 pour triolet, 5 pour quintolet)
    * - groupId : identifiant unique du groupe tuplet
    * - position : 'start' | 'middle' | 'end' (facilite le rendu du bracket et des ligatures)
+   * - ratio : ratio explicite numerator:denominator (ex: {8 8 8}3:2 → {numerator: 3, denominator: 2})
+   *           Si non fourni, le ratio par défaut ou automatique sera utilisé
    */
   tuplet?: {
     count: number;
     groupId: string;
     position: 'start' | 'middle' | 'end';
+    ratio?: {
+      numerator: number;
+      denominator: number;
+    };
   };
   /**
    * Flag indiquant qu'il y avait un espace lexical avant cette note dans le texte source.

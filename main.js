@@ -137,7 +137,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 
 // src/parser/ChordGridParser.ts
-var ChordGridParser = class {
+var _ChordGridParser = class _ChordGridParser {
   /**
    * Parse une grille d'accords en notation textuelle.
    * 
@@ -177,21 +177,41 @@ var ChordGridParser = class {
           if (!n.value) continue;
           if (n.tuplet && !countedTuplets.has(n.tuplet.groupId)) {
             countedTuplets.add(n.tuplet.groupId);
-            let tupletNoteDuration = 0;
-            let tupletNoteCount = 0;
+            let baseLen = Infinity;
+            const tupletNotes = [];
             for (const tupletBeat of measure.beats) {
               for (const tupletNote of tupletBeat.notes) {
                 if (tupletNote.tuplet && tupletNote.tuplet.groupId === n.tuplet.groupId) {
-                  const baseWhole = 1 / tupletNote.value;
-                  const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
-                  tupletNoteDuration += baseWhole * dottedMultiplier;
-                  tupletNoteCount++;
+                  tupletNotes.push({ value: tupletNote.value, dotted: tupletNote.dotted });
+                  if (tupletNote.value > baseLen) {
+                    baseLen = tupletNote.value;
+                  }
                 }
               }
             }
-            const normalCount = Math.pow(2, Math.floor(Math.log2(n.tuplet.count)));
-            const tupletRatio = normalCount / n.tuplet.count;
-            const actualDuration = tupletNoteDuration * tupletRatio;
+            if (!isFinite(baseLen)) {
+              baseLen = 4;
+            }
+            let cumulativeUnits = 0;
+            for (const tupletNote of tupletNotes) {
+              const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
+              const unitsOfBaseLen = baseLen / tupletNote.value * dottedMultiplier;
+              cumulativeUnits += unitsOfBaseLen;
+            }
+            let tupletRatio;
+            if (n.tuplet.ratio) {
+              tupletRatio = n.tuplet.ratio.denominator / n.tuplet.ratio.numerator;
+            } else {
+              const defaultRatio = _ChordGridParser.DEFAULT_TUPLET_RATIOS[n.tuplet.count];
+              if (defaultRatio) {
+                tupletRatio = defaultRatio.denominator / defaultRatio.numerator;
+              } else {
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletNotes.length)));
+                tupletRatio = normalCount / tupletNotes.length;
+              }
+            }
+            const cumulativeDuration = cumulativeUnits / baseLen;
+            const actualDuration = cumulativeDuration * tupletRatio;
             foundQuarterNotes += actualDuration * 4;
           } else if (!n.tuplet) {
             const baseWhole = 1 / n.value;
@@ -392,6 +412,56 @@ var ChordGridParser = class {
     return lines;
   }
 };
+/**
+ * Table des ratios par défaut pour les tuplets courants.
+ * 
+ * Convention musicale (compatible MuseScore) :
+ * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+ * 
+ * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+ * 
+ * Exemples :
+ * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
+ * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
+ * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+ * 
+ * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
+ * où durée_cumulative est exprimée en unités de baseLen
+ * 
+ * Cette table peut être étendue selon les besoins musicaux.
+ * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+ */
+__publicField(_ChordGridParser, "DEFAULT_TUPLET_RATIOS", {
+  // Tuplets en temps simple (les plus courants)
+  3: { numerator: 3, denominator: 2 },
+  // Triplet : 3 notes dans le temps de 2
+  5: { numerator: 5, denominator: 4 },
+  // Quintuplet : 5 notes dans le temps de 4
+  6: { numerator: 6, denominator: 4 },
+  // Sextuplet : 6 notes dans le temps de 4
+  7: { numerator: 7, denominator: 4 },
+  // Septuplet : 7 notes dans le temps de 4
+  9: { numerator: 9, denominator: 8 },
+  // Nonuplet : 9 notes dans le temps de 8
+  10: { numerator: 10, denominator: 8 },
+  // Décuplet : 10 notes dans le temps de 8
+  11: { numerator: 11, denominator: 8 },
+  // 11-uplet : 11 notes dans le temps de 8
+  12: { numerator: 12, denominator: 8 },
+  // 12-uplet : 12 notes dans le temps de 8
+  13: { numerator: 13, denominator: 8 },
+  // 13-uplet : 13 notes dans le temps de 8
+  15: { numerator: 15, denominator: 8 },
+  // 15-uplet : 15 notes dans le temps de 8
+  // Tuplets en temps composé (moins courants, mais nécessaires)
+  2: { numerator: 2, denominator: 3 },
+  // Duplet : 2 notes dans le temps de 3
+  4: { numerator: 4, denominator: 3 },
+  // Quadruplet : 4 notes dans le temps de 3
+  8: { numerator: 8, denominator: 6 }
+  // Octuplet : 8 notes dans le temps de 6
+});
+var ChordGridParser = _ChordGridParser;
 var BeamAndTieAnalyzer = class {
   constructor() {
     __publicField(this, "tieContext");
@@ -426,6 +496,22 @@ var BeamAndTieAnalyzer = class {
             numStr += rhythmStr[j];
             j++;
           }
+          let explicitRatio;
+          if (j < rhythmStr.length && rhythmStr[j] === ":") {
+            j++;
+            let ratioStr = "";
+            while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+              ratioStr += rhythmStr[j];
+              j++;
+            }
+            const denominatorValue = parseInt(ratioStr, 10);
+            if (denominatorValue > 0 && numStr) {
+              explicitRatio = {
+                numerator: parseInt(numStr, 10),
+                denominator: denominatorValue
+              };
+            }
+          }
           const tupletCount = parseInt(numStr, 10);
           if (tupletCount > 0) {
             const inner = rhythmStr.slice(i + 1, closeIdx);
@@ -448,7 +534,8 @@ var BeamAndTieAnalyzer = class {
                 note2.tuplet = {
                   count: tupletCount,
                   groupId: `T${i}_${closeIdx}`,
-                  position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle"
+                  position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle",
+                  ...explicitRatio && { ratio: explicitRatio }
                 };
                 if (g > 0 && isFirstNoteOfThisSubGroup) {
                   note2.hasLeadingSpace = true;
@@ -883,7 +970,8 @@ var MeasureRenderer = class {
           startIndex: startIdx,
           endIndex: startIdx + groupNotes.length - 1,
           count: note.tuplet.count,
-          groupId: note.tuplet.groupId
+          groupId: note.tuplet.groupId,
+          ratio: note.tuplet.ratio
         });
       }
     });
@@ -985,7 +1073,11 @@ var MeasureRenderer = class {
       text.setAttribute("font-size", "10");
       text.setAttribute("font-weight", "bold");
       text.setAttribute("text-anchor", "middle");
-      text.textContent = String(tupletGroup.count);
+      if (tupletGroup.ratio) {
+        text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+      } else {
+        text.textContent = String(tupletGroup.count);
+      }
       svg.appendChild(text);
     });
     return firstNoteX;

@@ -231,7 +231,7 @@ export class MeasureRenderer {
         const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
 
         // Detect tuplet groups in this beat
-        const tupletGroups: Array<{startIndex: number, endIndex: number, count: number, groupId: string}> = [];
+        const tupletGroups: Array<{startIndex: number, endIndex: number, count: number, groupId: string, ratio?: {numerator: number, denominator: number}}> = [];
         const seenTupletGroups = new Set<string>();
         beat.notes.forEach((note, i) => {
             if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
@@ -242,7 +242,8 @@ export class MeasureRenderer {
                     startIndex: startIdx,
                     endIndex: startIdx + groupNotes.length - 1,
                     count: note.tuplet.count,
-                    groupId: note.tuplet.groupId
+                    groupId: note.tuplet.groupId,
+                    ratio: note.tuplet.ratio
                 });
             }
         });
@@ -362,7 +363,7 @@ export class MeasureRenderer {
             rightBar.setAttribute('stroke-width', '1');
             svg.appendChild(rightBar);
             
-            // Tuplet number centered above the bracket
+            // Tuplet number or ratio centered above the bracket
             const centerX = (tupletStartX + tupletEndX) / 2;
             const text = document.createElementNS(SVG_NS, 'text');
             text.setAttribute('x', String(centerX));
@@ -370,7 +371,12 @@ export class MeasureRenderer {
             text.setAttribute('font-size', '10');
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('text-anchor', 'middle');
-            text.textContent = String(tupletGroup.count);
+            // Display ratio if explicitly provided, otherwise just count
+            if (tupletGroup.ratio) {
+                text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+            } else {
+                text.textContent = String(tupletGroup.count);
+            }
             svg.appendChild(text);
         });
         

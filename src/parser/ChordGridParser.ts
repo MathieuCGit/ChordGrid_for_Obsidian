@@ -39,6 +39,44 @@
 export class ChordGridParser {
 
   /**
+   * Table des ratios par défaut pour les tuplets courants.
+   * 
+   * Convention musicale (compatible MuseScore) :
+   * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+   * 
+   * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+   * 
+   * Exemples :
+   * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
+   * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
+   * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+   * 
+   * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
+   * où durée_cumulative est exprimée en unités de baseLen
+   * 
+   * Cette table peut être étendue selon les besoins musicaux.
+   * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+   */
+  private static readonly DEFAULT_TUPLET_RATIOS: Record<number, { numerator: number, denominator: number }> = {
+    // Tuplets en temps simple (les plus courants)
+    3: { numerator: 3, denominator: 2 },   // Triplet : 3 notes dans le temps de 2
+    5: { numerator: 5, denominator: 4 },   // Quintuplet : 5 notes dans le temps de 4
+    6: { numerator: 6, denominator: 4 },   // Sextuplet : 6 notes dans le temps de 4
+    7: { numerator: 7, denominator: 4 },   // Septuplet : 7 notes dans le temps de 4
+    9: { numerator: 9, denominator: 8 },   // Nonuplet : 9 notes dans le temps de 8
+    10: { numerator: 10, denominator: 8 }, // Décuplet : 10 notes dans le temps de 8
+    11: { numerator: 11, denominator: 8 }, // 11-uplet : 11 notes dans le temps de 8
+    12: { numerator: 12, denominator: 8 }, // 12-uplet : 12 notes dans le temps de 8
+    13: { numerator: 13, denominator: 8 }, // 13-uplet : 13 notes dans le temps de 8
+    15: { numerator: 15, denominator: 8 }, // 15-uplet : 15 notes dans le temps de 8
+    
+    // Tuplets en temps composé (moins courants, mais nécessaires)
+    2: { numerator: 2, denominator: 3 },   // Duplet : 2 notes dans le temps de 3
+    4: { numerator: 4, denominator: 3 },   // Quadruplet : 4 notes dans le temps de 3
+    8: { numerator: 8, denominator: 6 },   // Octuplet : 8 notes dans le temps de 6
+  };
+
+  /**
    * Parse une grille d'accords en notation textuelle.
    * 
    * @param input - Chaîne contenant la grille d'accords en notation textuelle
@@ -97,29 +135,71 @@ export class ChordGridParser {
           if (n.tuplet && !countedTuplets.has(n.tuplet.groupId)) {
             countedTuplets.add(n.tuplet.groupId);
             
-            // Count all notes in this tuplet group
-            let tupletNoteDuration = 0;
-            let tupletNoteCount = 0;
+            // Step 1: Find baseLen (smallest note value in the tuplet) and collect all notes
+            let baseLen = Infinity;
+            const tupletNotes: { value: number, dotted: boolean }[] = [];
             
             for (const tupletBeat of measure.beats) {
               for (const tupletNote of tupletBeat.notes) {
                 if (tupletNote.tuplet && tupletNote.tuplet.groupId === n.tuplet.groupId) {
-                  const baseWhole = 1 / tupletNote.value;
-                  const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
-                  tupletNoteDuration += baseWhole * dottedMultiplier;
-                  tupletNoteCount++;
+                  tupletNotes.push({ value: tupletNote.value, dotted: tupletNote.dotted });
+                  // Find smallest note value (highest numeric value = shortest duration)
+                  if (tupletNote.value > baseLen) {
+                    baseLen = tupletNote.value;
+                  }
                 }
               }
             }
             
-            // Calculate tuplet ratio
-            // For a triplet (3 notes in the time of 2): ratio = 2/3
-            // General formula: N notes of value V take the time of (power-of-2 ≤ N) notes
-            const normalCount = Math.pow(2, Math.floor(Math.log2(n.tuplet.count)));
-            const tupletRatio = normalCount / n.tuplet.count;
+            // If no valid notes found, default to quarter note
+            if (!isFinite(baseLen)) {
+              baseLen = 4;
+            }
             
-            // Apply tuplet ratio to get actual duration
-            const actualDuration = tupletNoteDuration * tupletRatio;
+            // Step 2: Calculate cumulative duration in units of baseLen
+            let cumulativeUnits = 0;
+            for (const tupletNote of tupletNotes) {
+              const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
+              // Convert to units of baseLen
+              // Example: if baseLen = 16 and noteValue = 8, then 8 = 2 units of 16
+              const unitsOfBaseLen = (baseLen / tupletNote.value) * dottedMultiplier;
+              cumulativeUnits += unitsOfBaseLen;
+            }
+            
+            // Step 3: Calculate tuplet ratio
+            // Priority: 1) explicit ratio from {...}N:M syntax
+            //           2) default ratio from table for common cases
+            //           3) automatic calculation as fallback
+            //
+            // Convention musicale (compatible MuseScore) :
+            // N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+            // Exemple : {816-16 1616 8 8}5:4 = 5 croches dans le temps de 4 croches
+            //           où N=5 représente la durée cumulative normalisée (10 doubles-croches = 5 croches)
+            // Calcul : durée_réelle = (cumulativeDuration / N) × M
+            let tupletRatio: number;
+            
+            if (n.tuplet.ratio) {
+              // Use explicit ratio (e.g., {816-16 1616 8 8}5:4)
+              // actualDuration = (cumulativeDuration / N) × M
+              tupletRatio = n.tuplet.ratio.denominator / n.tuplet.ratio.numerator;
+            } else {
+              // Check default ratio table (uses tuplet.count)
+              const defaultRatio = ChordGridParser.DEFAULT_TUPLET_RATIOS[n.tuplet.count];
+              if (defaultRatio) {
+                tupletRatio = defaultRatio.denominator / defaultRatio.numerator;
+              } else {
+                // Fallback to automatic calculation based on note count
+                // For a triplet (3 notes in the time of 2): ratio = 2/3
+                // General formula: N notes take the time of (power-of-2 ≤ N) notes of same value
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletNotes.length)));
+                tupletRatio = normalCount / tupletNotes.length;
+              }
+            }
+            
+            // Step 4: Calculate actual duration
+            // Convert cumulative units back to whole note fraction using baseLen
+            const cumulativeDuration = cumulativeUnits / baseLen;
+            const actualDuration = cumulativeDuration * tupletRatio;
             foundQuarterNotes += actualDuration * 4; // convert to quarter-note units
           } else if (!n.tuplet) {
             // Regular note (not in a tuplet)
@@ -458,13 +538,33 @@ class BeamAndTieAnalyzer {
         // Chercher la fermeture '}'
         const closeIdx = rhythmStr.indexOf('}', i);
         if (closeIdx > i) {
-          // Chercher le chiffre du tuplet juste après '}'
+          // Chercher le chiffre du tuplet et le ratio optionnel après '}'
+          // Format: }N ou }N:M
           let numStr = '';
           let j = closeIdx + 1;
           while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
             numStr += rhythmStr[j];
             j++;
           }
+          
+          // Vérifier si un ratio explicite est fourni (:M)
+          let explicitRatio: { numerator: number, denominator: number } | undefined;
+          if (j < rhythmStr.length && rhythmStr[j] === ':') {
+            j++; // Passer le ':'
+            let ratioStr = '';
+            while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+              ratioStr += rhythmStr[j];
+              j++;
+            }
+            const denominatorValue = parseInt(ratioStr, 10);
+            if (denominatorValue > 0 && numStr) {
+              explicitRatio = {
+                numerator: parseInt(numStr, 10),
+                denominator: denominatorValue
+              };
+            }
+          }
+          
           const tupletCount = parseInt(numStr, 10);
           if (tupletCount > 0) {
             // Extraire le contenu entre { }
@@ -494,7 +594,8 @@ class BeamAndTieAnalyzer {
                   groupId: `T${i}_${closeIdx}`,
                   position:
                     tupletNoteIndex === 0 ? 'start' :
-                    tupletNoteIndex === tupletCount - 1 ? 'end' : 'middle'
+                    tupletNoteIndex === tupletCount - 1 ? 'end' : 'middle',
+                  ...(explicitRatio && { ratio: explicitRatio })
                 };
                 // Mark first note of each subgroup after the first with leading space flag
                 if (g > 0 && isFirstNoteOfThisSubGroup) {
