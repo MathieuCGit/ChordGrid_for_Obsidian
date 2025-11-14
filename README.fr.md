@@ -4,7 +4,9 @@
 
 > Affiche des grilles d'accords avec une notation rythmique précise, rendue en SVG net et scalable dans vos notes Obsidian.
 
-**Version :** 2.0.0 · **Licence :** GPL-3.0 · **Statut :** Stable
+**Version :** 2.0.1 · **Licence :** GPL-3.0 · **Statut :** Stable
+
+**Branche de développement :** [`dev/v2.1`](https://github.com/MathieuCGit/chord-grid/tree/dev/v2.1) - Développement actif pour v2.1.0
 
 ## Installation
 

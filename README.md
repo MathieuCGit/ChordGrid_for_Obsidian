@@ -5,7 +5,9 @@
 > Display clean chord grids with precise rhythmic notation rendered as crisp, scalable SVG inside your Obsidian notes.
 
 <!-- Badges (manual style to avoid external services) -->
-**Version:** 2.0.0 · **License:** GPL-3.0 · **Status:** Stable
+**Version:** 2.0.1 · **License:** GPL-3.0 · **Status:** Stable
+
+**Development Branch:** [`dev/v2.1`](https://github.com/MathieuCGit/chord-grid/tree/dev/v2.1) - Active development for v2.1.0
 
 This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic. A refactor toward a 3‑stage pipeline (Parser → Analyzer → Renderer) is underway.
 
