@@ -67,7 +67,8 @@ Add a `-` prefix before any note value to create a rest:
 - `-32` = Thirty-second rest
 - `-64` = Sixty-fourth rest
 
-Example: `C[4 -4 8 8_4]` = quarter note, quarter rest, two eighth notes
+Example: `C[4 -4 8 8_4]` = quarter note, quarter rest, two eighth notes.
+
 <img width="283" height="153" alt="image" src="https://github.com/user-attachments/assets/37859674-5513-4d12-a3de-e601843c7a22" />
 
 
