@@ -239,8 +239,17 @@ export class MeasureRenderer {
         }
 
         beat.notes.forEach((nv, noteIndex) => {
-            // Left-aligned progression with clamped spacing
-            const noteX = startX + noteIndex * spacing;
+            // Calculate note position
+            // For a single whole rest (value=1), center it in the beat
+            let noteX: number;
+            if (noteCount === 1 && nv.isRest && nv.value === 1) {
+                // Center the whole rest in the beat area
+                noteX = x + width / 2;
+            } else {
+                // Left-aligned progression with clamped spacing
+                noteX = startX + noteIndex * spacing;
+            }
+            
             // Render rests properly
             if (nv.isRest) {
                 // Draw the rest glyph at noteX

@@ -570,7 +570,7 @@ var RestRenderer = class {
     const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
     rect.setAttribute("x", String(x - width / 2));
-    rect.setAttribute("y", String(y + 2));
+    rect.setAttribute("y", String(y));
     rect.setAttribute("width", String(width));
     rect.setAttribute("height", String(height));
     rect.setAttribute("fill", "black");
@@ -809,7 +809,12 @@ var MeasureRenderer = class {
     }
     beat.notes.forEach((nv, noteIndex) => {
       var _a;
-      const noteX = startX + noteIndex * spacing;
+      let noteX;
+      if (noteCount === 1 && nv.isRest && nv.value === 1) {
+        noteX = x + width / 2;
+      } else {
+        noteX = startX + noteIndex * spacing;
+      }
       if (nv.isRest) {
         this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
         segmentNoteCursor[chordIndex]++;
