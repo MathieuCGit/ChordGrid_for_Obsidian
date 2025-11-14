@@ -238,8 +238,12 @@ var ChordGridParser = class {
               tieEnd: n.tieEnd || false,
               tieToVoid: n.tieToVoid || false,
               tieFromVoid: n.tieFromVoid || false,
-              beatIndex
+              beatIndex,
               // Preserve beat index to break beams at beat boundaries
+              tuplet: n.tuplet,
+              // Preserve tuplet information
+              hasLeadingSpace: n.hasLeadingSpace
+              // Preserve spacing flag for tuplet subgroups
             });
           }
         });
@@ -430,6 +434,7 @@ var BeamAndTieAnalyzer = class {
             for (let g = 0; g < subGroups.length; g++) {
               const group = subGroups[g];
               let k = 0;
+              let isFirstNoteOfThisSubGroup = true;
               while (k < group.length) {
                 let note2;
                 if (group[k] === "-") {
@@ -445,6 +450,10 @@ var BeamAndTieAnalyzer = class {
                   groupId: `T${i}_${closeIdx}`,
                   position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle"
                 };
+                if (g > 0 && isFirstNoteOfThisSubGroup) {
+                  note2.hasLeadingSpace = true;
+                  isFirstNoteOfThisSubGroup = false;
+                }
                 currentBeat.push(note2);
                 tupletNoteIndex++;
               }
@@ -863,11 +872,31 @@ var MeasureRenderer = class {
     const headHalfMax = 6;
     const startX = x + innerLeft;
     const endLimit = x + width - innerRight - headHalfMax;
-    const preferredSpacing = 20;
-    let spacing = preferredSpacing;
-    if (noteCount > 1) {
-      const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
-      spacing = Math.min(preferredSpacing, maxSpacing);
+    const tupletGroups = [];
+    const seenTupletGroups = /* @__PURE__ */ new Set();
+    beat.notes.forEach((note, i) => {
+      if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
+        seenTupletGroups.add(note.tuplet.groupId);
+        const groupNotes = beat.notes.filter((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
+        const startIdx = beat.notes.findIndex((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
+        tupletGroups.push({
+          startIndex: startIdx,
+          endIndex: startIdx + groupNotes.length - 1,
+          count: note.tuplet.count,
+          groupId: note.tuplet.groupId
+        });
+      }
+    });
+    const notePositionsX = [];
+    let currentX = startX;
+    const baseSpacing = 20;
+    for (let i = 0; i < noteCount; i++) {
+      const isInTuplet = tupletGroups.some((g) => i >= g.startIndex && i <= g.endIndex);
+      const spacing = isInTuplet ? baseSpacing * 0.75 : baseSpacing;
+      notePositionsX.push(currentX);
+      if (i < noteCount - 1) {
+        currentX += spacing;
+      }
     }
     beat.notes.forEach((nv, noteIndex) => {
       var _a;
@@ -875,7 +904,7 @@ var MeasureRenderer = class {
       if (noteCount === 1 && nv.isRest && nv.value === 1) {
         noteX = x + width / 2;
       } else {
-        noteX = startX + noteIndex * spacing;
+        noteX = notePositionsX[noteIndex];
       }
       if (nv.isRest) {
         this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
@@ -920,6 +949,44 @@ var MeasureRenderer = class {
         stemTopY,
         stemBottomY
       });
+    });
+    tupletGroups.forEach((tupletGroup) => {
+      const tupletStartX = notePositionsX[tupletGroup.startIndex];
+      const tupletEndX = notePositionsX[tupletGroup.endIndex];
+      const bracketY = staffLineY - 15;
+      const bracket = document.createElementNS(SVG_NS, "line");
+      bracket.setAttribute("x1", String(tupletStartX));
+      bracket.setAttribute("y1", String(bracketY));
+      bracket.setAttribute("x2", String(tupletEndX));
+      bracket.setAttribute("y2", String(bracketY));
+      bracket.setAttribute("stroke", "#000");
+      bracket.setAttribute("stroke-width", "1");
+      svg.appendChild(bracket);
+      const leftBar = document.createElementNS(SVG_NS, "line");
+      leftBar.setAttribute("x1", String(tupletStartX));
+      leftBar.setAttribute("y1", String(bracketY));
+      leftBar.setAttribute("x2", String(tupletStartX));
+      leftBar.setAttribute("y2", String(bracketY + 5));
+      leftBar.setAttribute("stroke", "#000");
+      leftBar.setAttribute("stroke-width", "1");
+      svg.appendChild(leftBar);
+      const rightBar = document.createElementNS(SVG_NS, "line");
+      rightBar.setAttribute("x1", String(tupletEndX));
+      rightBar.setAttribute("y1", String(bracketY));
+      rightBar.setAttribute("x2", String(tupletEndX));
+      rightBar.setAttribute("y2", String(bracketY + 5));
+      rightBar.setAttribute("stroke", "#000");
+      rightBar.setAttribute("stroke-width", "1");
+      svg.appendChild(rightBar);
+      const centerX = (tupletStartX + tupletEndX) / 2;
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", String(centerX));
+      text.setAttribute("y", String(bracketY - 3));
+      text.setAttribute("font-size", "10");
+      text.setAttribute("font-weight", "bold");
+      text.setAttribute("text-anchor", "middle");
+      text.textContent = String(tupletGroup.count);
+      svg.appendChild(text);
     });
     return firstNoteX;
   }
@@ -1255,6 +1322,10 @@ var MusicAnalyzer = class {
         const aLevel = this.getBeamLevel(allNotes[aIdx].value);
         const bLevel = this.getBeamLevel(allNotes[bIdx].value);
         const notesLevel = Math.min(aLevel, bLevel);
+        const bNote = allNotes[bIdx];
+        if (bNote.hasLeadingSpace && bLevel >= 2) {
+          blockFromLevel = Math.min(blockFromLevel, bLevel);
+        }
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find((n) => n.absoluteIndex === t);
           if (mid && mid.isRest) {
@@ -1624,8 +1695,12 @@ var SVGRenderer = class {
                 tieEnd: n.tieEnd || false,
                 tieToVoid: n.tieToVoid || false,
                 tieFromVoid: n.tieFromVoid || false,
-                beatIndex
+                beatIndex,
                 // Preserve beat index for beam breaking
+                tuplet: n.tuplet,
+                // Preserve tuplet information
+                hasLeadingSpace: n.hasLeadingSpace
+                // Preserve spacing flag for tuplet subgroups
               });
             });
           });

@@ -154,7 +154,7 @@ export class MusicAnalyzer {
       segments: segments.map(s => s.map(idx => allNotes[idx].absoluteIndex))
     });
 
-    // 3) For each segment, compute block levels between adjacent notes (rests-in-between)
+    // 3) For each segment, compute block levels between adjacent notes (rests-in-between + hasLeadingSpace)
     for (const noteIndices of segments) {
       if (noteIndices.length === 0) continue;
       const blocks: number[] = []; // blockFromLevel between adjacency j and j+1 (1..4), Infinity if none
@@ -169,6 +169,16 @@ export class MusicAnalyzer {
         const aLevel = this.getBeamLevel(allNotes[aIdx].value);
         const bLevel = this.getBeamLevel(allNotes[bIdx].value);
         const notesLevel = Math.min(aLevel, bLevel);
+        
+        // Check if note B has a leading space flag (from tuplet syntax like {161616 161616}6)
+        // This should block beams at HIGHER levels only, maintaining level 1
+        // Example: {161616 161616}6 → space blocks level 2+, maintains level 1
+        // Example: {88 8}3 → space does nothing (8ths only have level 1)
+        const bNote = allNotes[bIdx];
+        if ((bNote as any).hasLeadingSpace && bLevel >= 2) {
+          // Block from note B's level (level 2 and above) only if note is 16th or shorter
+          blockFromLevel = Math.min(blockFromLevel, bLevel);
+        }
         
         // Scan between aAbs and bAbs for rests
         for (let t = aAbs + 1; t < bAbs; t++) {

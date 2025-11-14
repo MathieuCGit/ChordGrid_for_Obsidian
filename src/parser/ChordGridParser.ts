@@ -176,6 +176,8 @@ export class ChordGridParser {
               tieToVoid: n.tieToVoid || false,
               tieFromVoid: n.tieFromVoid || false,
               beatIndex,  // Preserve beat index to break beams at beat boundaries
+              tuplet: n.tuplet, // Preserve tuplet information
+              hasLeadingSpace: n.hasLeadingSpace, // Preserve spacing flag for tuplet subgroups
             });
           }
         });
@@ -473,6 +475,8 @@ class BeamAndTieAnalyzer {
             for (let g = 0; g < subGroups.length; g++) {
               const group = subGroups[g];
               let k = 0;
+              let isFirstNoteOfThisSubGroup = true;
+              
               while (k < group.length) {
                 // Parse chaque note du sous-groupe
                 let note: NoteElement;
@@ -492,6 +496,11 @@ class BeamAndTieAnalyzer {
                     tupletNoteIndex === 0 ? 'start' :
                     tupletNoteIndex === tupletCount - 1 ? 'end' : 'middle'
                 };
+                // Mark first note of each subgroup after the first with leading space flag
+                if (g > 0 && isFirstNoteOfThisSubGroup) {
+                  note.hasLeadingSpace = true;
+                  isFirstNoteOfThisSubGroup = false;
+                }
                 currentBeat.push(note);
                 tupletNoteIndex++;
               }

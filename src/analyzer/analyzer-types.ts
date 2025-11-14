@@ -39,6 +39,12 @@ export interface ParsedNote {
   tieToVoid?: boolean;
   tieFromVoid?: boolean;
   beatIndex?: number;  // Beat index within the segment (to break beams at beat boundaries)
+  tuplet?: {
+    count: number;
+    groupId: string;
+    position: 'start' | 'middle' | 'end';
+  };
+  hasLeadingSpace?: boolean;  // True if there was explicit whitespace before this note in tuplet syntax
   // No beam information here - that's for the analyzer
 }
 

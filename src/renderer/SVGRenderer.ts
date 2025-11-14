@@ -185,7 +185,9 @@ export class SVGRenderer {
                 tieEnd: n.tieEnd || false,
                 tieToVoid: n.tieToVoid || false,
                 tieFromVoid: n.tieFromVoid || false,
-                beatIndex  // Preserve beat index for beam breaking
+                beatIndex,  // Preserve beat index for beam breaking
+                tuplet: n.tuplet,  // Preserve tuplet information
+                hasLeadingSpace: n.hasLeadingSpace  // Preserve spacing flag for tuplet subgroups
               });
             });
           });

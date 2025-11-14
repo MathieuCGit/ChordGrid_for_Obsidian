@@ -79,6 +79,12 @@ export interface NoteElement {
     groupId: string;
     position: 'start' | 'middle' | 'end';
   };
+  /**
+   * Flag indiquant qu'il y avait un espace lexical avant cette note dans le texte source.
+   * Utilisé pour casser les ligatures de niveau supérieur dans les tuplets.
+   * Ex: {161616 161616}6 → l'espace entre les groupes casse la ligature niveau 2 mais garde niveau 1
+   */
+  hasLeadingSpace?: boolean;
 }
 
 /**

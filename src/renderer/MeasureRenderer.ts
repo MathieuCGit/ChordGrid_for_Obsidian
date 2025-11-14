@@ -230,24 +230,46 @@ export class MeasureRenderer {
         const startX = x + innerLeft;
         const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
 
-        // Preferred compact spacing but clamped to fit in beat width
-        const preferredSpacing = 20;
-        let spacing = preferredSpacing;
-        if (noteCount > 1) {
-            const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
-            spacing = Math.min(preferredSpacing, maxSpacing);
+        // Detect tuplet groups in this beat
+        const tupletGroups: Array<{startIndex: number, endIndex: number, count: number, groupId: string}> = [];
+        const seenTupletGroups = new Set<string>();
+        beat.notes.forEach((note, i) => {
+            if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
+                seenTupletGroups.add(note.tuplet.groupId);
+                const groupNotes = beat.notes.filter(n => n.tuplet && n.tuplet.groupId === note.tuplet!.groupId);
+                const startIdx = beat.notes.findIndex(n => n.tuplet && n.tuplet.groupId === note.tuplet!.groupId);
+                tupletGroups.push({
+                    startIndex: startIdx,
+                    endIndex: startIdx + groupNotes.length - 1,
+                    count: note.tuplet.count,
+                    groupId: note.tuplet.groupId
+                });
+            }
+        });
+
+        // Calculate individual note positions, accounting for tuplet spacing
+        const notePositionsX: number[] = [];
+        let currentX = startX;
+        const baseSpacing = 20;
+        
+        for (let i = 0; i < noteCount; i++) {
+            const isInTuplet = tupletGroups.some(g => i >= g.startIndex && i <= g.endIndex);
+            const spacing = isInTuplet ? baseSpacing * 0.75 : baseSpacing;
+            notePositionsX.push(currentX);
+            if (i < noteCount - 1) {
+                currentX += spacing;
+            }
         }
 
         beat.notes.forEach((nv, noteIndex) => {
-            // Calculate note position
-            // For a single whole rest (value=1), center it in the beat
+            // Calculate note position using precalculated positions
             let noteX: number;
             if (noteCount === 1 && nv.isRest && nv.value === 1) {
                 // Center the whole rest in the beat area
                 noteX = x + width / 2;
             } else {
-                // Left-aligned progression with clamped spacing
-                noteX = startX + noteIndex * spacing;
+                // Use precalculated position with tuplet spacing
+                noteX = notePositionsX[noteIndex];
             }
             
             // Render rests properly
@@ -301,6 +323,57 @@ export class MeasureRenderer {
                 stemBottomY
             });
         });
+        
+        // Draw tuplet brackets if any
+        tupletGroups.forEach(tupletGroup => {
+            const tupletStartX = notePositionsX[tupletGroup.startIndex];
+            const tupletEndX = notePositionsX[tupletGroup.endIndex];
+            // Position bracket above staff line (stems go DOWN from staffLineY + 5)
+            // Place bracket above the note heads at a comfortable distance
+            const bracketY = staffLineY - 15; // Above note heads, below where beams would be
+            
+            // Horizontal line
+            const bracket = document.createElementNS(SVG_NS, 'line');
+            bracket.setAttribute('x1', String(tupletStartX));
+            bracket.setAttribute('y1', String(bracketY));
+            bracket.setAttribute('x2', String(tupletEndX));
+            bracket.setAttribute('y2', String(bracketY));
+            bracket.setAttribute('stroke', '#000');
+            bracket.setAttribute('stroke-width', '1');
+            svg.appendChild(bracket);
+            
+            // Left vertical bar (pointing down)
+            const leftBar = document.createElementNS(SVG_NS, 'line');
+            leftBar.setAttribute('x1', String(tupletStartX));
+            leftBar.setAttribute('y1', String(bracketY));
+            leftBar.setAttribute('x2', String(tupletStartX));
+            leftBar.setAttribute('y2', String(bracketY + 5));
+            leftBar.setAttribute('stroke', '#000');
+            leftBar.setAttribute('stroke-width', '1');
+            svg.appendChild(leftBar);
+            
+            // Right vertical bar (pointing down)
+            const rightBar = document.createElementNS(SVG_NS, 'line');
+            rightBar.setAttribute('x1', String(tupletEndX));
+            rightBar.setAttribute('y1', String(bracketY));
+            rightBar.setAttribute('x2', String(tupletEndX));
+            rightBar.setAttribute('y2', String(bracketY + 5));
+            rightBar.setAttribute('stroke', '#000');
+            rightBar.setAttribute('stroke-width', '1');
+            svg.appendChild(rightBar);
+            
+            // Tuplet number centered above the bracket
+            const centerX = (tupletStartX + tupletEndX) / 2;
+            const text = document.createElementNS(SVG_NS, 'text');
+            text.setAttribute('x', String(centerX));
+            text.setAttribute('y', String(bracketY - 3));
+            text.setAttribute('font-size', '10');
+            text.setAttribute('font-weight', 'bold');
+            text.setAttribute('text-anchor', 'middle');
+            text.textContent = String(tupletGroup.count);
+            svg.appendChild(text);
+        });
+        
         return firstNoteX;
     }
 
