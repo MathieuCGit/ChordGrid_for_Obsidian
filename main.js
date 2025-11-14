@@ -320,6 +320,8 @@ var ChordGridParser = class {
         }
       }
       console.log("Parsed chords:", chordSegments.map((s) => s.chord));
+      console.log("First chord for measure:", firstChord);
+      console.log("Beats count:", beats.length);
       measures.push({
         beats,
         chord: firstChord,
@@ -388,11 +390,13 @@ var BeamAndTieAnalyzer = class {
     const beats = [];
     let currentBeat = [];
     let i = 0;
+    let pendingTieFromVoid = false;
     while (i < rhythmStr.length) {
       if (rhythmStr[i] === "_") {
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
+          pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
         } else {
           this.markTieStart(currentBeat);
@@ -417,8 +421,9 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       const note = this.parseNote(rhythmStr, i);
-      if (i === 0 && isFirstMeasureOfLine && rhythmStr[0] === "_") {
+      if (pendingTieFromVoid) {
         note.tieFromVoid = true;
+        pendingTieFromVoid = false;
       }
       if ((_b = this.tieContext.lastNote) == null ? void 0 : _b.tieStart) {
         note.tieEnd = true;
@@ -526,7 +531,6 @@ var BeamAndTieAnalyzer = class {
 
 // src/renderer/constants.ts
 var SVG_NS = "http://www.w3.org/2000/svg";
-var USE_ANALYZER_BEAMS = true;
 
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
@@ -711,7 +715,7 @@ var MeasureRenderer = class {
   drawMeasure(svg, measureIndex, notePositions, grid) {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - 2;
-    if (measureIndex === 0) {
+    if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, 120);
     } else if (this.measure.isRepeatStart) {
       this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);
@@ -788,124 +792,35 @@ var MeasureRenderer = class {
     DebugLogger.log(`Beam detection`, {
       hasBeamableNotes,
       multipleNotes: beat.notes.length > 1,
-      willDrawGroup: hasBeamableNotes && beat.notes.length > 1,
-      analyzerActive: USE_ANALYZER_BEAMS
+      willDrawGroup: hasBeamableNotes && beat.notes.length > 1
     });
-    if (USE_ANALYZER_BEAMS) {
-      DebugLogger.log(`\u2705 Using analyzer beams (legacy beaming bypassed)`);
-      const noteCount = beat.notes.length;
-      let firstNoteX = null;
-      const innerLeft = 10;
-      const innerRight = 10;
-      const headHalfMax = 6;
-      const startX = x + innerLeft;
-      const endLimit = x + width - innerRight - headHalfMax;
-      const preferredSpacing = 20;
-      let spacing = preferredSpacing;
-      if (noteCount > 1) {
-        const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
-        spacing = Math.min(preferredSpacing, maxSpacing);
-      }
-      beat.notes.forEach((nv, noteIndex) => {
-        var _a;
-        const noteX = startX + noteIndex * spacing;
-        if (nv.isRest) {
-          this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-          segmentNoteCursor[chordIndex]++;
-          if (firstNoteX === null) firstNoteX = noteX;
-          return;
-        }
-        const localIndexInSegment = segmentNoteCursor[chordIndex];
-        const isInPrimaryBeam = !!((_a = this.beamedAtLevel1) == null ? void 0 : _a.has(`${chordIndex}:${localIndexInSegment}`));
-        const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-        this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
-        if (firstNoteX === null) firstNoteX = noteX;
-        let headLeftX;
-        let headRightX;
-        if (nv.value === 1 || nv.value === 2) {
-          const diamondSize = 6;
-          headLeftX = noteX - diamondSize;
-          headRightX = noteX + diamondSize;
-        } else {
-          const slashHalf = 10 / 2;
-          headLeftX = noteX - slashHalf;
-          headRightX = noteX + slashHalf;
-        }
-        const hasStem = nv.value >= 2;
-        const stemTopY = hasStem ? staffLineY + 5 : void 0;
-        const stemBottomY = hasStem ? staffLineY + 30 : void 0;
-        notePositions.push({
-          x: noteX,
-          y: staffLineY,
-          headLeftX,
-          headRightX,
-          measureIndex,
-          chordIndex,
-          beatIndex,
-          noteIndex,
-          segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-          tieStart: !!nv.tieStart,
-          tieEnd: !!nv.tieEnd,
-          tieToVoid: !!nv.tieToVoid,
-          tieFromVoid: !!nv.tieFromVoid,
-          globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
-          stemTopY,
-          stemBottomY
-        });
-      });
-      return firstNoteX;
+    const noteCount = beat.notes.length;
+    let firstNoteX = null;
+    const innerLeft = 10;
+    const innerRight = 10;
+    const headHalfMax = 6;
+    const startX = x + innerLeft;
+    const endLimit = x + width - innerRight - headHalfMax;
+    const preferredSpacing = 20;
+    let spacing = preferredSpacing;
+    if (noteCount > 1) {
+      const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
+      spacing = Math.min(preferredSpacing, maxSpacing);
     }
-    if (hasBeamableNotes && beat.notes.length > 1) {
-      DebugLogger.log(`\u2705 Drawing note group with beams`);
-      const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
-      const noteCount = beat.notes.length;
-      const hasSmallNotes = beat.notes.some((nv) => nv.value >= 32);
-      const noteSpacing = noteCount > 0 ? width / noteCount * (hasSmallNotes ? 1.2 : 1) : width;
-      beat.notes.forEach((nv, noteIndex) => {
-        const noteX = x + 10 + noteIndex * noteSpacing + noteSpacing / 2;
-        let headLeftX;
-        let headRightX;
-        if (nv.value === 1 || nv.value === 2) {
-          const diamondSize = 6;
-          headLeftX = noteX - diamondSize;
-          headRightX = noteX + diamondSize;
-        } else {
-          const slashHalf = 10 / 2;
-          headLeftX = noteX - slashHalf;
-          headRightX = noteX + slashHalf;
-        }
-        const hasStem = nv.value >= 2;
-        const stemTopY = hasStem ? staffLineY + 5 : void 0;
-        const stemBottomY = hasStem ? staffLineY + 30 : void 0;
-        notePositions.push({
-          x: noteX,
-          y: staffLineY,
-          headLeftX,
-          headRightX,
-          measureIndex,
-          chordIndex,
-          beatIndex,
-          noteIndex,
-          segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-          tieStart: !!nv.tieStart,
-          tieEnd: !!nv.tieEnd,
-          tieToVoid: !!nv.tieToVoid,
-          tieFromVoid: !!nv.tieFromVoid,
-          globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
-          stemTopY,
-          stemBottomY
-        });
-      });
-      return firstNoteX;
-    } else {
-      const nv = beat.notes[0];
+    beat.notes.forEach((nv, noteIndex) => {
+      var _a;
+      const noteX = startX + noteIndex * spacing;
       if (nv.isRest) {
-        const noteX2 = x + 10;
-        this.restRenderer.drawRest(svg, nv, noteX2, staffLineY);
+        this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
         segmentNoteCursor[chordIndex]++;
-        return noteX2;
+        if (firstNoteX === null) firstNoteX = noteX;
+        return;
       }
-      const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
+      const localIndexInSegment = segmentNoteCursor[chordIndex];
+      const isInPrimaryBeam = !!((_a = this.beamedAtLevel1) == null ? void 0 : _a.has(`${chordIndex}:${localIndexInSegment}`));
+      const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
+      this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+      if (firstNoteX === null) firstNoteX = noteX;
       let headLeftX;
       let headRightX;
       if (nv.value === 1 || nv.value === 2) {
@@ -928,18 +843,18 @@ var MeasureRenderer = class {
         measureIndex,
         chordIndex,
         beatIndex,
-        noteIndex: 0,
+        noteIndex,
         segmentNoteIndex: segmentNoteCursor[chordIndex]++,
         tieStart: !!nv.tieStart,
         tieEnd: !!nv.tieEnd,
         tieToVoid: !!nv.tieToVoid,
         tieFromVoid: !!nv.tieFromVoid,
-        globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100,
+        globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
         stemTopY,
         stemBottomY
       });
-      return noteX;
-    }
+    });
+    return firstNoteX;
   }
   drawSingleNote(svg, nv, x, staffLineY, width) {
     if (nv.isRest) {
@@ -962,9 +877,9 @@ var MeasureRenderer = class {
     }
     if (nv.dotted) {
       const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", (centerX + 8).toString());
-      dot.setAttribute("cy", staffLineY.toString());
-      dot.setAttribute("r", "2");
+      dot.setAttribute("cx", (centerX + 10).toString());
+      dot.setAttribute("cy", (staffLineY - 4).toString());
+      dot.setAttribute("r", "1.5");
       dot.setAttribute("fill", "#000");
       svg.appendChild(dot);
     }
@@ -996,9 +911,9 @@ var MeasureRenderer = class {
     }
     if (nv.dotted) {
       const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", (x + 8).toString());
-      dot.setAttribute("cy", staffLineY.toString());
-      dot.setAttribute("r", "2");
+      dot.setAttribute("cx", (x + 10).toString());
+      dot.setAttribute("cy", (staffLineY - 4).toString());
+      dot.setAttribute("r", "1.5");
       dot.setAttribute("fill", "#000");
       svg.appendChild(dot);
     }
@@ -1012,162 +927,6 @@ var MeasureRenderer = class {
     diamond.setAttribute("stroke", "#000");
     diamond.setAttribute("stroke-width", "1");
     svg.appendChild(diamond);
-  }
-  drawNoteGroup(svg, notesValues, x, staffLineY, width) {
-    const noteCount = notesValues.length;
-    if (noteCount === 0) return null;
-    DebugLogger.log("\u{1F3A8} drawNoteGroup called", {
-      noteCount,
-      notes: notesValues.map((n) => ({ value: n.value, dotted: n.dotted, isRest: n.isRest })),
-      x,
-      staffLineY,
-      width
-    });
-    const hasSmallNotes = notesValues.some((nv) => nv.value >= 32);
-    const noteSpacing = noteCount > 0 ? width / noteCount * (hasSmallNotes ? 1.2 : 1) : width;
-    const stemHeight = 25;
-    if (noteCount === 1 && notesValues[0].value >= 8) {
-      const centerX = x + noteSpacing / 2;
-      this.drawSlash(svg, centerX, staffLineY);
-      const stem = this.drawStem(svg, centerX, staffLineY, stemHeight);
-      const value = notesValues[0].value;
-      this.drawFlag(svg, centerX, staffLineY, value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : value === 64 ? 4 : 0);
-      return centerX;
-    }
-    const notes = [];
-    for (let i = 0; i < noteCount; i++) {
-      const nv = notesValues[i];
-      const centerX = x + i * noteSpacing + noteSpacing / 2;
-      if (nv.isRest) {
-        this.restRenderer.drawRest(svg, nv, centerX, staffLineY);
-        notes.push({ nv, beamCount: 0, centerX });
-      } else if (nv.value === 1) {
-        this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-        notes.push({ nv, beamCount: 0, centerX });
-      } else if (nv.value === 2) {
-        this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-        const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
-        notes.push({ nv, beamCount: 0, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
-      } else {
-        this.drawSlash(svg, centerX, staffLineY);
-        const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
-        const prevNote = i > 0 ? notesValues[i - 1] : null;
-        const nextNote = i < notesValues.length - 1 ? notesValues[i + 1] : null;
-        const needsFlag = nv.value >= 8 && (!prevNote || prevNote.value < 8) && (!nextNote || nextNote.value < 8);
-        if (needsFlag) {
-          if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
-          else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
-          else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
-          else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
-        }
-        const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
-        notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
-      }
-      if (nv.dotted) {
-        const dot = document.createElementNS(SVG_NS, "circle");
-        dot.setAttribute("cx", (centerX + 8).toString());
-        dot.setAttribute("cy", staffLineY.toString());
-        dot.setAttribute("r", "2");
-        dot.setAttribute("fill", "#000");
-        svg.appendChild(dot);
-      }
-    }
-    const beamedNotes = notes.filter((n) => n.beamCount > 0);
-    DebugLogger.log("\u{1F3B5} Notes prepared for beaming", {
-      totalNotes: notes.length,
-      beamedNotesCount: beamedNotes.length,
-      beamedNotes: beamedNotes.map((n) => ({
-        value: n.nv.value,
-        beamCount: n.beamCount,
-        centerX: n.centerX,
-        stemX: n.stemX,
-        stemBottomY: n.stemBottomY
-      }))
-    });
-    if (beamedNotes.length === 0) return notes.length ? notes[0].centerX : null;
-    const maxBeamCount = Math.max(...beamedNotes.map((n) => n.beamCount));
-    if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
-    DebugLogger.log("\u{1F528} Starting beam drawing", { maxBeamCount });
-    const beamGap = 5;
-    const validStemBottoms = beamedNotes.map((n) => n.stemBottomY).filter((y) => y !== void 0);
-    const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
-    DebugLogger.log("Beam baseline calculated", { baseStemBottom, validStemBottoms });
-    for (let level = 1; level <= maxBeamCount; level++) {
-      DebugLogger.log(`Drawing beam level ${level}`);
-      let segStartIndex = null;
-      for (let i = 0; i <= beamedNotes.length; i++) {
-        const n = i < beamedNotes.length ? beamedNotes[i] : null;
-        const active = n ? n.beamCount >= level : false;
-        if (active && segStartIndex === null) {
-          segStartIndex = i;
-        } else if (!active && segStartIndex !== null) {
-          const segEnd = i - 1;
-          const beamY = baseStemBottom - (level - 1) * beamGap;
-          const startX = beamedNotes[segStartIndex].stemX;
-          const endX = beamedNotes[segEnd].stemX;
-          if (segStartIndex === segEnd) {
-            const beamletLength = 8;
-            const currentNote = beamedNotes[segStartIndex].nv;
-            const prevNote = segStartIndex > 0 ? beamedNotes[segStartIndex - 1].nv : null;
-            const nextNote = segStartIndex < beamedNotes.length - 1 ? beamedNotes[segStartIndex + 1].nv : null;
-            let beamletEndX;
-            let direction;
-            if (prevNote && prevNote.dotted) {
-              beamletEndX = startX - beamletLength;
-              direction = "left (after dotted note)";
-            } else if (nextNote && nextNote.dotted) {
-              beamletEndX = startX + beamletLength;
-              direction = "right (before dotted note)";
-            } else {
-              const groupCenter = (beamedNotes.length - 1) / 2;
-              const isInFirstHalf = segStartIndex < groupCenter;
-              if (isInFirstHalf) {
-                beamletEndX = startX + beamletLength;
-                direction = "right (first half)";
-              } else {
-                beamletEndX = startX - beamletLength;
-                direction = "left (second half)";
-              }
-            }
-            DebugLogger.log(`\u270F\uFE0F Drawing beamlet (partial beam)`, {
-              level,
-              from: { x: startX, y: beamY },
-              to: { x: beamletEndX, y: beamY },
-              noteIndex: segStartIndex,
-              direction,
-              prevDotted: prevNote == null ? void 0 : prevNote.dotted,
-              nextDotted: nextNote == null ? void 0 : nextNote.dotted
-            });
-            const beamlet = document.createElementNS(SVG_NS, "line");
-            beamlet.setAttribute("x1", startX.toString());
-            beamlet.setAttribute("y1", beamY.toString());
-            beamlet.setAttribute("x2", beamletEndX.toString());
-            beamlet.setAttribute("y2", beamY.toString());
-            beamlet.setAttribute("stroke", "#000");
-            beamlet.setAttribute("stroke-width", "2");
-            svg.appendChild(beamlet);
-          } else {
-            DebugLogger.log(`\u270F\uFE0F Drawing beam segment`, {
-              level,
-              from: { x: startX, y: beamY },
-              to: { x: endX, y: beamY },
-              segStartIndex,
-              segEnd
-            });
-            const beam = document.createElementNS(SVG_NS, "line");
-            beam.setAttribute("x1", startX.toString());
-            beam.setAttribute("y1", beamY.toString());
-            beam.setAttribute("x2", endX.toString());
-            beam.setAttribute("y2", beamY.toString());
-            beam.setAttribute("stroke", "#000");
-            beam.setAttribute("stroke-width", "2");
-            svg.appendChild(beam);
-          }
-          segStartIndex = null;
-        }
-      }
-    }
-    return notes.length ? notes[0].centerX : null;
   }
   drawSlash(svg, x, y) {
     const slashLength = 10;
@@ -1391,6 +1150,15 @@ var MusicAnalyzer = class {
       if (this.isBeamable(allNotes[i])) beamableIdxs.push(i);
     }
     if (beamableIdxs.length === 0) return beamGroups;
+    DebugLogger2.log("\u{1F3B5} Analyzing beams", {
+      totalBeamable: beamableIdxs.length,
+      notes: beamableIdxs.map((idx) => ({
+        index: idx,
+        segmentIndex: allNotes[idx].segmentIndex,
+        value: allNotes[idx].value,
+        absoluteIndex: allNotes[idx].absoluteIndex
+      }))
+    });
     const segments = [];
     let seg = [beamableIdxs[0]];
     for (let k = 1; k < beamableIdxs.length; k++) {
@@ -1404,6 +1172,10 @@ var MusicAnalyzer = class {
       }
     }
     if (seg.length) segments.push(seg);
+    DebugLogger2.log("\u{1F3B5} Beam segments after hard breaks", {
+      segmentCount: segments.length,
+      segments: segments.map((s) => s.map((idx) => allNotes[idx].absoluteIndex))
+    });
     for (const noteIndices of segments) {
       if (noteIndices.length === 0) continue;
       const blocks = [];
@@ -1536,9 +1308,21 @@ var MusicAnalyzer = class {
   }
   isHardBreakBetween(a, b, measure) {
     var _a, _b;
-    if (((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) return true;
+    if (a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
+      DebugLogger2.log("\u{1F50D} Beat boundary within segment", {
+        fromBeat: a.beatIndex,
+        toBeat: b.beatIndex,
+        segment: a.segmentIndex
+      });
+      return true;
+    }
     if (b.segmentIndex > a.segmentIndex) {
       const nextSegment = measure.segments[b.segmentIndex];
+      DebugLogger2.log("\u{1F50D} Checking segment boundary", {
+        fromSegment: a.segmentIndex,
+        toSegment: b.segmentIndex,
+        nextSegmentHasLeadingSpace: nextSegment.leadingSpace
+      });
       return !!nextSegment.leadingSpace;
     }
     return false;
@@ -1707,13 +1491,6 @@ var SVGRenderer = class {
     const maxLineWidth = measuresPerLine * baseMeasureWidth;
     let currentLineWidth = 0;
     grid.measures.forEach((measure, mi) => {
-      if (measure.isLineBreak) {
-        DebugLogger.log("\u21B5 Line break detected");
-        currentLine++;
-        measuresInCurrentLine = 0;
-        currentLineWidth = 0;
-        return;
-      }
       const mWidth = dynamicMeasureWidths[mi];
       if (measuresInCurrentLine > 0 && currentLineWidth + mWidth > maxLineWidth) {
         DebugLogger.log(`\u21B5 Auto line break (${measuresInCurrentLine} measures)`);
@@ -1721,18 +1498,26 @@ var SVGRenderer = class {
         measuresInCurrentLine = 0;
         currentLineWidth = 0;
       }
+      const isLineStart = measuresInCurrentLine === 0;
+      measure.__isLineStart = isLineStart;
       measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++, width: mWidth });
       measuresInCurrentLine++;
       currentLineWidth += mWidth;
+      if (measure.isLineBreak) {
+        DebugLogger.log("\u21B5 Line break detected");
+        currentLine++;
+        measuresInCurrentLine = 0;
+        currentLineWidth = 0;
+      }
     });
     DebugLogger.log("\u{1F4CA} Layout calculated", {
       totalLines: currentLine + 1,
       totalMeasures: measurePositions.length
     });
     const lines = currentLine + 1;
-    const linesWidths = [];
+    const linesWidths = new Array(lines).fill(0);
     measurePositions.forEach((p) => {
-      linesWidths[p.lineIndex] = (linesWidths[p.lineIndex] || 0) + p.width;
+      linesWidths[p.lineIndex] += p.width;
     });
     const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
     const height = lines * (measureHeight + 20) + 20;
@@ -1756,60 +1541,58 @@ var SVGRenderer = class {
     DebugLogger.log("\u{1F3BC} Rendering measures");
     let analyzedMeasures = [];
     let level1BeamSet;
-    if (USE_ANALYZER_BEAMS) {
-      try {
-        const parser = new ChordGridParser();
-        const analyzer = new MusicAnalyzer();
-        analyzedMeasures = grid.measures.map((m) => {
-          const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map((seg) => {
-            const notes = [];
-            seg.beats.forEach((beat, beatIndex) => {
-              beat.notes.forEach((n) => {
-                notes.push({
-                  value: n.value,
-                  dotted: n.dotted,
-                  isRest: n.isRest,
-                  tieStart: n.tieStart || false,
-                  tieEnd: n.tieEnd || false,
-                  tieToVoid: n.tieToVoid || false,
-                  tieFromVoid: n.tieFromVoid || false,
-                  beatIndex
-                  // Preserve beat index for beam breaking
-                });
+    try {
+      const parser = new ChordGridParser();
+      const analyzer = new MusicAnalyzer();
+      analyzedMeasures = grid.measures.map((m) => {
+        const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map((seg) => {
+          const notes = [];
+          seg.beats.forEach((beat, beatIndex) => {
+            beat.notes.forEach((n) => {
+              notes.push({
+                value: n.value,
+                dotted: n.dotted,
+                isRest: n.isRest,
+                tieStart: n.tieStart || false,
+                tieEnd: n.tieEnd || false,
+                tieToVoid: n.tieToVoid || false,
+                tieFromVoid: n.tieFromVoid || false,
+                beatIndex
+                // Preserve beat index for beam breaking
               });
             });
-            return {
-              chord: seg.chord,
-              leadingSpace: !!seg.leadingSpace,
-              notes
-            };
           });
-          const parsedMeasure = {
-            segments,
-            timeSignature: grid.timeSignature,
-            barline: m.barline || "|",
-            isLineBreak: m.isLineBreak || false,
-            source: m.source || ""
+          return {
+            chord: seg.chord,
+            leadingSpace: !!seg.leadingSpace,
+            notes
           };
-          const analyzed = analyzer.analyze(parsedMeasure);
-          return analyzed;
         });
-        DebugLogger.log("\u2705 Analyzer measures prepared", { count: analyzedMeasures.length });
-        level1BeamSet = /* @__PURE__ */ new Set();
-        analyzedMeasures.forEach((am, mi) => {
-          var _a;
-          (_a = am.beamGroups) == null ? void 0 : _a.forEach((g) => {
-            if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
-              g.notes.forEach((r) => {
-                level1BeamSet.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
-              });
-            }
-          });
+        const parsedMeasure = {
+          segments,
+          timeSignature: grid.timeSignature,
+          barline: m.barline || "|",
+          isLineBreak: m.isLineBreak || false,
+          source: m.source || ""
+        };
+        const analyzed = analyzer.analyze(parsedMeasure);
+        return analyzed;
+      });
+      DebugLogger.log("\u2705 Analyzer measures prepared", { count: analyzedMeasures.length });
+      level1BeamSet = /* @__PURE__ */ new Set();
+      analyzedMeasures.forEach((am, mi) => {
+        var _a;
+        (_a = am.beamGroups) == null ? void 0 : _a.forEach((g) => {
+          if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+            g.notes.forEach((r) => {
+              level1BeamSet.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
+            });
+          }
         });
-      } catch (e) {
-        DebugLogger.error("Analyzer preparation failed", e);
-        analyzedMeasures = [];
-      }
+      });
+    } catch (e) {
+      DebugLogger.error("Analyzer preparation failed", e);
+      analyzedMeasures = [];
     }
     const lineAccumulated = new Array(lines).fill(40);
     measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2, width: mWidth }) => {
@@ -1830,7 +1613,7 @@ var SVGRenderer = class {
       }
       const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet);
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
-      if (USE_ANALYZER_BEAMS && analyzedMeasures[globalIndex2]) {
+      if (analyzedMeasures[globalIndex2]) {
         drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions);
       }
       lineAccumulated[lineIndex] += mWidth;
@@ -1878,6 +1661,17 @@ var SVGRenderer = class {
    */
   detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions) {
     DebugLogger.log("\u{1F517} Starting tie detection and drawing");
+    const lineStartPadding = 40;
+    const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
+    const lineOffsets = new Array(maxLineIndex + 1).fill(lineStartPadding);
+    const measureXB = {};
+    measurePositions.sort((a, b) => a.globalIndex - b.globalIndex).forEach((mp) => {
+      const xStart = lineOffsets[mp.lineIndex];
+      const xEnd = xStart + mp.width;
+      const y = mp.lineIndex * (120 + 20) + 20;
+      measureXB[mp.globalIndex] = { xStart, xEnd, y };
+      lineOffsets[mp.lineIndex] += mp.width;
+    });
     DebugLogger.log("\u{1F527} Post-processing ties for line breaks");
     for (let i = 0; i < notePositions.length; i++) {
       const cur = notePositions[i];
@@ -1886,12 +1680,15 @@ var SVGRenderer = class {
         if (!curMeasurePos) continue;
         for (let j = i + 1; j < notePositions.length; j++) {
           const target = notePositions[j];
-          if (target.tieEnd) {
+          if (target.tieEnd || target.tieFromVoid) {
             const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
             if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
               DebugLogger.log(`\u{1F527} Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
               cur.tieToVoid = true;
-              target.tieFromVoid = true;
+              if (!target.tieFromVoid) {
+                target.tieFromVoid = true;
+              }
+              cur.tieStart = false;
             }
             break;
           }
@@ -1933,14 +1730,26 @@ var SVGRenderer = class {
       path.setAttribute("fill", "none");
       svg.appendChild(path);
     };
-    const drawHalfToMargin = (startX, startY, svgW) => {
-      const marginX = svgW - 16;
-      DebugLogger.log("Drawing half-tie to margin (tieToVoid)", {
+    const drawHalfToMeasureRight = (measureIdx, startX, startY) => {
+      const bounds = measureXB[measureIdx];
+      const marginX = bounds ? bounds.xEnd - 8 : svgWidth - 16;
+      DebugLogger.log("Drawing half-tie to measure right edge (tieToVoid)", {
         from: { x: startX, y: startY },
-        toMargin: marginX
+        to: { x: marginX, y: startY },
+        measureIdx
       });
       drawCurve(startX, startY, marginX, startY, true);
       return { x: marginX, y: startY };
+    };
+    const drawHalfFromMeasureLeft = (measureIdx, endX, endY) => {
+      const bounds = measureXB[measureIdx];
+      const startX = bounds ? bounds.xStart + 4 : 16;
+      DebugLogger.log("Drawing half-tie from measure left edge (tieFromVoid)", {
+        from: { x: startX, y: endY },
+        to: { x: endX, y: endY },
+        measureIdx
+      });
+      drawCurve(startX, endY, endX, endY, true);
     };
     DebugLogger.log("\u{1F50D} Primary pass: matching tieStart -> tieEnd");
     for (let i = 0; i < notePositions.length; i++) {
@@ -1954,12 +1763,21 @@ var SVGRenderer = class {
       } else {
         startY = cur.y - 8;
       }
-      if (cur.tieStart) {
-        DebugLogger.log(`Found tieStart at index ${i}`, {
+      if (cur.tieStart || cur.tieToVoid) {
+        DebugLogger.log(`Found tieStart/tieToVoid at index ${i}`, {
           measure: cur.measureIndex,
           chord: cur.chordIndex,
-          beat: cur.beatIndex
+          beat: cur.beatIndex,
+          tieStart: cur.tieStart,
+          tieToVoid: cur.tieToVoid
         });
+        if (cur.tieToVoid) {
+          DebugLogger.log(`Drawing tieToVoid for index ${i} (post-processed)`);
+          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
+          matched.add(i);
+          continue;
+        }
         let found = -1;
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
@@ -1996,36 +1814,37 @@ var SVGRenderer = class {
           }
         }
         if (foundFromVoid >= 0) {
-          DebugLogger.log(`\u2705 Matched tieStart[${i}] -> tieFromVoid[${foundFromVoid}]`);
           const tgt = notePositions[foundFromVoid];
-          const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
-          let endY;
-          if (tgt.headLeftX !== void 0) {
-            const halfT = Math.abs(tgt.headLeftX - tgt.x);
-            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+          const curMP = measurePositions.find((mp) => mp.globalIndex === cur.measureIndex);
+          const tgtMP = measurePositions.find((mp) => mp.globalIndex === tgt.measureIndex);
+          const crossesLine = !!(curMP && tgtMP && curMP.lineIndex !== tgtMP.lineIndex);
+          if (crossesLine) {
+            DebugLogger.log(`\u2705 Matched cross-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] \u2014 split into two halves`);
+            const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+            tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
+            matched.add(i);
           } else {
-            endY = tgt.y - 8;
+            DebugLogger.log(`\u2705 Matched same-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] \u2014 drawing full curve`);
+            const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
+            let endY;
+            if (tgt.headLeftX !== void 0) {
+              const halfT = Math.abs(tgt.headLeftX - tgt.x);
+              endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+            } else {
+              endY = tgt.y - 8;
+            }
+            drawCurve(startX, startY, endX, endY, false);
+            matched.add(i);
+            matched.add(foundFromVoid);
           }
-          drawCurve(startX, startY, endX, endY, true);
-          matched.add(i);
-          matched.add(foundFromVoid);
           continue;
         }
-        DebugLogger.log(`No tieFromVoid found, checking tieToVoid flag`);
-        if (cur.tieToVoid) {
-          DebugLogger.log(`Drawing tieToVoid for index ${i}`);
-          const pending = drawHalfToMargin(startX, startY, svgWidth);
-          tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
-          matched.add(i);
-          continue;
-        }
-        DebugLogger.warn(`tieStart[${i}] has no match and no tieToVoid flag`);
+        DebugLogger.log(`No tieFromVoid found, already handled or no match`);
       }
       if (cur.tieFromVoid && !matched.has(i)) {
         DebugLogger.log(`Found tieFromVoid at index ${i}`, {
           measure: cur.measureIndex
         });
-        const pending = tieManager.resolvePendingFor(cur.measureIndex);
         let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
         let endY;
         if (cur.headLeftX !== void 0) {
@@ -2034,16 +1853,8 @@ var SVGRenderer = class {
         } else {
           endY = cur.y - 8;
         }
-        if (pending) {
-          DebugLogger.log(`\u2705 Resolved pending tie for tieFromVoid[${i}]`, pending);
-          drawCurve(pending.x, pending.y, endX, endY, true);
-          matched.add(i);
-        } else {
-          DebugLogger.log(`\u26A0\uFE0F No pending tie found, drawing from left margin`);
-          const leftMarginX = 16;
-          drawCurve(leftMarginX, endY, endX, endY, true);
-          matched.add(i);
-        }
+        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY);
+        matched.add(i);
       }
     }
     DebugLogger.log("\u{1F517} Tie detection completed", {

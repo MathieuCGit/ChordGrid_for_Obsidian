@@ -26,7 +26,7 @@
 
 import { ChordGrid } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
-import { SVG_NS, USE_ANALYZER_BEAMS } from './constants';
+import { SVG_NS } from './constants';
 import { TieManager } from '../utils/TieManager';
 import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
@@ -164,64 +164,62 @@ export class SVGRenderer {
   const tieManager = new TieManager();
 
     DebugLogger.log('🎼 Rendering measures');
-    // Optional analyzer path: prepare analyzed measures once if flag active
+    // Prepare analyzed measures for beam rendering
     let analyzedMeasures: any[] = [];
     let level1BeamSet: Set<string> | undefined;
-    if (USE_ANALYZER_BEAMS) {
-      try {
-        const parser = new ChordGridParser();
-        const analyzer = new MusicAnalyzer();
-        // rebuild text source from grid? we keep existing grid measures
-        analyzedMeasures = grid.measures.map(m => {
-          // Map existing measure into analyzer ParsedMeasure shape
-          const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map(seg => {
-            const notes: any[] = [];
-            seg.beats.forEach((beat, beatIndex) => {
-              beat.notes.forEach(n => {
-                notes.push({
-                  value: n.value,
-                  dotted: n.dotted,
-                  isRest: n.isRest,
-                  tieStart: n.tieStart || false,
-                  tieEnd: n.tieEnd || false,
-                  tieToVoid: n.tieToVoid || false,
-                  tieFromVoid: n.tieFromVoid || false,
-                  beatIndex  // Preserve beat index for beam breaking
-                });
+    try {
+      const parser = new ChordGridParser();
+      const analyzer = new MusicAnalyzer();
+      // rebuild text source from grid? we keep existing grid measures
+      analyzedMeasures = grid.measures.map(m => {
+        // Map existing measure into analyzer ParsedMeasure shape
+        const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map(seg => {
+          const notes: any[] = [];
+          seg.beats.forEach((beat, beatIndex) => {
+            beat.notes.forEach(n => {
+              notes.push({
+                value: n.value,
+                dotted: n.dotted,
+                isRest: n.isRest,
+                tieStart: n.tieStart || false,
+                tieEnd: n.tieEnd || false,
+                tieToVoid: n.tieToVoid || false,
+                tieFromVoid: n.tieFromVoid || false,
+                beatIndex  // Preserve beat index for beam breaking
               });
             });
-            return {
-              chord: seg.chord,
-              leadingSpace: !!seg.leadingSpace,
-              notes
-            };
           });
-          const parsedMeasure = {
-            segments,
-            timeSignature: grid.timeSignature,
-            barline: (m as any).barline || '|',
-            isLineBreak: (m as any).isLineBreak || false,
-            source: (m as any).source || ''
+          return {
+            chord: seg.chord,
+            leadingSpace: !!seg.leadingSpace,
+            notes
           };
-          const analyzed = analyzer.analyze(parsedMeasure as any);
-          return analyzed;
         });
-        DebugLogger.log('✅ Analyzer measures prepared', { count: analyzedMeasures.length });
-        // Build global set of notes in level-1 beams of length >=2 per measure
-        level1BeamSet = new Set<string>();
-        analyzedMeasures.forEach((am: any, mi: number) => {
-          am.beamGroups?.forEach((g: any) => {
-            if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
-              g.notes.forEach((r: any) => {
-                level1BeamSet!.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
-              });
-            }
-          });
+        const parsedMeasure = {
+          segments,
+          timeSignature: grid.timeSignature,
+          barline: (m as any).barline || '|',
+          isLineBreak: (m as any).isLineBreak || false,
+          source: (m as any).source || ''
+        };
+        const analyzed = analyzer.analyze(parsedMeasure as any);
+        return analyzed;
+      });
+      DebugLogger.log('✅ Analyzer measures prepared', { count: analyzedMeasures.length });
+      // Build global set of notes in level-1 beams of length >=2 per measure
+      level1BeamSet = new Set<string>();
+      analyzedMeasures.forEach((am: any, mi: number) => {
+        am.beamGroups?.forEach((g: any) => {
+          if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+            g.notes.forEach((r: any) => {
+              level1BeamSet!.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
+            });
+          }
         });
-      } catch (e) {
-        DebugLogger.error('Analyzer preparation failed', e);
-        analyzedMeasures = [];
-      }
+      });
+    } catch (e) {
+      DebugLogger.error('Analyzer preparation failed', e);
+      analyzedMeasures = [];
     }
 
     const lineAccumulated: number[] = new Array(lines).fill(40);
@@ -244,8 +242,8 @@ export class SVGRenderer {
       const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet);
       mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
-      if (USE_ANALYZER_BEAMS && analyzedMeasures[globalIndex]) {
-        // Overlay still draws beams, but flags for isolated notes now handled inside MeasureRenderer
+      // Draw analyzer beams overlay
+      if (analyzedMeasures[globalIndex]) {
         drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any);
       }
       lineAccumulated[lineIndex] += mWidth;

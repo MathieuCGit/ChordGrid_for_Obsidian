@@ -21,7 +21,7 @@
  */
 
 import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
-import { SVG_NS, USE_ANALYZER_BEAMS } from './constants';
+import { SVG_NS } from './constants';
 import { RestRenderer } from './RestRenderer';
 import { DebugLogger } from '../utils/DebugLogger';
 
@@ -43,18 +43,6 @@ interface NotePosition {
         globalTimeIndex?: number; // Updated to match Note_Element interface
     tieToVoid?: boolean;
     tieFromVoid?: boolean;
-    stemTopY?: number;
-    stemBottomY?: number;
-}
-
-/**
- * Note avec informations de ligature pour le rendu groupé.
- */
-interface BeamNote {
-    nv: NoteElement;
-    beamCount: number;
-    centerX: number;
-    stemX?: number;
     stemTopY?: number;
     stemBottomY?: number;
 }
@@ -227,147 +215,49 @@ export class MeasureRenderer {
         DebugLogger.log(`Beam detection`, {
             hasBeamableNotes,
             multipleNotes: beat.notes.length > 1,
-            willDrawGroup: hasBeamableNotes && beat.notes.length > 1,
-            analyzerActive: USE_ANALYZER_BEAMS
+            willDrawGroup: hasBeamableNotes && beat.notes.length > 1
         });
 
-        // When analyzer beams are active, skip legacy beaming and just position notes
-        if (USE_ANALYZER_BEAMS) {
-            DebugLogger.log(`✅ Using analyzer beams (legacy beaming bypassed)`);
-            // Draw notes without beams; analyzer overlay will handle beams later
-            // Position notes left-aligned within the beat area but clamp spacing to avoid overflow
-            const noteCount = beat.notes.length;
-            let firstNoteX: number | null = null;
+        // Draw notes without beams; analyzer overlay will handle beams later
+        // Position notes left-aligned within the beat area but clamp spacing to avoid overflow
+        const noteCount = beat.notes.length;
+        let firstNoteX: number | null = null;
 
-            // Geometry constants (match stem/head geometry)
-            const innerLeft = 10;
-            const innerRight = 10;
-            const headHalfMax = 6; // worst case (diamond)
-            const startX = x + innerLeft;
-            const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
+        // Geometry constants (match stem/head geometry)
+        const innerLeft = 10;
+        const innerRight = 10;
+        const headHalfMax = 6; // worst case (diamond)
+        const startX = x + innerLeft;
+        const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
 
-            // Preferred compact spacing but clamped to fit in beat width
-            const preferredSpacing = 20;
-            let spacing = preferredSpacing;
-            if (noteCount > 1) {
-                const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
-                spacing = Math.min(preferredSpacing, maxSpacing);
-            }
-
-            beat.notes.forEach((nv, noteIndex) => {
-                // Left-aligned progression with clamped spacing
-                const noteX = startX + noteIndex * spacing;
-                // Render rests properly
-                if (nv.isRest) {
-                    // Draw the rest glyph at noteX
-                    this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-                    // Maintain analyzer segment index progression to stay in sync with overlay references
-                    segmentNoteCursor[chordIndex]++;
-                    // Rests do not participate in ties; don't push into notePositions
-                    if (firstNoteX === null) firstNoteX = noteX;
-                    return;
-                }
-                // Determine if this note belongs to a primary (level-1) beam group
-                const localIndexInSegment = segmentNoteCursor[chordIndex];
-                const isInPrimaryBeam = !!this.beamedAtLevel1?.has(`${chordIndex}:${localIndexInSegment}`);
-                const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-                this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
-                if (firstNoteX === null) firstNoteX = noteX;
-
-                let headLeftX: number;
-                let headRightX: number;
-                if (nv.value === 1 || nv.value === 2) {
-                    const diamondSize = 6;
-                    headLeftX = noteX - diamondSize;
-                    headRightX = noteX + diamondSize;
-                } else {
-                    const slashHalf = 10 / 2;
-                    headLeftX = noteX - slashHalf;
-                    headRightX = noteX + slashHalf;
-                }
-                const hasStem = nv.value >= 2;
-                const stemTopY = hasStem ? staffLineY + 5 : undefined;
-                const stemBottomY = hasStem ? staffLineY + 30 : undefined;
-
-                notePositions.push({
-                    x: noteX,
-                    y: staffLineY,
-                    headLeftX,
-                    headRightX,
-                    measureIndex,
-                    chordIndex,
-                    beatIndex,
-                    noteIndex,
-                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-                    tieStart: !!nv.tieStart,
-                    tieEnd: !!nv.tieEnd,
-                    tieToVoid: !!nv.tieToVoid,
-                    tieFromVoid: !!nv.tieFromVoid,
-                    globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
-                    stemTopY,
-                    stemBottomY
-                });
-            });
-            return firstNoteX;
+        // Preferred compact spacing but clamped to fit in beat width
+        const preferredSpacing = 20;
+        let spacing = preferredSpacing;
+        if (noteCount > 1) {
+            const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
+            spacing = Math.min(preferredSpacing, maxSpacing);
         }
 
-        // Legacy beaming path when analyzer is not active
-
-        if (hasBeamableNotes && beat.notes.length > 1) {
-            DebugLogger.log(`✅ Drawing note group with beams`);
-            const firstNoteX = this.drawNoteGroup(svg, beat.notes, x + 10, staffLineY, width);
-            const noteCount = beat.notes.length;
-            const hasSmallNotes = beat.notes.some(nv => nv.value >= 32);
-            const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
-            beat.notes.forEach((nv, noteIndex) => {
-                const noteX = x + 10 + noteIndex * noteSpacing + noteSpacing / 2;
-                let headLeftX: number;
-                let headRightX: number;
-                if (nv.value === 1 || nv.value === 2) {
-                    const diamondSize = 6;
-                    headLeftX = noteX - diamondSize;
-                    headRightX = noteX + diamondSize;
-                } else {
-                    const slashHalf = 10 / 2; // matches drawSlash
-                    headLeftX = noteX - slashHalf;
-                    headRightX = noteX + slashHalf;
-                }
-                // estimate stem extents when a stem exists (value >= 2)
-                const hasStem = nv.value >= 2;
-                const stemTopY = hasStem ? staffLineY + 5 : undefined;
-                const stemBottomY = hasStem ? staffLineY + 30 : undefined;
-
-                notePositions.push({
-                    x: noteX,
-                    y: staffLineY,
-                    headLeftX,
-                    headRightX,
-                    measureIndex,
-                    chordIndex,
-                    beatIndex,
-                    noteIndex,
-                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-                    tieStart: !!nv.tieStart,
-                    tieEnd: !!nv.tieEnd,
-                    tieToVoid: !!nv.tieToVoid,
-                    tieFromVoid: !!nv.tieFromVoid,
-                    globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
-                    stemTopY,
-                    stemBottomY
-                });
-            });
-            return firstNoteX;
-        } else {
-            const nv = beat.notes[0];
+        beat.notes.forEach((nv, noteIndex) => {
+            // Left-aligned progression with clamped spacing
+            const noteX = startX + noteIndex * spacing;
+            // Render rests properly
             if (nv.isRest) {
-                const noteX = x + 10;
+                // Draw the rest glyph at noteX
                 this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-                // Rests don't create notePositions for ties
-                // Still advance segmentNoteCursor for analyzer sync
+                // Maintain analyzer segment index progression to stay in sync with overlay references
                 segmentNoteCursor[chordIndex]++;
-                return noteX;
+                // Rests do not participate in ties; don't push into notePositions
+                if (firstNoteX === null) firstNoteX = noteX;
+                return;
             }
-            const noteX = this.drawSingleNote(svg, nv, x + 10, staffLineY, width);
+            // Determine if this note belongs to a primary (level-1) beam group
+            const localIndexInSegment = segmentNoteCursor[chordIndex];
+            const isInPrimaryBeam = !!this.beamedAtLevel1?.has(`${chordIndex}:${localIndexInSegment}`);
+            const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
+            this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+            if (firstNoteX === null) firstNoteX = noteX;
+
             let headLeftX: number;
             let headRightX: number;
             if (nv.value === 1 || nv.value === 2) {
@@ -391,18 +281,18 @@ export class MeasureRenderer {
                 measureIndex,
                 chordIndex,
                 beatIndex,
-                noteIndex: 0,
+                noteIndex,
                 segmentNoteIndex: segmentNoteCursor[chordIndex]++,
                 tieStart: !!nv.tieStart,
                 tieEnd: !!nv.tieEnd,
                 tieToVoid: !!nv.tieToVoid,
                 tieFromVoid: !!nv.tieFromVoid,
-                globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100,
+                globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
                 stemTopY,
                 stemBottomY
             });
-            return noteX;
-        }
+        });
+        return firstNoteX;
     }
 
     private drawSingleNote(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, width: number): number {
@@ -483,203 +373,6 @@ export class MeasureRenderer {
         diamond.setAttribute('stroke', '#000');
         diamond.setAttribute('stroke-width', '1');
         svg.appendChild(diamond);
-    }
-
-    private drawNoteGroup(svg: SVGElement, notesValues: NoteElement[], x: number, staffLineY: number, width: number): number | null {
-        const noteCount = notesValues.length;
-        if (noteCount === 0) return null;
-        
-        DebugLogger.log('🎨 drawNoteGroup called', {
-            noteCount,
-            notes: notesValues.map(n => ({ value: n.value, dotted: n.dotted, isRest: n.isRest })),
-            x,
-            staffLineY,
-            width
-        });
-        
-        const hasSmallNotes = notesValues.some(nv => nv.value >= 32);
-        const noteSpacing = noteCount > 0 ? (width / noteCount) * (hasSmallNotes ? 1.2 : 1) : width;
-        const stemHeight = 25;
-        
-        if (noteCount === 1 && notesValues[0].value >= 8) {
-            const centerX = x + noteSpacing / 2;
-            this.drawSlash(svg, centerX, staffLineY);
-            const stem = this.drawStem(svg, centerX, staffLineY, stemHeight);
-            const value = notesValues[0].value;
-            this.drawFlag(svg, centerX, staffLineY, value === 8 ? 1 : value === 16 ? 2 : value === 32 ? 3 : value === 64 ? 4 : 0);
-            return centerX;
-        }
-
-        const notes: BeamNote[] = [];
-        for (let i = 0; i < noteCount; i++) {
-            const nv = notesValues[i];
-            const centerX = x + i * noteSpacing + noteSpacing / 2;
-            if (nv.isRest) {
-                this.restRenderer.drawRest(svg, nv, centerX, staffLineY);
-                notes.push({ nv, beamCount: 0, centerX });
-            } else if (nv.value === 1) {
-                this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-                notes.push({ nv, beamCount: 0, centerX });
-            } else if (nv.value === 2) {
-                this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-                const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
-                notes.push({ nv, beamCount: 0, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
-            } else {
-                this.drawSlash(svg, centerX, staffLineY);
-                const stemInfo = this.drawStem(svg, centerX, staffLineY, stemHeight);
-                const prevNote = i > 0 ? notesValues[i - 1] : null;
-                const nextNote = i < notesValues.length - 1 ? notesValues[i + 1] : null;
-                const needsFlag = nv.value >= 8 && (!prevNote || prevNote.value < 8) && (!nextNote || nextNote.value < 8);
-                
-                if (needsFlag) {
-                    if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
-                    else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
-                    else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
-                    else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
-                }
-                
-                const beamCount = nv.value === 8 ? 1 : nv.value === 16 ? 2 : nv.value === 32 ? 3 : nv.value === 64 ? 4 : 0;
-                notes.push({ nv, beamCount, centerX, stemX: stemInfo.x, stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY });
-            }
-
-            if (nv.dotted) {
-                const dot = document.createElementNS(SVG_NS, 'circle');
-                dot.setAttribute('cx', (centerX + 8).toString());
-                dot.setAttribute('cy', staffLineY.toString());
-                dot.setAttribute('r', '2');
-                dot.setAttribute('fill', '#000');
-                svg.appendChild(dot);
-            }
-        }
-
-        const beamedNotes = notes.filter(n => n.beamCount > 0);
-        
-        DebugLogger.log('🎵 Notes prepared for beaming', {
-            totalNotes: notes.length,
-            beamedNotesCount: beamedNotes.length,
-            beamedNotes: beamedNotes.map(n => ({ 
-                value: n.nv.value, 
-                beamCount: n.beamCount, 
-                centerX: n.centerX,
-                stemX: n.stemX,
-                stemBottomY: n.stemBottomY
-            }))
-        });
-        
-        if (beamedNotes.length === 0) return notes.length ? notes[0].centerX : null;
-
-        const maxBeamCount = Math.max(...beamedNotes.map(n => n.beamCount));
-        if (maxBeamCount === 0) return notes.length ? notes[0].centerX : null;
-
-        DebugLogger.log('🔨 Starting beam drawing', { maxBeamCount });
-
-        const beamGap = 5;
-        const validStemBottoms = beamedNotes.map(n => n.stemBottomY).filter(y => y !== undefined) as number[];
-        const baseStemBottom = validStemBottoms.length > 0 ? Math.min(...validStemBottoms) : staffLineY + 30;
-
-        DebugLogger.log('Beam baseline calculated', { baseStemBottom, validStemBottoms });
-
-        for (let level = 1; level <= maxBeamCount; level++) {
-            DebugLogger.log(`Drawing beam level ${level}`);
-            let segStartIndex: number | null = null;
-            
-            for (let i = 0; i <= beamedNotes.length; i++) {
-                // On va jusqu'à beamedNotes.length pour forcer le traitement du dernier segment
-                const n = i < beamedNotes.length ? beamedNotes[i] : null;
-                const active = n ? n.beamCount >= level : false;
-                
-                if (active && segStartIndex === null) {
-                    // Début d'un nouveau segment
-                    segStartIndex = i;
-                } else if (!active && segStartIndex !== null) {
-                    // Fin d'un segment (la note courante n'est pas active)
-                    const segEnd = i - 1;
-                    const beamY = baseStemBottom - (level - 1) * beamGap;
-                    const startX = beamedNotes[segStartIndex].stemX!;
-                    const endX = beamedNotes[segEnd].stemX!;
-                    
-                    // Si c'est une note isolée (segment d'une seule note), dessiner un beamlet (demi-barre)
-                    if (segStartIndex === segEnd) {
-                        const beamletLength = 8; // longueur de la demi-barre
-                        
-                        // Règle musicale pour les beamlets :
-                        // - Si la note précédente est pointée → cette note complète le groupe → beamlet vers la GAUCHE
-                        // - Si la note suivante est pointée → cette note démarre le groupe → beamlet vers la DROITE
-                        // - Sinon : première moitié du groupe → DROITE, seconde moitié → GAUCHE
-                        
-                        const currentNote = beamedNotes[segStartIndex].nv;
-                        const prevNote = segStartIndex > 0 ? beamedNotes[segStartIndex - 1].nv : null;
-                        const nextNote = segStartIndex < beamedNotes.length - 1 ? beamedNotes[segStartIndex + 1].nv : null;
-                        
-                        let beamletEndX: number;
-                        let direction: string;
-                        
-                        if (prevNote && prevNote.dotted) {
-                            // Note précédente pointée → beamlet vers la gauche (fin de groupe)
-                            beamletEndX = startX - beamletLength;
-                            direction = 'left (after dotted note)';
-                        } else if (nextNote && nextNote.dotted) {
-                            // Note suivante pointée → beamlet vers la droite (début de groupe)
-                            beamletEndX = startX + beamletLength;
-                            direction = 'right (before dotted note)';
-                        } else {
-                            // Règle par défaut : pointer vers le centre du groupe
-                            const groupCenter = (beamedNotes.length - 1) / 2;
-                            const isInFirstHalf = segStartIndex < groupCenter;
-                            
-                            if (isInFirstHalf) {
-                                beamletEndX = startX + beamletLength;
-                                direction = 'right (first half)';
-                            } else {
-                                beamletEndX = startX - beamletLength;
-                                direction = 'left (second half)';
-                            }
-                        }
-                        
-                        DebugLogger.log(`✏️ Drawing beamlet (partial beam)`, {
-                            level,
-                            from: { x: startX, y: beamY },
-                            to: { x: beamletEndX, y: beamY },
-                            noteIndex: segStartIndex,
-                            direction,
-                            prevDotted: prevNote?.dotted,
-                            nextDotted: nextNote?.dotted
-                        });
-                        
-                        const beamlet = document.createElementNS(SVG_NS, 'line');
-                        beamlet.setAttribute('x1', startX.toString());
-                        beamlet.setAttribute('y1', beamY.toString());
-                        beamlet.setAttribute('x2', beamletEndX.toString());
-                        beamlet.setAttribute('y2', beamY.toString());
-                        beamlet.setAttribute('stroke', '#000');
-                        beamlet.setAttribute('stroke-width', '2');
-                        svg.appendChild(beamlet);
-                    } else {
-                        // Segment normal avec plusieurs notes
-                        DebugLogger.log(`✏️ Drawing beam segment`, {
-                            level,
-                            from: { x: startX, y: beamY },
-                            to: { x: endX, y: beamY },
-                            segStartIndex,
-                            segEnd
-                        });
-                        
-                        const beam = document.createElementNS(SVG_NS, 'line');
-                        beam.setAttribute('x1', startX.toString());
-                        beam.setAttribute('y1', beamY.toString());
-                        beam.setAttribute('x2', endX.toString());
-                        beam.setAttribute('y2', beamY.toString());
-                        beam.setAttribute('stroke', '#000');
-                        beam.setAttribute('stroke-width', '2');
-                        svg.appendChild(beam);
-                    }
-                    
-                    segStartIndex = null;
-                }
-            }
-        }
-
-        return notes.length ? notes[0].centerX : null;
     }
 
     private drawSlash(svg: SVGElement, x: number, y: number): void {

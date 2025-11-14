@@ -29,7 +29,7 @@ Expected: Le dernier 8 de la deuxième mesure et le 8 avec G devraient être li�
 ## Cas 4 : Multiple segments sans espace
 
 ```chordgrid
-4/4 | C[88]Dm[88]G[88] |
+4/4 | C[88]Dm[88]G[88 4] |
 ```
 
 Résultat attendu : Tous les croches liées ensemble (6 notes liées).

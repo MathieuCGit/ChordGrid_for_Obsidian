@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It now follows a three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models** and **Utilities**. During v2.0.0, an analyzer overlay coexists with the legacy beaming path for stability.
+This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models** and **Utilities**. The v2.0.0 refactoring is **complete**, with the analyzer-based beam rendering now fully integrated.
 
 ## Project Structure
 
@@ -11,7 +11,7 @@ chord-grid/
 ├── main.ts                          # Obsidian plugin entry point
 ├── src/
 │   ├── parser/                      # Parsing (syntax only)
-│   │   ├── ChordGridParser.ts       # Main parser
+│   │   ├── ChordGridParser.ts       # Main parser (includes tie parsing)
 │   │   └── type.ts                  # Type definitions
 │   ├── analyzer/                    # Musical analysis (beams across segments, levels)
 │   │   ├── MusicAnalyzer.ts         # Analyzer implementation
@@ -26,8 +26,7 @@ chord-grid/
 │   │   ├── MeasureRenderer.ts       # Measure rendering
 │   │   ├── NoteRenderer.ts          # Note rendering
 │   │   ├── RestRenderer.ts          # Rest rendering
-│   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer (feature-flagged)
-│   │   ├── BeamAndTieAnalyzer.ts    # Legacy per-segment beaming (temporary)
+│   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer
 │   │   └── constants.ts             # SVG/layout constants
 │   └── utils/
 │       ├── TieManager.ts            # Cross-measure tie management
@@ -64,12 +63,8 @@ flowchart LR
     D --> F[NoteRenderer]
     D --> G[RestRenderer]
     D --> H[TieManager]
-    C -->|Optional overlay| I[AnalyzerBeamOverlay]
-    subgraph Legacy Path (temporary)
-    J[BeamAndTieAnalyzer]
-    end
-    B --> J
-    J --> D
+    C --> I[AnalyzerBeamOverlay]
+    I --> D
     H --> D
     D --> Z[SVG Output]
 
@@ -81,7 +76,6 @@ flowchart LR
     class C,I analyzer;
     class D,E,F,G,Z renderer;
     class H util;
-    class J util;
 ```
 
 ## Parser Module
@@ -94,6 +88,8 @@ flowchart LR
 - Detect ties markers (`_`) and rests (`-`) in syntax (without computing geometry)
 - Preserve whitespace significance (segment-leading space breaks beams)
 - Handle line breaks and measure grouping
+
+**Note**: The parser includes an internal `BeamAndTieAnalyzer` class that handles tie detection during parsing. This is separate from the renderer's beam analysis.
 
 **Supported Syntax:**
 - Time signatures: `4/4`, `3/4`, `6/8`, `C`, `C|`

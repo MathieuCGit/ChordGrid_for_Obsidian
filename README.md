@@ -5,7 +5,7 @@
 > Display clean chord grids with precise rhythmic notation rendered as crisp, scalable SVG inside your Obsidian notes.
 
 <!-- Badges (manual style to avoid external services) -->
-**Version:** 1.1.0 · **License:** GPL-3.0 · **Status:** Refactoring → Analyzer (v2.0.0 in progress)
+**Version:** 2.0.0 · **License:** GPL-3.0 · **Status:** Stable
 
 This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic. A refactor toward a 3‑stage pipeline (Parser → Analyzer → Renderer) is underway.
 
@@ -242,13 +242,13 @@ For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
 | v2.3 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
 | v3.0 Interactive Editing | In-note editing handles, real-time validation |
 
-## Architecture (v2.0 refactor – in progress)
+## Architecture (v2.0 refactor – ✅ Complete)
 
-The rendering pipeline is being refactored into three clear stages:
+The rendering pipeline has been fully refactored into three clear stages:
 
-1. Parser – Performs only syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness).
-2. Analyzer – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
-3. Renderer – Draws notes/stems/ties and (optionally) overlays analyzer-driven beams instead of legacy per-beat grouping.
+1. **Parser** – Performs syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness).
+2. **Analyzer** – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
+3. **Renderer** – Draws notes/stems/ties and uses analyzer-driven beams for proper cross-segment beaming.
 
 #### Mermaid diagram
 
@@ -256,23 +256,13 @@ The rendering pipeline is being refactored into three clear stages:
 flowchart TD
     A[Chordgrid notation] --> B[Parser\nChordGridParser]
     B --> C[Analyzer\nMusicAnalyzer]
-    C --> D[Renderer\nSVGRenderer + Measure/Note/Rest]
-    C -->|USE_ANALYZER_BEAMS| E[AnalyzerBeamOverlay]
-    E --> D
-    D --> F[SVG output]
+    C --> D[AnalyzerBeamOverlay]
+    D --> E[Renderer\nSVGRenderer + Measure/Note/Rest]
+    E --> F[SVG output]
 ```
 
 ### Why the analyzer?
 Previously, beams could not cross chord boundaries even when musically continuous (e.g. `[8]G[8]`). The analyzer flattens measure notes, respects rests and whitespace, and builds multi‑level beam groups (8/16/32/64) including correct beamlet direction for dotted values.
-
-### Feature flag
-An experimental overlay draws analyzer beams while the legacy beaming remains for fallback.
-
-To enable it, edit `src/renderer/constants.ts`:
-
-```ts
-export const USE_ANALYZER_BEAMS = true; // set to true to activate overlay
-```
 
 ### Cross-segment beaming examples
 

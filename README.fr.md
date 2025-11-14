@@ -4,7 +4,7 @@
 
 > Affiche des grilles d'accords avec une notation rythmique précise, rendue en SVG net et scalable dans vos notes Obsidian.
 
-**Version :** 1.1.0 · **Licence :** GPL-3.0 · **Statut :** Refonte vers Analyseur (v2.0.0 en cours)
+**Version :** 2.0.0 · **Licence :** GPL-3.0 · **Statut :** Stable
 
 ## Installation
 
@@ -182,12 +182,12 @@ L'espace avant `G` casse la ligature.
 | v2.3 Export | Export PNG / SVG propre + POC MIDI |
 | v3.0 Édition | Édition interactive dans la note |
 
-## Architecture (refonte v2.0 en cours)
+## Architecture (refonte v2.0 – ✅ Terminée)
 
-Pipeline en 3 couches :
-1. Parseur – Extraction purement syntaxique (mesures, segments, groupes rythmiques, espaces, ties)
-2. Analyseur – Détermination des groupes de ligatures multi-niveaux (8/16/32/64), franchissant les segments d'accords
-3. Renderer – Dessin des éléments graphiques; overlay des beams de l'analyseur (flag) avant remplacement complet de l'ancien système
+Pipeline en 3 couches (implémentation complète) :
+1. **Parseur** – Extraction purement syntaxique (mesures, segments, groupes rythmiques, espaces, ties)
+2. **Analyseur** – Détermination des groupes de ligatures multi-niveaux (8/16/32/64), franchissant les segments d'accords
+3. **Renderer** – Dessin des éléments graphiques avec ligatures pilotées par l'analyseur
 
 #### Schéma Mermaid
 
@@ -195,20 +195,13 @@ Pipeline en 3 couches :
 flowchart TD
     A[Notation chordgrid] --> B[Parseur\nChordGridParser]
     B --> C[Analyseur\nMusicAnalyzer]
-    C --> D[Renderer\nSVGRenderer + Measure/Note/Rest]
-    C -->|USE_ANALYZER_BEAMS| E[Overlay des ligatures\nAnalyzerBeamOverlay]
-    E --> D
-    D --> F[Sortie SVG]
+    C --> D[Overlay des ligatures\nAnalyzerBeamOverlay]
+    D --> E[Renderer\nSVGRenderer + Measure/Note/Rest]
+    E --> F[Sortie SVG]
 ```
 
 **Pourquoi un analyseur ?**
 Pour autoriser des ligatures cohérentes à travers des frontières d'accord sans espace et gérer la direction des beamlets avec des notes pointées.
-
-### Activation du flag
-Modifiez `src/renderer/constants.ts` :
-```ts
-export const USE_ANALYZER_BEAMS = true;
-```
 
 ### Exemple de ligature inter-segments
 ```chordgrid
