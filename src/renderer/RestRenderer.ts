@@ -59,12 +59,12 @@ export class RestRenderer {
   }
   
   private drawWholeRest(svg: SVGElement, x: number, y: number, dotted: boolean) {
-    // Pause: rectangle plein suspendu SOUS la ligne de portée
+    // Pause: rectangle plein suspendu SOUS la ligne de portée, collé à la ligne
     const width = 10;
     const height = 4;
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('x', String(x - width / 2));
-    rect.setAttribute('y', String(y + 2)); // pend sous la ligne
+    rect.setAttribute('y', String(y)); // collé sous la ligne (pas d'espace)
     rect.setAttribute('width', String(width));
     rect.setAttribute('height', String(height));
     rect.setAttribute('fill', 'black');
