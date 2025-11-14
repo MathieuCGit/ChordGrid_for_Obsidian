@@ -34,6 +34,7 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 4/4 ||: Am[88 4 4 88] | C[88 4 4 88] :||
 ```
 ````
+<img width="592" height="173" alt="image" src="https://github.com/user-attachments/assets/c876d0c9-e121-44d9-92e0-6baddd0433c5" />
 
 ### Syntax
 
