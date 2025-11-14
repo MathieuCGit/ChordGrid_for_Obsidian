@@ -1322,18 +1322,36 @@ var MusicAnalyzer = class {
         const aLevel = this.getBeamLevel(allNotes[aIdx].value);
         const bLevel = this.getBeamLevel(allNotes[bIdx].value);
         const notesLevel = Math.min(aLevel, bLevel);
+        const inTuplet = allNotes[aIdx].tuplet || allNotes[bIdx].tuplet;
         const bNote = allNotes[bIdx];
-        if (bNote.hasLeadingSpace && bLevel >= 2) {
-          blockFromLevel = Math.min(blockFromLevel, bLevel);
+        if (bNote.hasLeadingSpace) {
+          let minGroupLevel = Infinity;
+          for (let lookback = j; lookback >= 0; lookback--) {
+            const prevNote = allNotes[noteIndices[lookback]];
+            const prevLevel = this.getBeamLevel(prevNote.value);
+            minGroupLevel = Math.min(minGroupLevel, prevLevel);
+            if (lookback < j && prevNote.hasLeadingSpace) break;
+          }
+          if (minGroupLevel < Infinity) {
+            blockFromLevel = Math.min(blockFromLevel, Math.max(minGroupLevel, 2));
+          }
         }
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find((n) => n.absoluteIndex === t);
           if (mid && mid.isRest) {
             const restLevel = this.getBeamLevel(mid.value);
-            if (restLevel === notesLevel - 1) {
-              blockFromLevel = Math.min(blockFromLevel, notesLevel);
+            if (inTuplet) {
+              if (restLevel < notesLevel) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             } else {
-              blockFromLevel = Math.min(blockFromLevel, restLevel);
+              if (restLevel === notesLevel - 1) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             }
           }
         }
@@ -1475,6 +1493,17 @@ var MusicAnalyzer = class {
    */
   determineBeamletDirection(noteIndex, groupIndices, allNotes) {
     const posInGroup = groupIndices.indexOf(noteIndex);
+    const currentNote = allNotes[noteIndex];
+    if (currentNote.hasLeadingSpace) {
+      return "right";
+    }
+    if (posInGroup < groupIndices.length - 1) {
+      const nextIdx = groupIndices[posInGroup + 1];
+      const nextNote = allNotes[nextIdx];
+      if (nextNote.hasLeadingSpace) {
+        return "left";
+      }
+    }
     if (posInGroup > 0) {
       const prevIdx = groupIndices[posInGroup - 1];
       const prevNote = allNotes[prevIdx];

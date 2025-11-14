@@ -154,7 +154,7 @@ export class MusicAnalyzer {
       segments: segments.map(s => s.map(idx => allNotes[idx].absoluteIndex))
     });
 
-    // 3) For each segment, compute block levels between adjacent notes (rests-in-between + hasLeadingSpace)
+    // 3) For each segment, compute block levels between adjacent notes (rests-in-between)
     for (const noteIndices of segments) {
       if (noteIndices.length === 0) continue;
       const blocks: number[] = []; // blockFromLevel between adjacency j and j+1 (1..4), Infinity if none
@@ -170,14 +170,32 @@ export class MusicAnalyzer {
         const bLevel = this.getBeamLevel(allNotes[bIdx].value);
         const notesLevel = Math.min(aLevel, bLevel);
         
-        // Check if note B has a leading space flag (from tuplet syntax like {161616 161616}6)
-        // This should block beams at HIGHER levels only, maintaining level 1
-        // Example: {161616 161616}6 → space blocks level 2+, maintains level 1
-        // Example: {88 8}3 → space does nothing (8ths only have level 1)
+        // Check if we're in a tuplet (special beam rules for rests in tuplets)
+        const inTuplet = (allNotes[aIdx] as any).tuplet || (allNotes[bIdx] as any).tuplet;
+        
+        // Check if note b has hasLeadingSpace (space-induced break)
         const bNote = allNotes[bIdx];
-        if ((bNote as any).hasLeadingSpace && bLevel >= 2) {
-          // Block from note B's level (level 2 and above) only if note is 16th or shorter
-          blockFromLevel = Math.min(blockFromLevel, bLevel);
+        if ((bNote as any).hasLeadingSpace) {
+          // Find minimum beam level in the previous subgroup (notes before this one in the tuplet)
+          // Look backward from current note to find the minimum level of the group
+          let minGroupLevel = Infinity;
+          for (let lookback = j; lookback >= 0; lookback--) {
+            const prevNote = allNotes[noteIndices[lookback]];
+            const prevLevel = this.getBeamLevel(prevNote.value);
+            minGroupLevel = Math.min(minGroupLevel, prevLevel);
+            
+            // Stop at previous hasLeadingSpace boundary
+            if (lookback < j && (prevNote as any).hasLeadingSpace) break;
+          }
+          
+          // Block from max(minGroupLevel, 2) onwards
+          // Rule: space separates beams at the minimum level and above, BUT never level 1
+          // Example: if group has 8th notes (level 1), block from level 2+ (preserve level 1)
+          // Example: if group has 16th notes (level 2), block from level 2+ (preserve level 1 only)
+          // Example: if group has 32nd notes (level 3), block from level 3+ (preserve levels 1 and 2)
+          if (minGroupLevel < Infinity) {
+            blockFromLevel = Math.min(blockFromLevel, Math.max(minGroupLevel, 2));
+          }
         }
         
         // Scan between aAbs and bAbs for rests
@@ -186,17 +204,26 @@ export class MusicAnalyzer {
           if (mid && (mid as any).isRest) {
             const restLevel = this.getBeamLevel((mid as any).value);
             
-            // Exception: if a rest can be decomposed into units matching the adjacent notes,
-            // maintain the beam at the notes' level and only break higher levels
-            // Example: 16-816 (rest -8 = two -16) → maintain level 1, break level 2+
-            // Rule: if rest level = notes level - 1, only block from notes level
-            if (restLevel === notesLevel - 1) {
-              // Rest is one level below notes (e.g., -8 between two 16)
-              // Block only from the notes' level and above
-              blockFromLevel = Math.min(blockFromLevel, notesLevel);
+            if (inTuplet) {
+              // In tuplets: rests below notes level don't break that level
+              // But rests at same level DO break that level (create beamlets)
+              // Example: {16-1616}3 → rest -16 DOES break level 2 (creates beamlets)
+              // Example: {16-816}3 → rest -8 doesn't break level 2 (maintains beam)
+              // Rule: if rest level < notes level, block from (notes level + 1)
+              //       if rest level >= notes level, block from rest level
+              if (restLevel < notesLevel) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             } else {
-              // Normal case: rest blocks from its own level
-              blockFromLevel = Math.min(blockFromLevel, restLevel);
+              // Outside tuplets: use original rule
+              // Example: 16-816 → rest -8 blocks from level 2 (can decompose to two -16)
+              if (restLevel === notesLevel - 1) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             }
           }
         }
@@ -379,6 +406,21 @@ export class MusicAnalyzer {
     allNotes: NoteWithPosition[]
   ): 'left' | 'right' {
     const posInGroup = groupIndices.indexOf(noteIndex);
+    const currentNote = allNotes[noteIndex];
+    
+    // Check if note is preceded by space (hasLeadingSpace) → point right
+    if ((currentNote as any).hasLeadingSpace) {
+      return 'right';
+    }
+    
+    // Check if note is followed by space → point left
+    if (posInGroup < groupIndices.length - 1) {
+      const nextIdx = groupIndices[posInGroup + 1];
+      const nextNote = allNotes[nextIdx];
+      if ((nextNote as any).hasLeadingSpace) {
+        return 'left';
+      }
+    }
     
     // Check previous note in group
     if (posInGroup > 0) {
