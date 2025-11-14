@@ -68,6 +68,17 @@ export interface NoteElement {
   // parser/runtime hints (optional)
   position?: number;
   length?: number;
+  /**
+   * Informations de tuplet si la note appartient à un groupe de tuplet.
+   * - count : nombre de notes dans le tuplet (ex: 3 pour triolet, 5 pour quintolet)
+   * - groupId : identifiant unique du groupe tuplet
+   * - position : 'start' | 'middle' | 'end' (facilite le rendu du bracket et des ligatures)
+   */
+  tuplet?: {
+    count: number;
+    groupId: string;
+    position: 'start' | 'middle' | 'end';
+  };
 }
 
 /**

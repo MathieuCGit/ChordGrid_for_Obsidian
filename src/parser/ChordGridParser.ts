@@ -414,14 +414,61 @@ class BeamAndTieAnalyzer {
     let pendingTieFromVoid = false;
     
     while (i < rhythmStr.length) {
+      // Détection d'un tuplet : { ... }N
+      if (rhythmStr[i] === '{') {
+        // Chercher la fermeture '}'
+        const closeIdx = rhythmStr.indexOf('}', i);
+        if (closeIdx > i) {
+          // Chercher le chiffre du tuplet juste après '}'
+          let numStr = '';
+          let j = closeIdx + 1;
+          while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+            numStr += rhythmStr[j];
+            j++;
+          }
+          const tupletCount = parseInt(numStr, 10);
+          if (tupletCount > 0) {
+            // Extraire le contenu entre { }
+            const inner = rhythmStr.slice(i + 1, closeIdx);
+            // Split par espace pour gérer les sous-groupes
+            const subGroups = inner.split(' ');
+            let tupletNoteIndex = 0;
+            for (let g = 0; g < subGroups.length; g++) {
+              const group = subGroups[g];
+              let k = 0;
+              while (k < group.length) {
+                // Parse chaque note du sous-groupe
+                let note: NoteElement;
+                if (group[k] === '-') {
+                  note = this.parseNote(group, k + 1);
+                  note.isRest = true;
+                  k += (note.length ?? 0) + 1;
+                } else {
+                  note = this.parseNote(group, k);
+                  k += (note.length ?? 0);
+                }
+                // Ajout propriété tuplet
+                note.tuplet = {
+                  count: tupletCount,
+                  groupId: `T${i}_${closeIdx}`,
+                  position:
+                    tupletNoteIndex === 0 ? 'start' :
+                    tupletNoteIndex === tupletCount - 1 ? 'end' : 'middle'
+                };
+                currentBeat.push(note);
+                tupletNoteIndex++;
+              }
+            }
+            i = j;
+            continue;
+          }
+        }
+      }
       // Gestion des underscores (liaisons)
       if (rhythmStr[i] === '_') {
-        // Si on est à la fin du groupe rythmique et fin de ligne
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
-          // Liaison depuis le vide (début de ligne)
-          // Marquer que la prochaine note doit avoir tieFromVoid
           pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
         } else {
@@ -430,7 +477,6 @@ class BeamAndTieAnalyzer {
         i++;
         continue;
       }
-      
       // Gestion des espaces
       if (rhythmStr[i] === ' ') {
         if (currentBeat.length > 0) {
@@ -440,34 +486,27 @@ class BeamAndTieAnalyzer {
         i++;
         continue;
       }
-      
-      // NEW: Gestion des silences (-)
+      // Gestion des silences (-)
       if (rhythmStr[i] === '-') {
         i++;
         const note = this.parseNote(rhythmStr, i);
         note.isRest = true;
         currentBeat.push(note);
-  i += (note.length ?? 0);
+        i += (note.length ?? 0);
         continue;
       }
-      
       // Lecture d'une valeur de note
       const note = this.parseNote(rhythmStr, i);
-      
-      // Gestion liaison depuis le vide (si un _ était en début de ligne)
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      
-      // Gestion de la liaison entrante normale
       if (this.tieContext.lastNote?.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
-      
       currentBeat.push(note);
-  i += (note.length ?? 0);
+      i += (note.length ?? 0);
     }
     
       if (currentBeat.length > 0) {
