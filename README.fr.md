@@ -72,6 +72,22 @@ Exemple : `C[4 -4 88_4]` = noire, soupir de noire, deux croches avec la dernièr
 - Le `_` crée une liaison (tie). Exemple : `[88_4]` lie la dernière croche au début de la noire suivante
 - On peut lier à travers une barre de mesure : `C[2 4_88_] | [_8]`
 
+**Triolets et tuplets (v2.1+) :**
+Les tuplets permettent de grouper des notes pour jouer N notes dans le temps normalement occupé par un nombre différent. Syntaxe : `{notes}N` où N est le nombre du tuplet.
+
+- **Notation compacte** (notes collées) : `{888}3` = triolet avec toutes les notes liées par une ligature
+- **Notation espacée** (notes séparées) : `{8 8 8}3` = triolet avec crochets indépendants
+- **Ligatures multi-niveaux** : `{161616 161616}6` = 6 doubles-croches groupées en 2×3, avec ligature niveau 1 reliant les 6 notes et ligatures niveau 2 en deux segments
+
+Exemples :
+- `{888}3` = triolet de croches (ligature complète)
+- `{8 8 8}3` = triolet de croches (crochets séparés)
+- `{444}3` = triolet de noires
+- `{8 -8 8}3` = triolet avec silence au milieu
+- `{161616}3` = triolet de doubles-croches
+- `{161616 161616}6` = sextolet avec ligatures multi-niveaux avancées
+- Mesure complète en 4/4 : `| [{888}3 {888}3 {888}3 {888}3] |`
+
 Rappel :
 - `_` en fin ou début de groupe permet de lier vers/depuis la mesure suivante
 - Un espace entre deux segments d'accord coupe une ligature, même sans changement d'accord
@@ -98,6 +114,9 @@ Rappel :
 | `4_88_ | [_8]` | Liaison à travers la barre de mesure |
 | `C[8]G[8]` | Ligature inter-segments si aucun espace (analyseur) |
 | `C[8] G[8]` | Espace = ligature cassée |
+| `{888}3` | Triolet de croches (ligature complète) |
+| `{8 8 8}3` | Triolet de croches (crochets séparés) |
+| `{161616 161616}6` | Sextolet avec ligatures multi-niveaux (2×3) |
 
 ### Exemples
 
@@ -135,6 +154,11 @@ Rappel :
 **Liaisons (ties) :**
 ```chordgrid
 4/4 | C[2 4_88_] | [_8] G[8 4 4 4] | Am[88_4 4 88_] | [_4] Dm[2.] | C[4 4 4_88_] | [_88 4] D[4 4] |
+```
+
+**Triolets et tuplets (v2.1+) :**
+```chordgrid
+4/4 | C[{888}3 4] | G[{161616}3 {161616}3] | Am[{444}3] | F[{888}3 {888}3 {888}3] |
 ```
 
 **Attention aux espaces avant un accord :**

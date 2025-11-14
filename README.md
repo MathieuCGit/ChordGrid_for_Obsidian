@@ -81,7 +81,23 @@ Example: `C[4 -4 88_4]` = quarter note, quarter rest, two eighth notes with the 
 - Numbers separated by spaces represent different beaming groups
 - Use a simple dot to create dotted notes. For example 4. is a quarter note dotted, 8. is a eight note dotted.
 - Use underscore `_` result in adding tie for example [88_4] will add a tie between the last eight note of the first beat ant the quarter note on the second beat
-- Create a link through measure lines will be written like C[2 4_88_] | [_8] which will link the last eight note of the first measure with the first eight note of the next measure.
+- Create a link through measure lines will be written like C[2 4_88_] | [_8] which will link the last eighth note of the first measure with the first eighth note of the next measure.
+
+**Tuplets (v2.1+):**
+Tuplets allow grouping notes to play N notes in the time normally occupied by a different number. Syntax: `{notes}N` where N is the tuplet number.
+
+- **Compact notation** (notes together): `{888}3` = triplet with all notes beamed together
+- **Spaced notation** (notes separated): `{8 8 8}3` = triplet with independent flags
+- **Multi-level beaming**: `{161616 161616}6` = 6 sixteenth notes grouped as 2×3, with level-1 beam connecting all 6, and level-2 beams in two segments
+
+Examples:
+- `{888}3` = eighth note triplet (fully beamed)
+- `{8 8 8}3` = eighth note triplet (separate flags)
+- `{444}3` = quarter note triplet
+- `{8 -8 8}3` = triplet with rest in the middle
+- `{161616}3` = sixteenth note triplet
+- `{161616 161616}6` = sextuplet with advanced multi-level beaming
+- Full measure in 4/4: `| [{888}3 {888}3 {888}3 {888}3] |`
 
 Notes on syntax:
 - Use `_` to indicate a tie. Underscores may appear at the end or start of a rhythm group to tie across measures/lines (e.g. `C[2 4_88_] | [_8]`).
@@ -110,6 +126,9 @@ Notes on syntax:
 | `4_88_ | [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
+| `{888}3` | Eighth note triplet (fully beamed) |
+| `{8 8 8}3` | Eighth note triplet (separate flags) |
+| `{161616 161616}6` | Sextuplet with multi-level beaming (2×3) |
 
 ### Examples
 
@@ -147,6 +166,11 @@ Notes on syntax:
 **Tied chords**
 ```chordgrid
 4/4 | C[2 4_88_] | [_8] G[8 4 4 4] | Am[88_4 4 88_] | [_4] Dm[2.] | C[4 4 4_88_] | [_88 4] D[4 4] |
+```
+
+**Tuplets (v2.1+)**
+```chordgrid
+4/4 | C[{888}3 4] | G[{161616}3 {161616}3] | Am[{444}3] | F[{888}3 {888}3 {888}3] |
 ```
 
 NOTE: If you want to keep beam grouped by beat take care of space placement. For example
