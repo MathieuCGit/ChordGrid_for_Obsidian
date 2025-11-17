@@ -73,9 +73,14 @@ export class SVGRenderer {
     };
     const requiredBeatWidth = (beat: any) => {
       const noteCount = beat?.notes?.length || 0;
-  if (noteCount <= 1) return 28 + 10 + headHalfMax; // increased minimal single-note width
-      const spacing = Math.max(...beat.notes.map((n: any) => valueMinSpacing(n.value)));
-  return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8; // +8 extra breathing room
+      if (noteCount <= 1) return 28 + 10 + headHalfMax; // increased minimal single-note width
+      const spacing = Math.max(
+        ...beat.notes.map((n: any) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base; // give short rests a bit more room when estimating width
+        })
+      );
+      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8; // +8 extra breathing room
     };
     const requiredMeasureWidth = (measure: any) => {
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];

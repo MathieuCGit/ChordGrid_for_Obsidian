@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck main.ts && node esbuild.config.mjs production",
-    "test": "ts-node ./test/parse.spec.ts",
+    "test": "jest",
+    "test:parse": "ts-node ./test/parse.spec.ts",
     "debug": "ts-node ./test/debug_parse.ts"
   },
   "keywords": [

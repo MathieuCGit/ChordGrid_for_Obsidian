@@ -149,8 +149,10 @@ var _ChordGridParser = class _ChordGridParser {
    */
   parse(input) {
     const lines = input.trim().split("\n");
-    const firstLine = lines[0];
+    let firstLine = lines[0];
     const timeSignature = this.parseTimeSignature(firstLine);
+    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary))?\s*/, "");
+    lines[0] = firstLine;
     const allMeasures = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
@@ -262,8 +264,10 @@ var _ChordGridParser = class _ChordGridParser {
               // Preserve beat index to break beams at beat boundaries
               tuplet: n.tuplet,
               // Preserve tuplet information
-              hasLeadingSpace: n.hasLeadingSpace
+              hasLeadingSpace: n.hasLeadingSpace,
               // Preserve spacing flag for tuplet subgroups
+              forcedBeamThroughTie: n.forcedBeamThroughTie
+              // Preserve [_] syntax
             });
           }
         });
@@ -331,11 +335,14 @@ var _ChordGridParser = class _ChordGridParser {
       const isFirstMeasureOfLine = tokens.slice(0, ti).every((prev) => prev.content.trim().length === 0);
       const isLastMeasureOfLine = tokens.slice(ti + 1).every((next) => next.content.trim().length === 0);
       const chordSegments = [];
-      if (text.includes("[")) {
-        while ((m2 = segmentRe.exec(text)) !== null) {
+      const FORCED_BEAM_PLACEHOLDER = "";
+      const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
+      if (processedText.includes("[")) {
+        while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || "";
           const chord = (m2[2] || "").trim();
-          const rhythm = (m2[3] || "").trim();
+          let rhythm = (m2[3] || "").trim();
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, "g"), "[_]");
           const sourceText = m2[0];
           if (!firstChord && chord) firstChord = chord;
           anySource += (anySource ? " " : "") + sourceText;
@@ -387,15 +394,35 @@ var _ChordGridParser = class _ChordGridParser {
    * @returns Objet TimeSignature avec numérateur et dénominateur
    * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
    */
+  /**
+   * Parse la signature temporelle et le mode de groupement optionnel.
+   * 
+   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * 
+   * @param line - Première ligne contenant la signature temporelle
+   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   */
   parseTimeSignature(line) {
-    const m = /^\s*(\d+)\/(\d+)/.exec(line);
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary))?/.exec(line);
     if (m) {
+      const numerator = parseInt(m[1], 10);
+      const denominator = parseInt(m[2], 10);
+      const groupingMode = m[3] || "auto";
       return {
-        numerator: parseInt(m[1], 10),
-        denominator: parseInt(m[2], 10)
+        numerator,
+        denominator,
+        beatsPerMeasure: numerator,
+        beatUnit: denominator,
+        groupingMode
       };
     }
-    return { numerator: 4, denominator: 4 };
+    return {
+      numerator: 4,
+      denominator: 4,
+      beatsPerMeasure: 4,
+      beatUnit: 4,
+      groupingMode: "auto"
+    };
   }
   /**
    * Regroupe les mesures en lignes pour le rendu.
@@ -481,9 +508,10 @@ var BeamAndTieAnalyzer = class {
     };
   }
   analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     const beats = [];
     let currentBeat = [];
+    let lastBeatLastNoteRef = null;
     let i = 0;
     let pendingTieFromVoid = false;
     while (i < rhythmStr.length) {
@@ -521,7 +549,19 @@ var BeamAndTieAnalyzer = class {
               const group = subGroups[g];
               let k = 0;
               let isFirstNoteOfThisSubGroup = true;
+              let pendingTieFromPrevious = false;
               while (k < group.length) {
+                if (group[k] === "_") {
+                  if (k === 0) {
+                    pendingTieFromPrevious = true;
+                  } else {
+                    if (currentBeat.length > 0) {
+                      this.markTieStart(currentBeat);
+                    }
+                  }
+                  k++;
+                  continue;
+                }
                 let note2;
                 if (group[k] === "-") {
                   note2 = this.parseNote(group, k + 1);
@@ -530,6 +570,14 @@ var BeamAndTieAnalyzer = class {
                 } else {
                   note2 = this.parseNote(group, k);
                   k += (_b = note2.length) != null ? _b : 0;
+                }
+                if (pendingTieFromPrevious) {
+                  note2.tieEnd = true;
+                  pendingTieFromPrevious = false;
+                }
+                if ((_c = this.tieContext.lastNote) == null ? void 0 : _c.tieStart) {
+                  note2.tieEnd = true;
+                  this.tieContext.lastNote = null;
                 }
                 note2.tuplet = {
                   count: tupletCount,
@@ -550,12 +598,25 @@ var BeamAndTieAnalyzer = class {
           }
         }
       }
+      if (rhythmStr[i] === "[" && i + 2 < rhythmStr.length && rhythmStr[i + 1] === "_" && rhythmStr[i + 2] === "]") {
+        if (currentBeat.length > 0) {
+          const lastNote = currentBeat[currentBeat.length - 1];
+          lastNote.forcedBeamThroughTie = true;
+          lastNote.tieStart = true;
+          this.tieContext.lastNote = lastNote;
+        }
+        i += 3;
+        continue;
+      }
       if (rhythmStr[i] === "_") {
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
           pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
+        } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
+          lastBeatLastNoteRef.tieStart = true;
+          this.tieContext.lastNote = lastBeatLastNoteRef;
         } else {
           this.markTieStart(currentBeat);
         }
@@ -564,7 +625,9 @@ var BeamAndTieAnalyzer = class {
       }
       if (rhythmStr[i] === " ") {
         if (currentBeat.length > 0) {
+          const lastIdx = currentBeat.length - 1;
           beats.push(this.createBeat(currentBeat));
+          lastBeatLastNoteRef = beats[beats.length - 1].notes[lastIdx] || null;
           currentBeat = [];
         }
         i++;
@@ -575,7 +638,7 @@ var BeamAndTieAnalyzer = class {
         const note2 = this.parseNote(rhythmStr, i);
         note2.isRest = true;
         currentBeat.push(note2);
-        i += (_c = note2.length) != null ? _c : 0;
+        i += (_d = note2.length) != null ? _d : 0;
         continue;
       }
       const note = this.parseNote(rhythmStr, i);
@@ -583,12 +646,12 @@ var BeamAndTieAnalyzer = class {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      if ((_d = this.tieContext.lastNote) == null ? void 0 : _d.tieStart) {
+      if ((_e = this.tieContext.lastNote) == null ? void 0 : _e.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
       currentBeat.push(note);
-      i += (_e = note.length) != null ? _e : 0;
+      i += (_f = note.length) != null ? _f : 0;
     }
     if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));
@@ -896,7 +959,31 @@ var MeasureRenderer = class {
     const totalInnerPadding = innerPaddingPerSegment * segments.length;
     const totalSeparatorPixels = separatorsCount * separatorWidth;
     const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
-    const beatCellWidth = availableForBeatCells / totalBeats;
+    const headHalfMax = 6;
+    const valueMinSpacing = (v) => {
+      if (v >= 64) return 16;
+      if (v >= 32) return 20;
+      if (v >= 16) return 26;
+      if (v >= 8) return 24;
+      return 20;
+    };
+    const requiredBeatWidth = (beat) => {
+      var _a;
+      const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
+      if (noteCount <= 1) return 28 + 10 + headHalfMax;
+      const spacing = Math.max(
+        ...beat.notes.map((n) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base;
+        })
+      );
+      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+    };
+    const perSegmentRequired = segments.map((seg) => {
+      const reqs = (seg.beats || []).map((b) => requiredBeatWidth(b));
+      return reqs.reduce((a, b) => a + b, 0);
+    });
+    const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
     let currentX = this.x;
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
       const segment = segments[segmentIndex];
@@ -904,12 +991,16 @@ var MeasureRenderer = class {
         currentX += separatorWidth;
       }
       const segBeatCount = segment.beats.length || 1;
-      const segmentWidth = segBeatCount * beatCellWidth + innerPaddingPerSegment;
+      const reqPerBeat = segment.beats.map((b) => requiredBeatWidth(b));
+      const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
+      const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
+      const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
       const segmentX = currentX + 10;
       const beatsWidth = segmentWidth - innerPaddingPerSegment;
-      const beatWidth = beatsWidth / segBeatCount;
+      let beatCursorX = segmentX;
       segment.beats.forEach((beat, beatIndex) => {
-        const beatX = segmentX + beatIndex * beatWidth;
+        const beatWidth = reqPerBeat[beatIndex] / reqSum * beatsWidth;
+        const beatX = beatCursorX;
         const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
         if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
           const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, "22px", "bold");
@@ -917,6 +1008,7 @@ var MeasureRenderer = class {
           chordText.setAttribute("font-family", "Arial, sans-serif");
           svg.appendChild(chordText);
         }
+        beatCursorX += beatWidth;
       });
       currentX += segmentWidth;
     }
@@ -976,15 +1068,30 @@ var MeasureRenderer = class {
       }
     });
     const notePositionsX = [];
-    let currentX = startX;
-    const baseSpacing = 20;
+    const densestSpacing = Math.max(...beat.notes.map((n) => {
+      if (n.isRest) return 20;
+      const v = n.value;
+      if (v >= 64) return 16;
+      if (v >= 32) return 20;
+      if (v >= 16) return 26;
+      if (v >= 8) return 24;
+      return 20;
+    }));
+    const availableSpan = Math.max(0, endLimit - startX);
+    const gapCount = Math.max(0, noteCount - 1);
+    const gapFactors = [];
+    for (let g = 0; g < gapCount; g++) {
+      const inSameTuplet = tupletGroups.some((T) => g >= T.startIndex && g + 1 <= T.endIndex);
+      gapFactors.push(inSameTuplet ? 0.85 : 1);
+    }
+    const desiredGaps = gapFactors.map((f) => densestSpacing * f);
+    const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
+    const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
+    const finalGaps = desiredGaps.map((g) => g * scale);
+    let cursorX = startX;
     for (let i = 0; i < noteCount; i++) {
-      const isInTuplet = tupletGroups.some((g) => i >= g.startIndex && i <= g.endIndex);
-      const spacing = isInTuplet ? baseSpacing * 0.75 : baseSpacing;
-      notePositionsX.push(currentX);
-      if (i < noteCount - 1) {
-        currentX += spacing;
-      }
+      notePositionsX.push(cursorX);
+      if (i < gapCount) cursorX += finalGaps[i];
     }
     beat.notes.forEach((nv, noteIndex) => {
       var _a;
@@ -1344,19 +1451,60 @@ var MusicAnalyzer = class {
     };
   }
   /**
-   * Flatten all notes from all segments into a single array with positions
+   * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
+   * 
+   * Rules:
+   * - denominator <= 4: binary (quarter-note based, group by 2)
+   * - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
+   * - else: irregular (space-based grouping, no auto-breaking)
+   */
+  resolveGroupingMode(timeSignature) {
+    if (timeSignature.groupingMode !== "auto") {
+      return timeSignature.groupingMode === "binary" ? "binary" : timeSignature.groupingMode === "ternary" ? "ternary" : "irregular";
+    }
+    const { numerator, denominator } = timeSignature;
+    if (denominator <= 4) {
+      return "binary";
+    }
+    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+      return "ternary";
+    }
+    return "irregular";
+  }
+  /**
+   * Calculate note duration in quarter-note units
+   */
+  getNoteDuration(note) {
+    var _a;
+    let duration = 4 / note.value;
+    if (note.dotted) {
+      duration *= 1.5;
+    }
+    if ((_a = note.tuplet) == null ? void 0 : _a.ratio) {
+      const { numerator, denominator } = note.tuplet.ratio;
+      duration *= denominator / numerator;
+    }
+    return duration;
+  }
+  /**
+   * Flatten all notes from all segments into a single array with positions and timing
    */
   flattenNotes(measure) {
     const allNotes = [];
     let absoluteIndex = 0;
+    let quarterPosition = 0;
     measure.segments.forEach((segment, segmentIndex) => {
       segment.notes.forEach((note, noteIndexInSegment) => {
+        const duration = this.getNoteDuration(note);
         allNotes.push({
           ...note,
           segmentIndex,
           noteIndexInSegment,
-          absoluteIndex: absoluteIndex++
+          absoluteIndex: absoluteIndex++,
+          quarterStart: quarterPosition,
+          quarterDuration: duration
         });
+        quarterPosition += duration;
       });
     });
     return allNotes;
@@ -1416,7 +1564,8 @@ var MusicAnalyzer = class {
         const notesLevel = Math.min(aLevel, bLevel);
         const inTuplet = allNotes[aIdx].tuplet || allNotes[bIdx].tuplet;
         const bNote = allNotes[bIdx];
-        if (bNote.hasLeadingSpace) {
+        const aNote = allNotes[aIdx];
+        if (bNote.hasLeadingSpace && !aNote.forcedBeamThroughTie) {
           let minGroupLevel = Infinity;
           for (let lookback = j; lookback >= 0; lookback--) {
             const prevNote = allNotes[noteIndices[lookback]];
@@ -1555,14 +1704,51 @@ var MusicAnalyzer = class {
     }
   }
   isHardBreakBetween(a, b, measure) {
-    var _a, _b;
+    var _a, _b, _c, _d;
+    if (a.forcedBeamThroughTie) {
+      DebugLogger2.log("\u{1F517} Forced beam through tie [_]", {
+        fromNote: a.absoluteIndex,
+        toNote: b.absoluteIndex
+      });
+      return false;
+    }
     if (a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
-      DebugLogger2.log("\u{1F50D} Beat boundary within segment", {
+      const aTuplet = a.tuplet;
+      const bTuplet = b.tuplet;
+      if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
+        return false;
+      }
+      DebugLogger2.log("\u{1F50D} Beat boundary within segment (space)", {
         fromBeat: a.beatIndex,
         toBeat: b.beatIndex,
         segment: a.segmentIndex
       });
       return true;
+    }
+    if (a.segmentIndex === b.segmentIndex && ((_c = a.beatIndex) != null ? _c : -1) === ((_d = b.beatIndex) != null ? _d : -1)) {
+      const aTuplet2 = a.tuplet;
+      const bTuplet2 = b.tuplet;
+      if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
+        return false;
+      }
+      if (measure.timeSignature) {
+        const groupingMode = this.resolveGroupingMode(measure.timeSignature);
+        if (groupingMode !== "irregular" && a.quarterStart !== void 0 && b.quarterStart !== void 0) {
+          const groupSize = groupingMode === "binary" ? 1 : 1.5;
+          const aGroup = Math.floor(a.quarterStart / groupSize);
+          const bGroup = Math.floor(b.quarterStart / groupSize);
+          if (aGroup !== bGroup) {
+            DebugLogger2.log(`\u{1F3B5} Auto-break at ${groupingMode} boundary`, {
+              aStart: a.quarterStart,
+              bStart: b.quarterStart,
+              groupSize,
+              aGroup,
+              bGroup
+            });
+            return true;
+          }
+        }
+      }
     }
     if (b.segmentIndex > a.segmentIndex) {
       const nextSegment = measure.segments[b.segmentIndex];
@@ -1729,7 +1915,12 @@ var SVGRenderer = class {
       var _a;
       const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
       if (noteCount <= 1) return 28 + 10 + headHalfMax;
-      const spacing = Math.max(...beat.notes.map((n) => valueMinSpacing(n.value)));
+      const spacing = Math.max(
+        ...beat.notes.map((n) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base;
+        })
+      );
       return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
     };
     const requiredMeasureWidth = (measure) => {

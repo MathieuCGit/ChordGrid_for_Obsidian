@@ -4,6 +4,12 @@
 
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 
+declare const describe: any;
+declare const it: any;
+declare const test: any;
+declare const expect: any;
+declare const beforeEach: any;
+
 describe('Tuplet Ratios', () => {
   let parser: ChordGridParser;
 

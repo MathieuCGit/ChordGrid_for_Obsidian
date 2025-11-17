@@ -6,15 +6,95 @@ Ce fichier teste les fonctionnalités de ligatures (beams), liaisons (ties) et t
 
 ### Groupement des croches selon la métrique
 
+**Mode de groupement explicite (nouveau en v2.1) :**
+- Syntaxe : `4/4 binary` ou `6/8 ternary`
+- Permet de forcer le mode de groupement indépendamment de la signature temporelle
+- Si omis, le mode est auto-détecté selon les règles ci-dessous
+
 **Temps binaire (2/4, 3/4, 4/4, 5/4, etc.)** :
-- Les croches sont groupées par **2** : `88 88 88`
-- Suit la pulsation naturelle de la noire
+- Auto-groupement par défaut par paquets de **2 croches** (tous les 1.0 temps de noire)
+- Exemple : `8888` devient `88 88` à l'intérieur d'un même groupe sans espace
+- Les espaces restent prioritaires et cassent les ligatures : `88 88 88 88`
+- Auto-détection : dénominateur ≤ 4
 
 **Temps composé (6/8, 9/8, 12/8, etc.)** :
-- Les croches sont groupées par **3** : `888 888`
-- Suit la pulsation naturelle de la noire pointée
+- Auto-groupement par défaut par paquets de **3 croches** (tous les 1.5 temps de noire)
+- Exemple : `888888` devient `888 888` sans espace ; `888 888` est déjà correct
+- Auto-détection : dénominateur ≥ 8 avec numérateur ∈ {3, 6, 9, 12}
+
+**Temps irrégulier (5/8, 7/8, 11/8, etc.)** :
+- Pas d'auto-groupement : le **groupement est défini par les espaces**
+- Exemples : `88 88 888` (2+2+3) ou `888 88 88` (3+2+2)
+- L'utilisateur contrôle entièrement la structure rythmique
+
+**Syntaxe spéciale [_] - Ligature forcée** :
+- `888[_]88` force la ligature à continuer malgré la liaison
+- `888 _88` crée une liaison SANS ligature (deux groupes séparés)
+- Utile pour forcer des groupements non-standard
 
 Cette convention respecte la notation musicale standard et permet une lecture rythmique claire.
+
+---
+
+## 0. Tests de groupement automatique (v2.1)
+
+### 0.1 Groupement binaire en 4/4 (auto-détecté)
+
+```chordgrid
+4/4 | C[8888 8888] | G[88 88 88 88] | F[1616 1616 88 88] |
+```
+
+**Attendu** :
+- En 4/4, les croches sont automatiquement groupées par 2 à l'intérieur d'un même groupe.
+- C : `8888 8888` devient `88 88 | 88 88` (auto-break par 2 au sein de chaque bloc)
+- G : `88 88 88 88` est déjà `88 | 88 | 88 | 88` (espaces explicites)
+- F : les doubles-croches se groupent par 4 (visuel), et les croches par 2
+
+### 0.2 Groupement ternaire en 6/8 (auto-détecté)
+
+```chordgrid
+6/8 | C[888888] | G[888 888] | F[161616 161616 161616 161616] |
+```
+
+**Attendu** : En 6/8, auto-groupement par **3 croches** (noire pointée) :
+- C : `888888` devient `888 888`
+- G : `888 888` est déjà correct
+- F : groupes de doubles-croches en multiples de 3×2 (lecture par 3 croches)
+
+### 0.3 Liaison sans ligature (espace casse la ligature)
+
+```chordgrid
+4/4 | C[88_88 88 88] | G[888_888 888 888] |
+```
+
+**Attendu** : L'espace casse la ligature et crée des paquets distincts, la liaison relie les paquets sans les ligaturer.
+En 4/4 : `88_88` donne deux paquets de 2 croches. En 6/8 : `888_888` donne deux paquets de 3 croches.
+
+### 0.4 Liaison avec ligature forcée [_]
+
+```chordgrid
+4/4 | C[88[_]88 88 88] | G[888[_]888 888 888] |
+```
+
+**Attendu** : `88[_]88` force la ligature à travers la liaison et ignore le découpage automatique.
+
+### 0.5 Mode binaire explicite en 6/8
+
+```chordgrid
+6/8 binary | C[88 88 88] | G[1616 1616 88] |
+```
+
+**Attendu** : Même en 6/8, le mode `binary` force le groupement par 2.
+
+### 0.6 Mode ternaire explicite en 4/4
+
+```chordgrid
+4/4 ternary | C[888 888 888 888] | G[161616 161616 161616 161616 888 888] |
+```
+
+**Attendu** : En 4/4 avec mode `ternary`, groupement par 3 (shuffle implicite).
+
+---
 
 ## 1. Métrique 3/4 (Valse)
 

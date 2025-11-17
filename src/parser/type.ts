@@ -91,6 +91,12 @@ export interface NoteElement {
    * Ex: {161616 161616}6 → l'espace entre les groupes casse la ligature niveau 2 mais garde niveau 1
    */
   hasLeadingSpace?: boolean;
+  /**
+   * Flag indiquant que la liaison doit forcer la continuation de la ligature.
+   * Activé avec la syntaxe [_] (ex: 888[_]88 = liaison + ligature forcée)
+   * Permet de surpasser la règle normale "espace casse ligature" pour des cas spéciaux.
+   */
+  forcedBeamThroughTie?: boolean;
 }
 
 /**
@@ -160,16 +166,30 @@ export interface Measure {
 }
 
 /**
+ * Mode de groupement des notes pour les ligatures.
+ * - 'binary': groupement par 2 (temps binaire) - ex: 88 88
+ * - 'ternary': groupement par 3 (temps composé) - ex: 888 888
+ * - 'auto': détection automatique basée sur la signature temporelle
+ */
+export type GroupingMode = 'binary' | 'ternary' | 'auto';
+
+/**
  * Signature temporelle (time signature).
  * 
- * Définit le nombre de temps par mesure et la valeur de note par temps.
- * Exemple : 4/4 = 4 temps de noire par mesure
+ * Définit le nombre de temps par mesure, la valeur de note par temps,
+ * et le mode de groupement des ligatures.
+ * 
+ * Exemples :
+ * - 4/4 = 4 temps de noire par mesure (binaire par défaut)
+ * - 6/8 = 6 croches par mesure en 2 groupes de 3 (ternaire par défaut)
+ * - Peut être explicité : "4/4 binary" ou "6/8 ternary"
  */
 export interface TimeSignature {
   numerator: number;
   denominator: number;
   beatsPerMeasure: number;
   beatUnit: number;
+  groupingMode: GroupingMode;
 }
 
 /**

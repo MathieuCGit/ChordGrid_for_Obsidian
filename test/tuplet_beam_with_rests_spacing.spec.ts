@@ -1,6 +1,10 @@
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 import { MusicAnalyzer } from '../src/analyzer/MusicAnalyzer';
 
+declare const describe: any;
+declare const it: any;
+declare const expect: any;
+
 describe('Tuplet beam spacing with rests', () => {
   
   it('should handle spacing in tuplet with rests: {16-1616 16-1616}6', () => {

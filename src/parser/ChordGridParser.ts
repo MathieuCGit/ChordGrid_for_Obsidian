@@ -22,6 +22,8 @@
  * - Silences : préfixe `-` devant la valeur (ex: `-4` pour un soupir)
  * - Liaisons : underscore `_` pour lier des notes (ex: `4_88_` ou `[_8]`)
  * - Ligatures : notes groupées sans espace sont liées par une ligature (ex: `88` = 2 croches liées)
+ * - Ligature forcée avec liaison : `[_]` force la ligature à continuer malgré la liaison
+ *   (ex: `888[_]88` = liaison ET ligature, vs `888 _88` = liaison SANS ligature)
  *
  * @example
  * ```typescript
@@ -87,10 +89,15 @@ export class ChordGridParser {
    */
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
-    const firstLine = lines[0];
+    let firstLine = lines[0];
     
     // Parser la signature temporelle
     const timeSignature = this.parseTimeSignature(firstLine);
+    
+    // Retirer le motif "N/M" ou "N/M binary/ternary" de la première ligne
+    // pour éviter qu'il soit parsé comme mesure
+    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary))?\s*/, '');
+    lines[0] = firstLine;
     
   // Parser toutes les mesures
   const allMeasures: Measure[] = [];
@@ -257,7 +264,8 @@ export class ChordGridParser {
               tieFromVoid: n.tieFromVoid || false,
               beatIndex,  // Preserve beat index to break beams at beat boundaries
               tuplet: n.tuplet, // Preserve tuplet information
-              hasLeadingSpace: n.hasLeadingSpace, // Preserve spacing flag for tuplet subgroups
+                hasLeadingSpace: n.hasLeadingSpace, // Preserve spacing flag for tuplet subgroups
+                forcedBeamThroughTie: n.forcedBeamThroughTie, // Preserve [_] syntax
             });
           }
         });
@@ -363,13 +371,21 @@ export class ChordGridParser {
 
       const chordSegments: ChordSegment[] = [];
       
+      // PREPROCESSING: Replace [_] with temporary placeholder to avoid bracket conflicts
+      const FORCED_BEAM_PLACEHOLDER = '\u0001'; // Use control character as placeholder
+      const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
+      
       // Check if text contains brackets (chord[rhythm] syntax)
-      if (text.includes('[')) {
+      if (processedText.includes('[')) {
         // Use bracket-based parsing
-        while ((m2 = segmentRe.exec(text)) !== null) {
+        while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || '';
           const chord = (m2[2] || '').trim();
-          const rhythm = (m2[3] || '').trim();
+          let rhythm = (m2[3] || '').trim();
+          
+          // Restore [_] from placeholder in rhythm string
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, 'g'), '[_]');
+          
           const sourceText = m2[0];
           if (!firstChord && chord) firstChord = chord;
           anySource += (anySource ? ' ' : '') + sourceText;
@@ -433,16 +449,38 @@ export class ChordGridParser {
    * @returns Objet TimeSignature avec numérateur et dénominateur
    * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
    */
+  /**
+   * Parse la signature temporelle et le mode de groupement optionnel.
+   * 
+   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * 
+   * @param line - Première ligne contenant la signature temporelle
+   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   */
   private parseTimeSignature(line: string): TimeSignature {
-    const m = /^\s*(\d+)\/(\d+)/.exec(line);
+    // Match: "4/4" optionally followed by "binary" or "ternary"
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary))?/.exec(line);
     if (m) {
+      const numerator = parseInt(m[1], 10);
+      const denominator = parseInt(m[2], 10);
+      const groupingMode = (m[3] as GroupingMode) || 'auto';
+      
       return {
-        numerator: parseInt(m[1], 10),
-        denominator: parseInt(m[2], 10)
-      } as TimeSignature;
+        numerator,
+        denominator,
+        beatsPerMeasure: numerator,
+        beatUnit: denominator,
+        groupingMode
+      };
     }
     // Fallback default
-    return { numerator: 4, denominator: 4 } as TimeSignature;
+    return { 
+      numerator: 4, 
+      denominator: 4, 
+      beatsPerMeasure: 4, 
+      beatUnit: 4,
+      groupingMode: 'auto'
+    };
   }
 
   /**
@@ -526,8 +564,10 @@ class BeamAndTieAnalyzer {
     // continuity decision in createBeat must use the *previous* group's
     // spacing flag. We'll update lastGroupHasSpace at the end of this
     // function so the next group can observe it.
-    const beats: Beat[] = [];
-    let currentBeat: NoteElement[] = [];
+  const beats: Beat[] = [];
+  let currentBeat: NoteElement[] = [];
+  // Track a reference to the cloned last note of the previous beat (as stored in beats) to support ties across spaces
+  let lastBeatLastNoteRef: NoteElement | null = null;
     let i = 0;
     
     let pendingTieFromVoid = false;
@@ -642,14 +682,36 @@ class BeamAndTieAnalyzer {
           }
         }
       }
+      
+      // Gestion des [_] forced beam syntax (checked BEFORE standalone _)
+      if (rhythmStr[i] === '[' && i + 2 < rhythmStr.length && 
+          rhythmStr[i + 1] === '_' && rhythmStr[i + 2] === ']') {
+        // Mark last note with forced beam through tie
+        if (currentBeat.length > 0) {
+          const lastNote = currentBeat[currentBeat.length - 1];
+          lastNote.forcedBeamThroughTie = true;
+          lastNote.tieStart = true;
+          this.tieContext.lastNote = lastNote;
+        }
+        i += 3; // Skip [_]
+        continue;
+      }
+      
       // Gestion des underscores (liaisons)
       if (rhythmStr[i] === '_') {
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
+          // Underscore at end of group and end of line → tie to void from the LAST note of current beat
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
+          // Underscore at very start of measure (line) → tie from void to the next note
           pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
+        } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
+          // Underscore immediately after a space: tie should start from the cloned last note of the PREVIOUS beat
+          lastBeatLastNoteRef.tieStart = true;
+          this.tieContext.lastNote = lastBeatLastNoteRef;
         } else {
+          // Normal case inside a beat: mark tie start on last note of the current beat
           this.markTieStart(currentBeat);
         }
         i++;
@@ -658,7 +720,10 @@ class BeamAndTieAnalyzer {
       // Gestion des espaces
       if (rhythmStr[i] === ' ') {
         if (currentBeat.length > 0) {
+          // Close current beat and remember a reference to its cloned last note for cross-space ties
+          const lastIdx = currentBeat.length - 1;
           beats.push(this.createBeat(currentBeat));
+          lastBeatLastNoteRef = beats[beats.length - 1].notes[lastIdx] || null;
           currentBeat = [];
         }
         i++;
@@ -825,6 +890,7 @@ import {
   Measure,
   BarlineType,
   TimeSignature,
+  GroupingMode,
   ChordGrid,
   ValidationError,
   ParseResult,

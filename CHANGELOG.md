@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Comprehensive test suite for multiple time signatures** (`test/multiple_time_signatures.spec.ts`)
+  - 60 automated tests validating beams, ties, and tuplets across 12+ time signatures
+  - Coverage: 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 7/8, 6/8, 9/8, 11/8, 12/8, 15/16
+  - Tests for simple time, compound time, and asymmetric meters
+  - Edge cases: rests with beams/ties, cross-measure ties, tuplets with ties
+- **Visual test file** (`test/test_multiple_time_signatures.md`)
+  - 100+ chord grid examples for manual validation in Obsidian
+  - Organized by time signature and feature (beams, ties, tuplets)
+  - Ready-to-use demonstration file
+  - **Corrected to follow standard notation conventions** (see Fixed section)
+- **Notation conventions guide** (`GROUPING_CONVENTIONS.md`)
+  - Complete reference for rhythmic grouping in binary vs ternary time
+  - Examples for all time signatures
+  - Best practices for beam grouping
+
+### Documentation
+- **Test analysis documentation** (`test/ANALYSIS_TEST_ERRORS.md`)
+  - Detailed analysis of initial test failures
+  - Explanations of tuplet duration calculations
+  - Guide for understanding time signature validation
+- **Test report** (`test/TEST_REPORT_MULTIPLE_TIME_SIGNATURES.md`)
+  - Comprehensive report of validation results
+  - Coverage metrics and quality analysis
+- **Validation summary** (`test/VALIDATION_SUMMARY_v2.1.md`)
+  - Executive summary for v2.1.0 release
+  - Complete feature validation checklist
+- **Notation corrections** (`test/CORRECTIONS_NOTATION.md`)
+  - Detailed list of corrections applied to respect standard notation
+  - Binary vs ternary grouping conventions explained
+
+### Fixed
+- **Notation conventions in test file** (`test/test_multiple_time_signatures.md`)
+  - Binary time (2/4, 3/4, 4/4, 5/4, 7/4): eighth notes now grouped by 2 (e.g., `88 88 88`)
+  - Compound time (6/8, 9/8, 12/8): eighth notes now grouped by 3 (e.g., `888 888`)
+  - Corrected measure durations to match time signatures
+  - Fixed cross-measure ties to maintain correct measure lengths
+  - Applied standard notation practices throughout all examples
+
+### Validated
+- ✅ Beams work correctly in all tested time signatures (12+)
+- ✅ Cross-segment beaming validated across all metrics
+- ✅ Ties function properly across measure boundaries in all time signatures
+- ✅ Tuplets (triplets, quintuplets, duplets) validate correctly with proper ratios
+- ✅ Tuplets with ties work in all tested time signatures
+- ✅ Rest handling correct in all contexts
+- ✅ Dotted notes calculate durations accurately
+- ✅ All 136 tests pass (100% success rate)
+- ✅ Notation follows standard conventions (binary vs ternary grouping)
+
 ## [2.0.0] - 2025-11-14
 
 ### 🎉 Architecture Refactoring - **BREAKING CHANGES**

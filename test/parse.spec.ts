@@ -3,6 +3,7 @@ import { ChordGridParser } from '../src/parser/ChordGridParser';
 declare const describe: any;
 declare const it: any;
 declare const expect: any;
+declare const beforeEach: any;
 
 describe('ChordGridParser - parsing examples', () => {
   let parser: ChordGridParser;

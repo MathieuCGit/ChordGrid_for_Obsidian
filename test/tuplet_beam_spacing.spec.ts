@@ -1,6 +1,10 @@
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 import { MusicAnalyzer } from '../src/analyzer/MusicAnalyzer';
 
+declare const describe: any;
+declare const it: any;
+declare const expect: any;
+
 describe('Tuplet beam spacing', () => {
   
   it('should break level-2 beam at space in sextuplet {161616 161616}6', () => {

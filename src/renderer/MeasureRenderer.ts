@@ -112,8 +112,8 @@ export class MeasureRenderer {
     // Track per-segment note index to map to analyzer references
     const segmentNoteCursor: number[] = new Array(segments.length).fill(0);
 
-        // Layout segments: allocate widths proportional to number of beats, but
-        // insert a visible separator when a segment has leadingSpace=true.
+        // Layout segments: allocate widths proportional to per-beat required width,
+        // but insert a visible separator when a segment has leadingSpace=true.
         const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
         const separatorWidth = 12; // px gap when source had a space
         const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + ((idx > 0 && seg.leadingSpace) ? 1 : 0), 0);
@@ -122,10 +122,36 @@ export class MeasureRenderer {
         const totalInnerPadding = innerPaddingPerSegment * segments.length;
         const totalSeparatorPixels = separatorsCount * separatorWidth;
 
-        const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
-        const beatCellWidth = availableForBeatCells / totalBeats;
+    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
+        // Helper spacing functions (must mirror SVGRenderer)
+        const headHalfMax = 6;
+        const valueMinSpacing = (v: number) => {
+            if (v >= 64) return 16;
+            if (v >= 32) return 20;
+            if (v >= 16) return 26;
+            if (v >= 8)  return 24;
+            return 20;
+        };
+        const requiredBeatWidth = (beat: Beat) => {
+            const noteCount = beat?.notes?.length || 0;
+            if (noteCount <= 1) return 28 + 10 + headHalfMax;
+            const spacing = Math.max(
+                ...beat.notes.map(n => {
+                    const base = valueMinSpacing(n.value);
+                    return n.isRest ? base + 4 : base; // rests need a tad more space visually
+                })
+            );
+            return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+        };
 
         // iterate segments and place beats
+        // Pre-compute required width sums per segment to distribute measure space fairly
+        const perSegmentRequired: number[] = segments.map(seg => {
+            const reqs = (seg.beats || []).map(b => requiredBeatWidth(b as Beat));
+            return reqs.reduce((a, b) => a + b, 0);
+        });
+        const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
+
         let currentX = this.x; // segment left
         for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
             const segment = segments[segmentIndex];
@@ -136,13 +162,20 @@ export class MeasureRenderer {
             }
 
             const segBeatCount = segment.beats.length || 1;
-            const segmentWidth = segBeatCount * beatCellWidth + innerPaddingPerSegment;
+            // Determine required width per beat for this segment
+            const reqPerBeat = segment.beats.map(b => requiredBeatWidth(b));
+            const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
+            // Allocate segment width proportionally to this segment's requirement within the measure
+            const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
+            const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
             const segmentX = currentX + 10; // inner left padding
             const beatsWidth = segmentWidth - innerPaddingPerSegment;
-            const beatWidth = beatsWidth / segBeatCount;
 
+            // Prefix-sum to place each beat proportionally
+            let beatCursorX = segmentX;
             segment.beats.forEach((beat: Beat, beatIndex: number) => {
-                const beatX = segmentX + (beatIndex * beatWidth);
+                const beatWidth = (reqPerBeat[beatIndex] / reqSum) * beatsWidth;
+                const beatX = beatCursorX;
                 const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
                 if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
@@ -151,6 +184,7 @@ export class MeasureRenderer {
                     chordText.setAttribute('font-family', 'Arial, sans-serif');
                     svg.appendChild(chordText);
                 }
+                beatCursorX += beatWidth;
             });
 
             currentX += segmentWidth;
@@ -248,18 +282,35 @@ export class MeasureRenderer {
             }
         });
 
-        // Calculate individual note positions, accounting for tuplet spacing
+        // Calculate individual note positions with adaptive spacing and clamping to beat width
         const notePositionsX: number[] = [];
-        let currentX = startX;
-        const baseSpacing = 20;
-        
+        // Determine ideal base spacing from densest note value
+        const densestSpacing = Math.max(...beat.notes.map(n => {
+            if (n.isRest) return 20; // rests: neutral spacing
+            const v = n.value;
+            if (v >= 64) return 16;
+            if (v >= 32) return 20;
+            if (v >= 16) return 26;
+            if (v >= 8)  return 24;
+            return 20;
+        }));
+        const availableSpan = Math.max(0, endLimit - startX);
+        // Build per-gap factors: compress tuplet-internal gaps slightly
+        const gapCount = Math.max(0, noteCount - 1);
+        const gapFactors: number[] = [];
+        for (let g = 0; g < gapCount; g++) {
+            const inSameTuplet = tupletGroups.some(T => g >= T.startIndex && g + 1 <= T.endIndex);
+            gapFactors.push(inSameTuplet ? 0.85 : 1.0);
+        }
+        const desiredGaps = gapFactors.map(f => densestSpacing * f);
+        const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
+        const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
+        const finalGaps = desiredGaps.map(g => g * scale);
+
+        let cursorX = startX;
         for (let i = 0; i < noteCount; i++) {
-            const isInTuplet = tupletGroups.some(g => i >= g.startIndex && i <= g.endIndex);
-            const spacing = isInTuplet ? baseSpacing * 0.75 : baseSpacing;
-            notePositionsX.push(currentX);
-            if (i < noteCount - 1) {
-                currentX += spacing;
-            }
+            notePositionsX.push(cursorX);
+            if (i < gapCount) cursorX += finalGaps[i];
         }
 
         beat.notes.forEach((nv, noteIndex) => {

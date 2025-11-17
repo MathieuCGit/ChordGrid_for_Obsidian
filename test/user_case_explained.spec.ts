@@ -1,5 +1,10 @@
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 
+declare const describe: any;
+declare const it: any;
+declare const expect: any;
+declare const beforeEach: any;
+
 describe('User Example - Mixed Duration Tuplet {816-16 1616 8 8}5:4', () => {
   let parser: ChordGridParser;
 

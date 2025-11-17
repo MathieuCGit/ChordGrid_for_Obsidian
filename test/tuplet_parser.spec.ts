@@ -1,5 +1,9 @@
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 
+declare const describe: any;
+declare const it: any;
+declare const expect: any;
+
 describe('Tuplet parsing', () => {
   const parser = new ChordGridParser();
 
