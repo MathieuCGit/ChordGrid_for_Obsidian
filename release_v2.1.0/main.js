@@ -913,6 +913,7 @@ var RestRenderer = class {
 };
 
 // src/renderer/MeasureRenderer.ts
+init_DebugLogger();
 var MeasureRenderer = class {
   constructor(measure, x, y, width, beamedAtLevel1, collisionManager) {
     this.measure = measure;
@@ -1074,7 +1075,21 @@ var MeasureRenderer = class {
   }
   drawBeat(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
     if (!beat || beat.notes.length === 0) return null;
+    DebugLogger.log(`\u{1F3BC} Drawing beat ${beatIndex}`, {
+      measureIndex,
+      chordIndex,
+      beatIndex,
+      notesCount: beat.notes.length,
+      notes: beat.notes.map((n) => ({ value: n.value, isRest: n.isRest })),
+      hasBeam: beat.hasBeam,
+      beamGroups: beat.beamGroups
+    });
     const hasBeamableNotes = beat.notes.some((n) => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
+    DebugLogger.log(`Beam detection`, {
+      hasBeamableNotes,
+      multipleNotes: beat.notes.length > 1,
+      willDrawGroup: hasBeamableNotes && beat.notes.length > 1
+    });
     const noteCount = beat.notes.length;
     let firstNoteX = null;
     const innerLeft = 10;
@@ -1446,6 +1461,7 @@ var MeasureRenderer = class {
 };
 
 // src/utils/TieManager.ts
+init_DebugLogger();
 var TieManager = class {
   constructor() {
     // pending ties saved when a tie continues beyond the rendered area (e.g. line break)
@@ -1461,7 +1477,9 @@ var TieManager = class {
    * @param y - Position Y de la fin de la liaison
    */
   addPendingTie(measureIndex, x, y) {
+    DebugLogger.log("\u{1F4CC} Adding pending tie", { measureIndex, x, y });
     this.pending.push({ measureIndex, x, y });
+    DebugLogger.log("Current pending ties", { count: this.pending.length, pending: this.pending });
   }
   /**
    * Tente de résoudre une liaison en attente pour une note commençant par "from void".
@@ -1473,12 +1491,15 @@ var TieManager = class {
    * @returns La liaison en attente (et la retire de la liste) ou null si aucune
    */
   resolvePendingFor(measureIndex) {
+    DebugLogger.log("\u{1F50D} Resolving pending tie for measure", { measureIndex, availablePending: this.pending });
     for (let i = 0; i < this.pending.length; i++) {
       if (this.pending[i].measureIndex < measureIndex) {
         const p = this.pending.splice(i, 1)[0];
+        DebugLogger.log("\u2705 Resolved pending tie", { resolved: p, remaining: this.pending.length });
         return p;
       }
     }
+    DebugLogger.warn("No pending tie found for measure", { measureIndex });
     return null;
   }
   /**
@@ -1974,6 +1995,9 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
   }
 }
 
+// src/renderer/SVGRenderer.ts
+init_DebugLogger();
+
 // src/renderer/CollisionManager.ts
 var CollisionManager = class {
   /**
@@ -2182,6 +2206,11 @@ var SVGRenderer = class {
     const measuresPerLine = 4;
     const baseMeasureWidth = 240;
     const measureHeight = 120;
+    DebugLogger.log("\u{1F4D0} Creating SVG layout", {
+      measuresPerLine,
+      baseMeasureWidth,
+      measureHeight
+    });
     const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
     const timeSigFontSize = 18;
     const timeSigAvgCharFactor = 0.53;
@@ -2230,6 +2259,7 @@ var SVGRenderer = class {
     grid.measures.forEach((measure, mi) => {
       const mWidth = dynamicMeasureWidths[mi];
       if (measuresInCurrentLine > 0 && currentLineWidth + mWidth > maxLineWidth) {
+        DebugLogger.log(`\u21B5 Auto line break (${measuresInCurrentLine} measures)`);
         currentLine++;
         measuresInCurrentLine = 0;
         currentLineWidth = 0;
@@ -2240,10 +2270,15 @@ var SVGRenderer = class {
       measuresInCurrentLine++;
       currentLineWidth += mWidth;
       if (measure.isLineBreak) {
+        DebugLogger.log("\u21B5 Line break detected");
         currentLine++;
         measuresInCurrentLine = 0;
         currentLineWidth = 0;
       }
+    });
+    DebugLogger.log("\u{1F4CA} Layout calculated", {
+      totalLines: currentLine + 1,
+      totalMeasures: measurePositions.length
     });
     const lines = currentLine + 1;
     const linesWidths = new Array(lines).fill(0);
@@ -2277,6 +2312,7 @@ var SVGRenderer = class {
       width: timeSigWidthEstimate,
       height: timeSigFontSize + 4
     }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
+    DebugLogger.log("\u{1F3BC} Rendering measures");
     let analyzedMeasures = [];
     let level1BeamSet;
     try {
@@ -2320,6 +2356,7 @@ var SVGRenderer = class {
         const analyzed = analyzer.analyze(parsedMeasure);
         return analyzed;
       });
+      DebugLogger.log("\u2705 Analyzer measures prepared", { count: analyzedMeasures.length });
       level1BeamSet = /* @__PURE__ */ new Set();
       analyzedMeasures.forEach((am, mi) => {
         var _a;
@@ -2332,6 +2369,7 @@ var SVGRenderer = class {
         });
       });
     } catch (e) {
+      DebugLogger.error("Analyzer preparation failed", e);
       analyzedMeasures = [];
     }
     const lineAccumulated = new Array(lines).fill(dynamicLineStartPadding);
@@ -2358,6 +2396,7 @@ var SVGRenderer = class {
       }
       lineAccumulated[lineIndex] += mWidth;
     });
+    DebugLogger.log("\u{1F3B5} Note positions collected", { count: notePositions.length });
     this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
     return svg;
   }
@@ -2400,6 +2439,7 @@ var SVGRenderer = class {
    */
   detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, collisionManager) {
     var _a;
+    DebugLogger.log("\u{1F517} Starting tie detection and drawing");
     const lineStartPadding = (_a = svg.__dynamicLineStartPadding) != null ? _a : 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
     const lineOffsets = new Array(maxLineIndex + 1).fill(lineStartPadding);
@@ -2411,6 +2451,7 @@ var SVGRenderer = class {
       measureXB[mp.globalIndex] = { xStart, xEnd, y };
       lineOffsets[mp.lineIndex] += mp.width;
     });
+    DebugLogger.log("\u{1F527} Post-processing ties for line breaks");
     for (let i = 0; i < notePositions.length; i++) {
       const cur = notePositions[i];
       if (cur.tieStart && !cur.tieToVoid) {
@@ -2421,6 +2462,7 @@ var SVGRenderer = class {
           if (target.tieEnd || target.tieFromVoid) {
             const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
             if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
+              DebugLogger.log(`\u{1F527} Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
               cur.tieToVoid = true;
               if (!target.tieFromVoid) {
                 target.tieFromVoid = true;
@@ -2433,8 +2475,29 @@ var SVGRenderer = class {
       }
     }
     const matched = /* @__PURE__ */ new Set();
+    const tieNotes = notePositions.filter((n) => n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
+    DebugLogger.log("Notes with tie markers", {
+      count: tieNotes.length,
+      details: tieNotes.map((n, idx) => ({
+        index: notePositions.indexOf(n),
+        measure: n.measureIndex,
+        chord: n.chordIndex,
+        beat: n.beatIndex,
+        note: n.noteIndex,
+        tieStart: n.tieStart,
+        tieEnd: n.tieEnd,
+        tieToVoid: n.tieToVoid,
+        tieFromVoid: n.tieFromVoid,
+        position: { x: n.x, y: n.y }
+      }))
+    });
     const dotsForCollisions = collisionManager ? collisionManager.getElements().filter((e) => e.type === "dot") : [];
     const drawCurve = (startX, startY, endX, endY, isCross) => {
+      DebugLogger.log("Drawing tie curve", {
+        from: { x: startX, y: startY },
+        to: { x: endX, y: endY },
+        crossMeasure: isCross
+      });
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
@@ -2453,6 +2516,7 @@ var SVGRenderer = class {
         if (overlappingDot) {
           const raise = Math.max(6, baseAmp * 0.6);
           controlY -= raise;
+          DebugLogger.log("\u25B2 Raising tie curve to avoid dotted note dot", { raise, newControlY: controlY });
         }
       }
       const midX = (startX + endX) / 2;
@@ -2473,14 +2537,25 @@ var SVGRenderer = class {
     const drawHalfToMeasureRight = (measureIdx, startX, startY) => {
       const bounds = measureXB[measureIdx];
       const marginX = bounds ? bounds.xEnd - 8 : svgWidth - 16;
+      DebugLogger.log("Drawing half-tie to measure right edge (tieToVoid)", {
+        from: { x: startX, y: startY },
+        to: { x: marginX, y: startY },
+        measureIdx
+      });
       drawCurve(startX, startY, marginX, startY, true);
       return { x: marginX, y: startY };
     };
     const drawHalfFromMeasureLeft = (measureIdx, endX, endY) => {
       const bounds = measureXB[measureIdx];
       const startX = bounds ? bounds.xStart + 4 : 16;
+      DebugLogger.log("Drawing half-tie from measure left edge (tieFromVoid)", {
+        from: { x: startX, y: endY },
+        to: { x: endX, y: endY },
+        measureIdx
+      });
       drawCurve(startX, endY, endX, endY, true);
     };
+    DebugLogger.log("\u{1F50D} Primary pass: matching tieStart -> tieEnd");
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
@@ -2493,7 +2568,15 @@ var SVGRenderer = class {
         startY = cur.y - 8;
       }
       if (cur.tieStart || cur.tieToVoid) {
+        DebugLogger.log(`Found tieStart/tieToVoid at index ${i}`, {
+          measure: cur.measureIndex,
+          chord: cur.chordIndex,
+          beat: cur.beatIndex,
+          tieStart: cur.tieStart,
+          tieToVoid: cur.tieToVoid
+        });
         if (cur.tieToVoid) {
+          DebugLogger.log(`Drawing tieToVoid for index ${i} (post-processed)`);
           const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
           tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
@@ -2509,6 +2592,7 @@ var SVGRenderer = class {
           }
         }
         if (found >= 0) {
+          DebugLogger.log(`\u2705 Matched tieStart[${i}] -> tieEnd[${found}]`);
           const tgt = notePositions[found];
           const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
           let endY;
@@ -2523,6 +2607,7 @@ var SVGRenderer = class {
           matched.add(found);
           continue;
         }
+        DebugLogger.log(`No direct tieEnd found for tieStart[${i}], searching for tieFromVoid`);
         let foundFromVoid = -1;
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
@@ -2538,10 +2623,12 @@ var SVGRenderer = class {
           const tgtMP = measurePositions.find((mp) => mp.globalIndex === tgt.measureIndex);
           const crossesLine = !!(curMP && tgtMP && curMP.lineIndex !== tgtMP.lineIndex);
           if (crossesLine) {
+            DebugLogger.log(`\u2705 Matched cross-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] \u2014 split into two halves`);
             const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
             tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
             matched.add(i);
           } else {
+            DebugLogger.log(`\u2705 Matched same-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] \u2014 drawing full curve`);
             const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
             let endY;
             if (tgt.headLeftX !== void 0) {
@@ -2556,8 +2643,12 @@ var SVGRenderer = class {
           }
           continue;
         }
+        DebugLogger.log(`No tieFromVoid found, already handled or no match`);
       }
       if (cur.tieFromVoid && !matched.has(i)) {
+        DebugLogger.log(`Found tieFromVoid at index ${i}`, {
+          measure: cur.measureIndex
+        });
         let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
         let endY;
         if (cur.headLeftX !== void 0) {
@@ -2570,10 +2661,15 @@ var SVGRenderer = class {
         matched.add(i);
       }
     }
+    DebugLogger.log("\u{1F517} Tie detection completed", {
+      totalMatched: matched.size,
+      totalNotes: notePositions.length
+    });
   }
 };
 
 // main.ts
+init_DebugLogger();
 var ChordGridPlugin = class extends import_obsidian.Plugin {
   /**
    * Méthode appelée lors du chargement du plugin.
@@ -2594,17 +2690,27 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
       (source, el, ctx) => {
         var _a;
         try {
+          DebugLogger.init(el);
+          DebugLogger.log("\u{1F3B5} Parsing chord grid", { source: source.substring(0, 100) + "..." });
           const parser = new ChordGridParser();
           const result = parser.parse(source);
           const grid = result.grid;
+          DebugLogger.log("\u2705 Parsing completed", {
+            measuresCount: grid.measures.length,
+            timeSignature: `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`
+          });
           if (result.errors && result.errors.length > 0) {
+            DebugLogger.warn("Validation errors found", { count: result.errors.length });
             const pre = el.createEl("pre", { cls: "chord-grid-error" });
             pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
           }
+          DebugLogger.log("\u{1F3A8} Starting SVG rendering");
           const renderer = new SVGRenderer();
           const svg = renderer.render(grid);
+          DebugLogger.log("\u2705 Rendering completed");
           el.appendChild(svg);
         } catch (err) {
+          DebugLogger.error("Fatal error", err);
           const error = err;
           el.createEl("pre", {
             text: `Erreur: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,

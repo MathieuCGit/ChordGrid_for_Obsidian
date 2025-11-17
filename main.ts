@@ -28,7 +28,7 @@
 import { Plugin } from 'obsidian';
 import { ChordGridParser } from './src/parser/ChordGridParser';
 import { SVGRenderer } from './src/renderer/SVGRenderer';
-import { DebugLogger } from './src/utils/DebugLogger';
+// DebugLogger supprimé pour release utilisateur
 
 /**
  * Plugin Obsidian pour le rendu de grilles d'accords.
@@ -56,34 +56,27 @@ export default class ChordGridPlugin extends Plugin {
       'chordgrid',
       (source, el, ctx) => {
         try {
-          // Initialiser le logger pour ce bloc
-          DebugLogger.init(el);
-          DebugLogger.log('🎵 Parsing chord grid', { source: source.substring(0, 100) + '...' });
+          // DebugLogger supprimé
 
           const parser = new ChordGridParser();
           const result = parser.parse(source);
           const grid = result.grid;
 
-          DebugLogger.log('✅ Parsing completed', { 
-            measuresCount: grid.measures.length,
-            timeSignature: `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`
-          });
+          // DebugLogger supprimé
 
           // If there are validation errors, render them (but still render the grid)
           if (result.errors && result.errors.length > 0) {
-            DebugLogger.warn('Validation errors found', { count: result.errors.length });
+            // DebugLogger supprimé
             const pre = el.createEl('pre', { cls: 'chord-grid-error' });
             pre.setText('Rhythm validation errors:\n' + result.errors.map(e => e.message).join('\n'));
           }
 
-          DebugLogger.log('🎨 Starting SVG rendering');
+          // DebugLogger supprimé
           const renderer = new SVGRenderer();
           const svg = renderer.render(grid);
-
-          DebugLogger.log('✅ Rendering completed');
           el.appendChild(svg);
         } catch (err) {
-          DebugLogger.error('Fatal error', err);
+          // DebugLogger supprimé
           const error = err as Error;
           el.createEl('pre', {
             text: `Erreur: ${error?.message ?? String(err)}`,

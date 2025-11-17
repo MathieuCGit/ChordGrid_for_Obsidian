@@ -23,7 +23,7 @@
 import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { SVG_NS } from './constants';
 import { RestRenderer } from './RestRenderer';
-import { DebugLogger } from '../utils/DebugLogger';
+// DebugLogger supprimé pour release utilisateur
 import { CollisionManager } from './CollisionManager';
 
 /**
@@ -279,23 +279,11 @@ export class MeasureRenderer {
     ): number | null {
         if (!beat || beat.notes.length === 0) return null;
 
-        DebugLogger.log(`🎼 Drawing beat ${beatIndex}`, {
-            measureIndex,
-            chordIndex,
-            beatIndex,
-            notesCount: beat.notes.length,
-            notes: beat.notes.map(n => ({ value: n.value, isRest: n.isRest })),
-            hasBeam: beat.hasBeam,
-            beamGroups: beat.beamGroups
-        });
+        // DebugLogger supprimé : Drawing beat
 
         const hasBeamableNotes = beat.notes.some(n => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
 
-        DebugLogger.log(`Beam detection`, {
-            hasBeamableNotes,
-            multipleNotes: beat.notes.length > 1,
-            willDrawGroup: hasBeamableNotes && beat.notes.length > 1
-        });
+        // DebugLogger supprimé : Beam detection
 
         // Draw notes without beams; analyzer overlay will handle beams later
         // Position notes left-aligned within the beat area but clamp spacing to avoid overflow

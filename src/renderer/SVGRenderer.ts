@@ -31,7 +31,7 @@ import { TieManager } from '../utils/TieManager';
 import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
 import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
-import { DebugLogger } from '../utils/DebugLogger';
+// DebugLogger supprimé pour release utilisateur
 import { CollisionManager } from './CollisionManager';
 
 /**
@@ -53,11 +53,11 @@ export class SVGRenderer {
   const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
   const measureHeight = 120;
 
-    DebugLogger.log('📐 Creating SVG layout', { 
-      measuresPerLine, 
-      baseMeasureWidth, 
-      measureHeight 
-    });
+    // DebugLogger.log('📐 Creating SVG layout', { 
+    //   measuresPerLine, 
+    //   baseMeasureWidth, 
+    //   measureHeight 
+    // });
 
   // Pre-compute dynamic widths per measure based on rhythmic density
   // (Time signature width factored into initial padding later)
@@ -116,7 +116,7 @@ export class SVGRenderer {
 
       // wrap if adding this measure would exceed budget
       if (measuresInCurrentLine > 0 && (currentLineWidth + mWidth) > maxLineWidth) {
-        DebugLogger.log(`↵ Auto line break (${measuresInCurrentLine} measures)`);
+        // DebugLogger.log(`↵ Auto line break (${measuresInCurrentLine} measures)`);
         currentLine++;
         measuresInCurrentLine = 0;
         currentLineWidth = 0;
@@ -132,17 +132,17 @@ export class SVGRenderer {
 
       // Then, if this measure is marked as an explicit line break, move to next line
       if ((measure as any).isLineBreak) {
-        DebugLogger.log('↵ Line break detected');
+        // DebugLogger.log('↵ Line break detected');
         currentLine++;
         measuresInCurrentLine = 0;
         currentLineWidth = 0;
       }
     });
 
-    DebugLogger.log('📊 Layout calculated', { 
-      totalLines: currentLine + 1, 
-      totalMeasures: measurePositions.length 
-    });
+    // DebugLogger.log('📊 Layout calculated', { 
+    //   totalLines: currentLine + 1, 
+    //   totalMeasures: measurePositions.length 
+    // });
 
     const lines = currentLine + 1;
     // Compute SVG width as max line accumulation plus margins
@@ -185,7 +185,7 @@ export class SVGRenderer {
       height: timeSigFontSize + 4
     }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
 
-    DebugLogger.log('🎼 Rendering measures');
+  // DebugLogger.log('🎼 Rendering measures');
     // Prepare analyzed measures for beam rendering
     let analyzedMeasures: any[] = [];
     let level1BeamSet: Set<string> | undefined;
@@ -229,7 +229,7 @@ export class SVGRenderer {
         const analyzed = analyzer.analyze(parsedMeasure as any);
         return analyzed;
       });
-      DebugLogger.log('✅ Analyzer measures prepared', { count: analyzedMeasures.length });
+  // DebugLogger.log('✅ Analyzer measures prepared', { count: analyzedMeasures.length });
       // Build global set of notes in level-1 beams of length >=2 per measure
       level1BeamSet = new Set<string>();
       analyzedMeasures.forEach((am: any, mi: number) => {
@@ -242,7 +242,7 @@ export class SVGRenderer {
         });
       });
     } catch (e) {
-      DebugLogger.error('Analyzer preparation failed', e);
+  // DebugLogger.error('Analyzer preparation failed', e);
       analyzedMeasures = [];
     }
 
@@ -274,7 +274,7 @@ export class SVGRenderer {
       lineAccumulated[lineIndex] += mWidth;
     });
 
-  DebugLogger.log('🎵 Note positions collected', { count: notePositions.length });
+  // DebugLogger supprimé
   
   // draw ties using collected notePositions and the TieManager for cross-line ties
   this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
@@ -328,7 +328,7 @@ export class SVGRenderer {
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
     collisionManager?: CollisionManager
   ) {
-    DebugLogger.log('🔗 Starting tie detection and drawing');
+  // DebugLogger supprimé
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
   // Use same dynamic padding as measure start to align tie rendering
   const lineStartPadding = (svg as any).__dynamicLineStartPadding ?? 40;
@@ -349,7 +349,7 @@ export class SVGRenderer {
     // The parser marks tieStart/tieEnd (or tieFromVoid) based on syntax.
     // For explicit line breaks (\n), the user writes "4_" and "_4" so parser already sets tieFromVoid.
     // For automatic wraps, we need to transform tieStart->tieEnd pairs into tieToVoid->tieFromVoid.
-    DebugLogger.log('🔧 Post-processing ties for line breaks');
+  // DebugLogger supprimé
     
     for (let i = 0; i < notePositions.length; i++) {
       const cur = notePositions[i];
@@ -371,7 +371,7 @@ export class SVGRenderer {
             
             if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
               // This tie crosses a line boundary!
-              DebugLogger.log(`🔧 Converting cross-line tie: note ${i} (measure ${cur.measureIndex}, line ${curMeasurePos.lineIndex}) -> note ${j} (measure ${target.measureIndex}, line ${targetMeasurePos.lineIndex})`);
+              // DebugLogger supprimé
               
               // Mark the start note as tieToVoid
               cur.tieToVoid = true;
@@ -390,32 +390,12 @@ export class SVGRenderer {
     
     const matched = new Set<number>();
     
-    // Log all notes with tie markers
-    const tieNotes = notePositions.filter(n => n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
-    DebugLogger.log('Notes with tie markers', { 
-      count: tieNotes.length,
-      details: tieNotes.map((n, idx) => ({
-        index: notePositions.indexOf(n),
-        measure: n.measureIndex,
-        chord: n.chordIndex,
-        beat: n.beatIndex,
-        note: n.noteIndex,
-        tieStart: n.tieStart,
-        tieEnd: n.tieEnd,
-        tieToVoid: n.tieToVoid,
-        tieFromVoid: n.tieFromVoid,
-        position: { x: n.x, y: n.y }
-      }))
-    });
+    // Nettoyage : suppression du log des notes avec tie markers
 
     const dotsForCollisions = collisionManager ? collisionManager.getElements().filter(e => e.type === 'dot') : [];
 
     const drawCurve = (startX: number, startY: number, endX: number, endY: number, isCross: boolean) => {
-      DebugLogger.log('Drawing tie curve', { 
-        from: { x: startX, y: startY }, 
-        to: { x: endX, y: endY }, 
-        crossMeasure: isCross 
-      });
+    // Nettoyage : suppression du log debug
       
       const path = document.createElementNS(SVG_NS, 'path');
       const dx = Math.abs(endX - startX);
@@ -436,7 +416,7 @@ export class SVGRenderer {
         if (overlappingDot) {
           const raise = Math.max(6, baseAmp * 0.6);
           controlY -= raise; // move curve further up
-          DebugLogger.log('▲ Raising tie curve to avoid dotted note dot', { raise, newControlY: controlY });
+          // DebugLogger supprimé
         }
       }
       const midX = (startX + endX) / 2;
@@ -459,11 +439,7 @@ export class SVGRenderer {
     const drawHalfToMeasureRight = (measureIdx: number, startX: number, startY: number) => {
       const bounds = measureXB[measureIdx];
       const marginX = bounds ? bounds.xEnd - 8 : (svgWidth - 16);
-      DebugLogger.log('Drawing half-tie to measure right edge (tieToVoid)', {
-        from: { x: startX, y: startY },
-        to: { x: marginX, y: startY },
-        measureIdx
-      });
+    // Nettoyage : suppression du log debug
       drawCurve(startX, startY, marginX, startY, true);
       return { x: marginX, y: startY };
     };
@@ -472,16 +448,12 @@ export class SVGRenderer {
       const bounds = measureXB[measureIdx];
       // Slightly reduce the inset to start closer to the left barline
       const startX = bounds ? bounds.xStart + 4 : 16;
-      DebugLogger.log('Drawing half-tie from measure left edge (tieFromVoid)', {
-        from: { x: startX, y: endY },
-        to: { x: endX, y: endY },
-        measureIdx
-      });
+    // Nettoyage : suppression du log debug
       drawCurve(startX, endY, endX, endY, true);
     };
 
     // Primary pass: match each tieStart to the next available tieEnd (temporal order)
-    DebugLogger.log('🔍 Primary pass: matching tieStart -> tieEnd');
+  // DebugLogger supprimé
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
@@ -498,17 +470,11 @@ export class SVGRenderer {
       }
 
       if (cur.tieStart || cur.tieToVoid) {
-        DebugLogger.log(`Found tieStart/tieToVoid at index ${i}`, { 
-          measure: cur.measureIndex, 
-          chord: cur.chordIndex, 
-          beat: cur.beatIndex,
-          tieStart: cur.tieStart,
-          tieToVoid: cur.tieToVoid
-        });
+  // Nettoyage : suppression du log debug
         
         // If already marked as tieToVoid by post-processing, draw half-tie immediately
         if (cur.tieToVoid) {
-          DebugLogger.log(`Drawing tieToVoid for index ${i} (post-processed)`);
+          // Nettoyage : suppression du log debug
           const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
           tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
@@ -526,7 +492,8 @@ export class SVGRenderer {
         }
 
         if (found >= 0) {
-          DebugLogger.log(`✅ Matched tieStart[${i}] -> tieEnd[${found}]`);
+          // Nettoyage : suppression du log debug
+  // Nettoyage : suppression du log debug
           const tgt = notePositions[found];
           const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
           let endY: number;
@@ -542,7 +509,7 @@ export class SVGRenderer {
           continue;
         }
 
-        DebugLogger.log(`No direct tieEnd found for tieStart[${i}], searching for tieFromVoid`);
+  // DebugLogger supprimé
         
         // no direct tieEnd found -> search for a tieFromVoid later (continuation)
         let foundFromVoid = -1;
@@ -560,13 +527,14 @@ export class SVGRenderer {
           const crossesLine = !!(curMP && tgtMP && curMP.lineIndex !== tgtMP.lineIndex);
 
           if (crossesLine) {
-            DebugLogger.log(`✅ Matched cross-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] — split into two halves`);
+            // Nettoyage : suppression du log debug
             const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
             tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
             matched.add(i);
             // Don't mark the target to allow the start-of-line branch to draw the second half
           } else {
-            DebugLogger.log(`✅ Matched same-line tieStart[${i}] -> tieFromVoid[${foundFromVoid}] — drawing full curve`);
+            // Nettoyage : suppression du log debug
+  // Nettoyage : suppression du log debug
             const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
             let endY: number;
             if (tgt.headLeftX !== undefined) {
@@ -582,14 +550,13 @@ export class SVGRenderer {
           continue;
         }
 
-        DebugLogger.log(`No tieFromVoid found, already handled or no match`);
+  // DebugLogger supprimé
       }
 
       // If this note marks the start of a tie from the previous line
       if (cur.tieFromVoid && !matched.has(i)) {
-        DebugLogger.log(`Found tieFromVoid at index ${i}`, { 
-          measure: cur.measureIndex 
-        });
+  // Nettoyage : suppression du log debug
+  // Nettoyage : suppression du log debug
 
         let endX = (cur.headLeftX !== undefined) ? cur.headLeftX : cur.x;
         let endY: number;
@@ -606,10 +573,7 @@ export class SVGRenderer {
       }
     }
     
-    DebugLogger.log('🔗 Tie detection completed', { 
-      totalMatched: matched.size, 
-      totalNotes: notePositions.length 
-    });
+    // Nettoyage : suppression du bloc orphelin
 
     // Tie curves already adjusted during drawing if collision with dots detected.
   }
