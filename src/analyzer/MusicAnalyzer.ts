@@ -88,17 +88,27 @@ export class MusicAnalyzer {
    * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
    * 
    * Rules:
-   * - denominator <= 4: binary (quarter-note based, group by 2)
-   * - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
-   * - else: irregular (space-based grouping, no auto-breaking)
+   * - noauto: user controls grouping via spaces (no auto-breaking)
+   * - binary: group by 2 eighths (1.0 quarter)
+   * - ternary: group by 3 eighths (1.5 quarters)
+   * - auto: detect from time signature
+   *   - denominator <= 4: binary (quarter-note based, group by 2)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
+   *   - else: irregular (space-based grouping, no auto-breaking)
    */
   private resolveGroupingMode(timeSignature: TimeSignature): 'binary' | 'ternary' | 'irregular' {
-    if (timeSignature.groupingMode !== 'auto') {
-      return timeSignature.groupingMode === 'binary' ? 'binary' : 
-             timeSignature.groupingMode === 'ternary' ? 'ternary' : 'irregular';
+    // Handle explicit modes
+    if (timeSignature.groupingMode === 'noauto') {
+      return 'irregular';
+    }
+    if (timeSignature.groupingMode === 'binary') {
+      return 'binary';
+    }
+    if (timeSignature.groupingMode === 'ternary') {
+      return 'ternary';
     }
     
-    // Auto-detection
+    // Auto-detection for 'auto' mode
     const { numerator, denominator } = timeSignature;
     
     if (denominator <= 4) {
@@ -109,6 +119,7 @@ export class MusicAnalyzer {
       return 'ternary';
     }
     
+    // Irregular meters default to no auto-grouping
     return 'irregular';
   }
   
@@ -458,8 +469,6 @@ export class MusicAnalyzer {
     
     // PRIORITY 2: Auto-break at beat boundaries based on grouping mode
     // Only applies WITHIN the same beat (no explicit space)
-    // PRIORITY 2: Auto-break at beat boundaries based on grouping mode
-    // Only applies WITHIN the same beat (no explicit space)
     if (a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) === (b.beatIndex ?? -1)) {
       // Do NOT auto-break within the same tuplet group; tuplets should keep primary beam continuity
       const aTuplet2 = (a as any).tuplet;
@@ -469,20 +478,21 @@ export class MusicAnalyzer {
         return false;
       }
       if (measure.timeSignature) {
-        const groupingMode = this.resolveGroupingMode(measure.timeSignature);
+        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
         
-        if (groupingMode !== 'irregular' && a.quarterStart !== undefined && b.quarterStart !== undefined) {
+        // Skip auto-breaking for irregular meters and noauto mode
+        if (resolvedMode !== 'irregular' && a.quarterStart !== undefined && b.quarterStart !== undefined) {
           // Group size in quarter-note units:
           // - binary: 2 eighths = 1.0 quarters
           // - ternary: 3 eighths = 1.5 quarters
-          const groupSize = groupingMode === 'binary' ? 1.0 : 1.5;
+          const groupSize = resolvedMode === 'binary' ? 1.0 : 1.5;
           
           // Determine which beat group each note belongs to
           const aGroup = Math.floor(a.quarterStart / groupSize);
           const bGroup = Math.floor(b.quarterStart / groupSize);
           
           if (aGroup !== bGroup) {
-            DebugLogger.log(`🎵 Auto-break at ${groupingMode} boundary`, {
+            DebugLogger.log(`🎵 Auto-break at ${resolvedMode} boundary`, {
               aStart: a.quarterStart,
               bStart: b.quarterStart,
               groupSize,

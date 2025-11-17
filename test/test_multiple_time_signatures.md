@@ -7,8 +7,9 @@ Ce fichier teste les fonctionnalités de ligatures (beams), liaisons (ties) et t
 ### Groupement des croches selon la métrique
 
 **Mode de groupement explicite (nouveau en v2.1) :**
-- Syntaxe : `4/4 binary` ou `6/8 ternary`
+- Syntaxe : `4/4 binary`, `6/8 ternary`, ou `4/4 noauto`
 - Permet de forcer le mode de groupement indépendamment de la signature temporelle
+- `noauto` : désactive tout auto-groupement, l'utilisateur contrôle entièrement via les espaces
 - Si omis, le mode est auto-détecté selon les règles ci-dessous
 
 **Temps binaire (2/4, 3/4, 4/4, 5/4, etc.)** :
@@ -26,6 +27,13 @@ Ce fichier teste les fonctionnalités de ligatures (beams), liaisons (ties) et t
 - Pas d'auto-groupement : le **groupement est défini par les espaces**
 - Exemples : `88 88 888` (2+2+3) ou `888 88 88` (3+2+2)
 - L'utilisateur contrôle entièrement la structure rythmique
+
+**Mode noauto (désactivation de l'auto-groupement)** :
+- Syntaxe : `4/4 noauto` ou `6/8 noauto`
+- **Désactive tout auto-groupement**, même en temps binaire ou ternaire
+- L'utilisateur contrôle entièrement le groupement via les espaces
+- Utile pour forcer des ligatures continues : `4/4 noauto | C[88888888]` (8 croches sans coupure)
+- Exemple : `4/4 noauto | C[8888 8888]` → deux groupes de 4 croches (pas de subdivision automatique)
 
 **Syntaxe spéciale [_] - Ligature forcée** :
 - `888[_]88` force la ligature à continuer malgré la liaison

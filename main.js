@@ -151,7 +151,7 @@ var _ChordGridParser = class _ChordGridParser {
     const lines = input.trim().split("\n");
     let firstLine = lines[0];
     const timeSignature = this.parseTimeSignature(firstLine);
-    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary))?\s*/, "");
+    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, "");
     lines[0] = firstLine;
     const allMeasures = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -403,7 +403,7 @@ var _ChordGridParser = class _ChordGridParser {
    * @returns Objet TimeSignature avec numerator, denominator et groupingMode
    */
   parseTimeSignature(line) {
-    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary))?/.exec(line);
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
     if (m) {
       const numerator = parseInt(m[1], 10);
       const denominator = parseInt(m[2], 10);
@@ -1454,13 +1454,23 @@ var MusicAnalyzer = class {
    * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
    * 
    * Rules:
-   * - denominator <= 4: binary (quarter-note based, group by 2)
-   * - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
-   * - else: irregular (space-based grouping, no auto-breaking)
+   * - noauto: user controls grouping via spaces (no auto-breaking)
+   * - binary: group by 2 eighths (1.0 quarter)
+   * - ternary: group by 3 eighths (1.5 quarters)
+   * - auto: detect from time signature
+   *   - denominator <= 4: binary (quarter-note based, group by 2)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
+   *   - else: irregular (space-based grouping, no auto-breaking)
    */
   resolveGroupingMode(timeSignature) {
-    if (timeSignature.groupingMode !== "auto") {
-      return timeSignature.groupingMode === "binary" ? "binary" : timeSignature.groupingMode === "ternary" ? "ternary" : "irregular";
+    if (timeSignature.groupingMode === "noauto") {
+      return "irregular";
+    }
+    if (timeSignature.groupingMode === "binary") {
+      return "binary";
+    }
+    if (timeSignature.groupingMode === "ternary") {
+      return "ternary";
     }
     const { numerator, denominator } = timeSignature;
     if (denominator <= 4) {
@@ -1732,13 +1742,13 @@ var MusicAnalyzer = class {
         return false;
       }
       if (measure.timeSignature) {
-        const groupingMode = this.resolveGroupingMode(measure.timeSignature);
-        if (groupingMode !== "irregular" && a.quarterStart !== void 0 && b.quarterStart !== void 0) {
-          const groupSize = groupingMode === "binary" ? 1 : 1.5;
+        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
+        if (resolvedMode !== "irregular" && a.quarterStart !== void 0 && b.quarterStart !== void 0) {
+          const groupSize = resolvedMode === "binary" ? 1 : 1.5;
           const aGroup = Math.floor(a.quarterStart / groupSize);
           const bGroup = Math.floor(b.quarterStart / groupSize);
           if (aGroup !== bGroup) {
-            DebugLogger2.log(`\u{1F3B5} Auto-break at ${groupingMode} boundary`, {
+            DebugLogger2.log(`\u{1F3B5} Auto-break at ${resolvedMode} boundary`, {
               aStart: a.quarterStart,
               bStart: b.quarterStart,
               groupSize,

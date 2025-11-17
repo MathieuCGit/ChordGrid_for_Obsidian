@@ -169,9 +169,10 @@ export interface Measure {
  * Mode de groupement des notes pour les ligatures.
  * - 'binary': groupement par 2 (temps binaire) - ex: 88 88
  * - 'ternary': groupement par 3 (temps composé) - ex: 888 888
+ * - 'noauto': pas d'auto-groupement, l'utilisateur contrôle via les espaces
  * - 'auto': détection automatique basée sur la signature temporelle
  */
-export type GroupingMode = 'binary' | 'ternary' | 'auto';
+export type GroupingMode = 'binary' | 'ternary' | 'noauto' | 'auto';
 
 /**
  * Signature temporelle (time signature).

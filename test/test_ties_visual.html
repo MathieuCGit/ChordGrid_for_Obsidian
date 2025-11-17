@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Ties Rendering</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .test-case { margin: 40px 0; border: 1px solid #ccc; padding: 20px; }
+    h2 { color: #333; }
+    .expected { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>Tie Rendering Tests</h1>
+  
+  <div class="test-case">
+    <h2>Test 1: 7/8 avec liaisons après espaces</h2>
+    <div class="expected">
+      <strong>Attendu:</strong> 3 groupes séparés avec liaisons entre les groupes
+      <ul>
+        <li>88 (pas de liaison)</li>
+        <li>_88 (liaison depuis le groupe précédent, liaison vers le suivant)</li>
+        <li>_888_ (liaison depuis le groupe précédent, liaison vers void)</li>
+      </ul>
+    </div>
+    <div id="test1"></div>
+  </div>
+  
+  <div class="test-case">
+    <h2>Test 2: 4/4 simple avec liaison après espace</h2>
+    <div class="expected">
+      <strong>Attendu:</strong> 2 groupes avec liaison entre eux
+      <ul>
+        <li>88 (liaison vers le suivant)</li>
+        <li>_88 (liaison depuis le précédent)</li>
+      </ul>
+    </div>
+    <div id="test2"></div>
+  </div>
+
+  <script type="module">
+    // Import the plugin code
+    import { ChordGridParser } from '../src/parser/ChordGridParser.js';
+    import { SVGRenderer } from '../src/renderer/SVGRenderer.js';
+
+    const parser = new ChordGridParser();
+    const renderer = new SVGRenderer();
+
+    // Test 1: 7/8 with ties after spaces
+    const result1 = parser.parse('7/8 | C[88 _88 _888_]');
+    console.log('Test 1 result:', result1);
+    if (result1.measures.length > 0) {
+      const svg1 = renderer.render(result1.measures, result1.timeSignature, 800);
+      document.getElementById('test1').appendChild(svg1);
+    }
+
+    // Test 2: 4/4 simple
+    const result2 = parser.parse('4/4 | C[88 _88]');
+    console.log('Test 2 result:', result2);
+    if (result2.measures.length > 0) {
+      const svg2 = renderer.render(result2.measures, result2.timeSignature, 800);
+      document.getElementById('test2').appendChild(svg2);
+    }
+  </script>
+</body>
+</html>

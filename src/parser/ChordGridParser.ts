@@ -94,9 +94,10 @@ export class ChordGridParser {
     // Parser la signature temporelle
     const timeSignature = this.parseTimeSignature(firstLine);
     
-    // Retirer le motif "N/M" ou "N/M binary/ternary" de la première ligne
+    // Retirer le motif "N/M" ou "N/M binary/ternary/noauto" de la première ligne
     // pour éviter qu'il soit parsé comme mesure
-    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary))?\s*/, '');
+    // Consomme aussi l'éventuel | qui suit immédiatement
+    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, '');
     lines[0] = firstLine;
     
   // Parser toutes les mesures
@@ -458,8 +459,8 @@ export class ChordGridParser {
    * @returns Objet TimeSignature avec numerator, denominator et groupingMode
    */
   private parseTimeSignature(line: string): TimeSignature {
-    // Match: "4/4" optionally followed by "binary" or "ternary"
-    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary))?/.exec(line);
+    // Match: "4/4" optionally followed by "binary", "ternary", or "noauto"
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
     if (m) {
       const numerator = parseInt(m[1], 10);
       const denominator = parseInt(m[2], 10);
