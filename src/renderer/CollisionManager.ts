@@ -58,7 +58,8 @@ export type ElementType =
     | 'tuplet-number'   // Numéros/ratios de tuplets
     | 'rest'            // Silences
     | 'barline'         // Barres de mesure
-    | 'staff-line';     // Ligne de portée
+    | 'staff-line'      // Ligne de portée
+    | 'dot';            // Points des notes pointées
 
 /**
  * Direction d'ajustement pour résoudre une collision.

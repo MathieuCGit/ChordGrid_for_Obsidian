@@ -556,7 +556,14 @@ export class MeasureRenderer {
             dot.setAttribute('cy', (staffLineY - 4).toString());
             dot.setAttribute('r', '1.5');
             dot.setAttribute('fill', '#000');
+            // Tag for later collision adjustment (we don't have measureIndex here; defer to parent context if needed)
+            dot.setAttribute('data-cg-dot', '1');
             svg.appendChild(dot);
+            if (this.collisionManager) {
+                const cx = centerX + 10;
+                const cy = staffLineY - 4;
+                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+            }
         }
 
         return centerX;
@@ -595,7 +602,13 @@ export class MeasureRenderer {
             dot.setAttribute('cy', (staffLineY - 4).toString());
             dot.setAttribute('r', '1.5');
             dot.setAttribute('fill', '#000');
+            dot.setAttribute('data-cg-dot', '1');
             svg.appendChild(dot);
+            if (this.collisionManager) {
+                const cx = x + 10;
+                const cy = staffLineY - 4;
+                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+            }
         }
     }
 

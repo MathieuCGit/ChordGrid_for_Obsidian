@@ -277,7 +277,7 @@ export class SVGRenderer {
   DebugLogger.log('🎵 Note positions collected', { count: notePositions.length });
   
   // draw ties using collected notePositions and the TieManager for cross-line ties
-  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions);
+  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
 
     return svg;
   }
@@ -325,7 +325,8 @@ export class SVGRenderer {
     notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[],
     svgWidth: number,
     tieManager: TieManager,
-    measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[]
+    measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
+    collisionManager?: CollisionManager
   ) {
     DebugLogger.log('🔗 Starting tie detection and drawing');
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
@@ -407,6 +408,8 @@ export class SVGRenderer {
       }))
     });
 
+    const dotsForCollisions = collisionManager ? collisionManager.getElements().filter(e => e.type === 'dot') : [];
+
     const drawCurve = (startX: number, startY: number, endX: number, endY: number, isCross: boolean) => {
       DebugLogger.log('Drawing tie curve', { 
         from: { x: startX, y: startY }, 
@@ -417,7 +420,25 @@ export class SVGRenderer {
       const path = document.createElementNS(SVG_NS, 'path');
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
-      const controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      let controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      // Collision avoidance: raise curve if any dot lies inside the preliminary tie area
+      if (collisionManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const preliminaryTopY = controlY;
+        const preliminaryBottomY = Math.max(startY, endY);
+        const overlappingDot = dotsForCollisions.find(d => {
+          const db = d.bbox;
+          const horiz = db.x < maxX && (db.x + db.width) > minX;
+          const vert = db.y + db.height >= preliminaryTopY && db.y <= preliminaryBottomY; // simple overlap test
+          return horiz && vert;
+        });
+        if (overlappingDot) {
+          const raise = Math.max(6, baseAmp * 0.6);
+          controlY -= raise; // move curve further up
+          DebugLogger.log('▲ Raising tie curve to avoid dotted note dot', { raise, newControlY: controlY });
+        }
+      }
       const midX = (startX + endX) / 2;
       const d = `M ${startX} ${startY} Q ${midX} ${controlY} ${endX} ${endY}`;
       path.setAttribute('d', d);
@@ -425,6 +446,14 @@ export class SVGRenderer {
       path.setAttribute('stroke-width', '1.5');
       path.setAttribute('fill', 'none');
       svg.appendChild(path);
+      // Register tie bounding box approximation
+      if (collisionManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const topY = controlY;
+        const bottomY = Math.max(startY, endY);
+        collisionManager.registerElement('tie', { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+      }
     };
 
     const drawHalfToMeasureRight = (measureIdx: number, startX: number, startY: number) => {
@@ -581,5 +610,7 @@ export class SVGRenderer {
       totalMatched: matched.size, 
       totalNotes: notePositions.length 
     });
+
+    // Tie curves already adjusted during drawing if collision with dots detected.
   }
 }
