@@ -32,6 +32,15 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 
 **Indication de mesure :** `4/4`, `3/4`, `6/8`, `12/8`, etc.
 
+**Modes de groupement (v2.1+) :** Contrôle le comportement automatique de ligature des croches
+- `4/4 binary` - Force le groupement par 2 croches (tous les 1.0 temps de noire)
+- `6/8 ternary` - Force le groupement par 3 croches (tous les 1.5 temps de noire)
+- `4/4 noauto` - Désactive complètement l'auto-groupement ; contrôle utilisateur via espaces
+- Par défaut (sans mot-clé) - Détection automatique selon la métrique :
+  - Binaire : dénominateurs ≤ 4 (2/4, 3/4, 4/4, 5/4, etc.)
+  - Ternaire : dénominateurs ≥ 8 avec numérateurs 3, 6, 9 ou 12 (6/8, 9/8, 12/8)
+  - Irrégulier : autres métriques (5/8, 7/8, 11/8) - pas d'auto-groupement, contrôlé par espaces
+
 **Barres de mesure :**
 - `|` : barre simple
 - `||` : double barre fin de grille

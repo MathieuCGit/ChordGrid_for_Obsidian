@@ -42,6 +42,15 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 
 **Time signature:** `4/4`, `3/4`, `6/8`, `12/8`, etc.
 
+**Grouping modes (v2.1+):** Control automatic beam grouping behavior
+- `4/4 binary` - Force grouping by 2 eighth notes (every 1.0 quarter note)
+- `6/8 ternary` - Force grouping by 3 eighth notes (every 1.5 quarter notes)
+- `4/4 noauto` - Disable auto-grouping entirely; user controls via spaces
+- Default (no keyword) - Auto-detection based on time signature:
+  - Binary: denominators ≤ 4 (2/4, 3/4, 4/4, 5/4, etc.)
+  - Ternary: denominators ≥ 8 with numerators 3, 6, 9, or 12 (6/8, 9/8, 12/8)
+  - Irregular: other meters (5/8, 7/8, 11/8) - no auto-grouping, space-controlled
+
 **Bar lines:**
 - `|` : Single bar
 - `||` : Double bar end of grid
