@@ -32,6 +32,7 @@ import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
 import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
 import { DebugLogger } from '../utils/DebugLogger';
+import { CollisionManager } from './CollisionManager';
 
 /**
  * Classe principale pour le rendu SVG des grilles d'accords.
@@ -58,7 +59,14 @@ export class SVGRenderer {
       measureHeight 
     });
 
-    // Pre-compute dynamic widths per measure based on rhythmic density
+  // Pre-compute dynamic widths per measure based on rhythmic density
+  // (Time signature width factored into initial padding later)
+  const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
+  const timeSigFontSize = 18;
+  const timeSigAvgCharFactor = 0.53; // further reduced for tighter spacing
+  const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
+  const baseLeftPadding = 10;
+  const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4; // minimal margin after metric
     const separatorWidth = 12;
     const innerPaddingPerSegment = 20;
     const headHalfMax = 6; // for diamond
@@ -151,6 +159,11 @@ export class SVGRenderer {
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('xmlns', SVG_NS);
 
+    // Initialize managers
+    const collisionManager = new CollisionManager();
+    const tieManager = new TieManager();
+    const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
+
     // white background
     const bg = document.createElementNS(SVG_NS, 'rect');
     bg.setAttribute('x', '0');
@@ -160,13 +173,17 @@ export class SVGRenderer {
     bg.setAttribute('fill', 'white');
     svg.appendChild(bg);
 
-    // time signature text
-    const timeSig = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-    const timeText = this.createText(timeSig, 10, 40, '18px', 'bold');
+    // time signature text (already measured before layout)
+    const timeSigBaselineY = 40;
+    const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, 'bold');
     svg.appendChild(timeText);
-
-  const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
-  const tieManager = new TieManager();
+    (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
+    collisionManager.registerElement('time-signature', {
+      x: baseLeftPadding,
+      y: timeSigBaselineY - timeSigFontSize,
+      width: timeSigWidthEstimate,
+      height: timeSigFontSize + 4
+    }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
 
     DebugLogger.log('🎼 Rendering measures');
     // Prepare analyzed measures for beam rendering
@@ -229,7 +246,8 @@ export class SVGRenderer {
       analyzedMeasures = [];
     }
 
-    const lineAccumulated: number[] = new Array(lines).fill(40);
+  // Use dynamic padding instead of fixed 40 to prevent overlap with multi-digit time signatures
+  const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
     measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex, width: mWidth}) => {
       const x = lineAccumulated[lineIndex];
       const y = lineIndex * (measureHeight + 20) + 20;
@@ -246,7 +264,7 @@ export class SVGRenderer {
           }
         });
       }
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet);
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager);
       mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
       // Draw analyzer beams overlay
@@ -311,7 +329,8 @@ export class SVGRenderer {
   ) {
     DebugLogger.log('🔗 Starting tie detection and drawing');
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
-    const lineStartPadding = 40; // must match createSVG lineAccumulated init
+  // Use same dynamic padding as measure start to align tie rendering
+  const lineStartPadding = (svg as any).__dynamicLineStartPadding ?? 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map(m => m.lineIndex));
     const lineOffsets: number[] = new Array(maxLineIndex + 1).fill(lineStartPadding);
     const measureXB: Record<number, { xStart: number; xEnd: number; y: number }> = {};

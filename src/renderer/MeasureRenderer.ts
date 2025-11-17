@@ -24,6 +24,7 @@ import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/t
 import { SVG_NS } from './constants';
 import { RestRenderer } from './RestRenderer';
 import { DebugLogger } from '../utils/DebugLogger';
+import { CollisionManager } from './CollisionManager';
 
 /**
  * Position d'une note dans le SVG avec métadonnées pour les liaisons.
@@ -61,17 +62,22 @@ export class MeasureRenderer {
      * @param x - Position X de départ de la mesure dans le SVG
      * @param y - Position Y de départ de la mesure dans le SVG
      * @param width - Largeur allouée à la mesure
+     * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
+     * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
      */
+    private readonly restRenderer: RestRenderer;
+
     constructor(
         private readonly measure: Measure,
         private readonly x: number,
         private readonly y: number,
         private readonly width: number,
         // Optional: set of `${segmentIndex}:${noteIndexInSegment}` that are in a level-1 beam group (length >=2)
-        private readonly beamedAtLevel1?: Set<string>
-    ) {}
-
-    private readonly restRenderer = new RestRenderer();
+        private readonly beamedAtLevel1?: Set<string>,
+        private readonly collisionManager?: CollisionManager
+    ) {
+        this.restRenderer = new RestRenderer(this.collisionManager);
+    }
 
     /**
      * Dessine la mesure complète dans le SVG.
@@ -179,7 +185,46 @@ export class MeasureRenderer {
                 const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
                 if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
-                    const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, '22px', 'bold');
+                    const chordX = firstNoteX;
+                    const chordY = this.y + 40;
+                    const fontSize = 22;
+                    
+                    // Estimate chord text width (rough approximation: 0.6 * fontSize per character)
+                    const chordWidth = segment.chord.length * fontSize * 0.6;
+                    
+                    // Check for collisions and adjust position if needed
+                    let finalY = chordY;
+                    if (this.collisionManager) {
+                        const chordBBox = {
+                            x: chordX - chordWidth / 2,
+                            y: chordY - fontSize,
+                            width: chordWidth,
+                            height: fontSize + 4
+                        };
+                        
+                        // Check if there's a collision
+                        if (this.collisionManager.hasCollision(chordBBox)) {
+                            // Try to find a free vertical position excluding other chord texts
+                            const adjustedPos = this.collisionManager.findFreePosition(
+                                chordBBox,
+                                'vertical',
+                                ['chord']
+                            );
+                            if (adjustedPos) {
+                                finalY = adjustedPos.y + fontSize; // Convert back to baseline
+                            }
+                        }
+                        
+                        // Register the chord element
+                        this.collisionManager.registerElement('chord', {
+                            x: chordX - chordWidth / 2,
+                            y: finalY - fontSize,
+                            width: chordWidth,
+                            height: fontSize + 4
+                        }, 5, { chord: segment.chord, measureIndex, segmentIndex });
+                    }
+                    
+                    const chordText = this.createText(segment.chord, chordX, finalY, '22px', 'bold');
                     chordText.setAttribute('text-anchor', 'middle');
                     chordText.setAttribute('font-family', 'Arial, sans-serif');
                     svg.appendChild(chordText);
@@ -374,6 +419,26 @@ export class MeasureRenderer {
                 stemTopY,
                 stemBottomY
             });
+
+            // Register note head & stem for collision management
+            if (this.collisionManager) {
+                const noteHeadBBox = {
+                    x: headLeftX,
+                    y: staffLineY - 12,
+                    width: headRightX - headLeftX,
+                    height: 24
+                };
+                this.collisionManager.registerElement('note', noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
+                if (hasStem && stemTopY !== undefined && stemBottomY !== undefined) {
+                    const stemBBox = {
+                        x: noteX - 3, // approximate stem x based on drawStem logic
+                        y: stemTopY,
+                        width: 3,
+                        height: stemBottomY - stemTopY
+                    };
+                    this.collisionManager.registerElement('stem', stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+                }
+            }
         });
         
         // Draw tuplet brackets if any
@@ -413,12 +478,24 @@ export class MeasureRenderer {
             rightBar.setAttribute('stroke', '#000');
             rightBar.setAttribute('stroke-width', '1');
             svg.appendChild(rightBar);
+
+            // Register tuplet bracket bounding box (approx width & height)
+            if (this.collisionManager) {
+                const bracketBBox = {
+                    x: tupletStartX,
+                    y: bracketY - 6,
+                    width: tupletEndX - tupletStartX,
+                    height: 12
+                };
+                this.collisionManager.registerElement('tuplet-bracket', bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
+            }
             
             // Tuplet number or ratio centered above the bracket
             const centerX = (tupletStartX + tupletEndX) / 2;
+            let tupletTextY = bracketY - 3;
             const text = document.createElementNS(SVG_NS, 'text');
             text.setAttribute('x', String(centerX));
-            text.setAttribute('y', String(bracketY - 3));
+            text.setAttribute('y', String(tupletTextY));
             text.setAttribute('font-size', '10');
             text.setAttribute('font-weight', 'bold');
             text.setAttribute('text-anchor', 'middle');
@@ -427,6 +504,25 @@ export class MeasureRenderer {
                 text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
             } else {
                 text.textContent = String(tupletGroup.count);
+            }
+            // Collision adjust for tuplet number against chords or other elements
+            if (this.collisionManager) {
+                const textWidth = (text.textContent || '').length * 6; // rough monospace approximation
+                let numberBBox = {
+                    x: centerX - textWidth / 2,
+                    y: tupletTextY - 10,
+                    width: textWidth,
+                    height: 12
+                };
+                if (this.collisionManager.hasCollision(numberBBox, ['tuplet-bracket','tuplet-number'])) {
+                    const adjusted = this.collisionManager.findFreePosition(numberBBox, 'vertical', ['tuplet-number']);
+                    if (adjusted) {
+                        tupletTextY = adjusted.y + 10; // baseline correction
+                        text.setAttribute('y', String(tupletTextY));
+                        numberBBox = { ...numberBBox, y: adjusted.y };
+                    }
+                }
+                this.collisionManager.registerElement('tuplet-number', numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
             }
             svg.appendChild(text);
         });
