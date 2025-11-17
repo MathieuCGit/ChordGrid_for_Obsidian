@@ -7,55 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2025-11-17
+
 ### Added
+- **CollisionManager system** for intelligent element placement
+  - Automatic collision detection between chords, notes, stems, tuplets, rests, time signatures
+  - Smart vertical positioning to avoid overlaps
+  - Priority-based collision resolution (fixed elements vs. mobile elements)
+- **Dynamic time signature spacing**
+  - Automatic calculation of time signature width based on content
+  - Adaptive left padding to prevent overlap with first measure
+  - Tighter, more elegant spacing (factor 0.53, margin 4px)
+- **Dotted note collision avoidance**
+  - Tie curves automatically raised to avoid dotted note dots
+  - Dots remain in standard position (right of note head)
+  - Collision detection between tie paths and dot bounding boxes
 - **Comprehensive test suite for multiple time signatures** (`test/multiple_time_signatures.spec.ts`)
   - 60 automated tests validating beams, ties, and tuplets across 12+ time signatures
   - Coverage: 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 7/8, 6/8, 9/8, 11/8, 12/8, 15/16
   - Tests for simple time, compound time, and asymmetric meters
   - Edge cases: rests with beams/ties, cross-measure ties, tuplets with ties
+- **Collision management tests** (`test/collision_manager.spec.ts`, `test/tie_dot_collision.spec.ts`)
+  - Unit tests for collision detection and resolution algorithms
+  - Validation of tie curve adjustment logic
 - **Visual test file** (`test/test_multiple_time_signatures.md`)
   - 100+ chord grid examples for manual validation in Obsidian
   - Organized by time signature and feature (beams, ties, tuplets)
-  - Ready-to-use demonstration file
-  - **Corrected to follow standard notation conventions** (see Fixed section)
+  - Corrected to follow standard notation conventions
 - **Notation conventions guide** (`GROUPING_CONVENTIONS.md`)
   - Complete reference for rhythmic grouping in binary vs ternary time
   - Examples for all time signatures
   - Best practices for beam grouping
 
-### Documentation
-- **Test analysis documentation** (`test/ANALYSIS_TEST_ERRORS.md`)
-  - Detailed analysis of initial test failures
-  - Explanations of tuplet duration calculations
-  - Guide for understanding time signature validation
-- **Test report** (`test/TEST_REPORT_MULTIPLE_TIME_SIGNATURES.md`)
-  - Comprehensive report of validation results
-  - Coverage metrics and quality analysis
-- **Validation summary** (`test/VALIDATION_SUMMARY_v2.1.md`)
-  - Executive summary for v2.1.0 release
-  - Complete feature validation checklist
-- **Notation corrections** (`test/CORRECTIONS_NOTATION.md`)
-  - Detailed list of corrections applied to respect standard notation
-  - Binary vs ternary grouping conventions explained
+### Changed
+- **Renderer architecture enhanced with collision management**
+  - `SVGRenderer` instantiates and passes `CollisionManager` to all sub-renderers
+  - `MeasureRenderer` registers all visual elements (chords, notes, stems, tuplets)
+  - `RestRenderer` integrated with collision system
+  - Tie rendering now collision-aware
+- **Improved spacing and layout**
+  - Time signature no longer overlaps first measure content
+  - Tuplet numbers automatically avoid chord symbols
+  - More compact overall layout without visual conflicts
 
 ### Fixed
+- **Time signature collision** with first measure elements
+- **Tuplet number overlap** with chord symbols (automatic vertical adjustment)
+- **Tie curves touching dotted note dots** (curves now raised automatically)
 - **Notation conventions in test file** (`test/test_multiple_time_signatures.md`)
   - Binary time (2/4, 3/4, 4/4, 5/4, 7/4): eighth notes now grouped by 2 (e.g., `88 88 88`)
   - Compound time (6/8, 9/8, 12/8): eighth notes now grouped by 3 (e.g., `888 888`)
   - Corrected measure durations to match time signatures
   - Fixed cross-measure ties to maintain correct measure lengths
-  - Applied standard notation practices throughout all examples
 
-### Validated
-- ✅ Beams work correctly in all tested time signatures (12+)
-- ✅ Cross-segment beaming validated across all metrics
-- ✅ Ties function properly across measure boundaries in all time signatures
-- ✅ Tuplets (triplets, quintuplets, duplets) validate correctly with proper ratios
-- ✅ Tuplets with ties work in all tested time signatures
-- ✅ Rest handling correct in all contexts
-- ✅ Dotted notes calculate durations accurately
-- ✅ All 136 tests pass (100% success rate)
-- ✅ Notation follows standard conventions (binary vs ternary grouping)
+### Documentation
+- **Architecture documentation** updated with collision management system
+- **Test analysis documentation** (`test/ANALYSIS_TEST_ERRORS.md`)
+- **Test report** (`test/TEST_REPORT_MULTIPLE_TIME_SIGNATURES.md`)
+- **Validation summary** (`test/VALIDATION_SUMMARY_v2.1.md`)
+- **Notation corrections** (`test/CORRECTIONS_NOTATION.md`)
+
+### Technical
+- New `CollisionManager` class in `src/renderer/` with full API for element registration and conflict resolution
+- Extended `ElementType` union to include all renderable elements including `'dot'` for dotted notes
+- Collision detection uses axis-aligned bounding boxes (AABB) with configurable margins
+- `findFreePosition()` algorithm with spiral search pattern
+- All 174 tests passing (100% success rate)
 
 ## [2.0.0] - 2025-11-14
 

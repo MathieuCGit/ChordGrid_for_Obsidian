@@ -4,9 +4,11 @@
 
 > Affiche des grilles d'accords avec une notation rythmique précise, rendue en SVG net et scalable dans vos notes Obsidian.
 
-**Version :** 2.0.1 · **Licence :** GPL-3.0 · **Statut :** Stable
+**Version :** 2.1.0 · **Licence :** GPL-3.0 · **Statut :** Stable
 
-**Branche de développement :** [`dev/v2.1`](https://github.com/MathieuCGit/chord-grid/tree/dev/v2.1) - Développement actif pour v2.1.0
+**Dernière version :** [v2.1.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.1.0) - **NOUVEAU : Système de gestion des collisions pour une mise en page professionnelle**
+
+Ce plugin analyse une syntaxe textuelle légère et la transforme en mesures musicales structurées (accords, groupes rythmiques, liaisons, silences), puis les rend avec une logique de ligature automatique via une architecture propre en 3 étapes : **Parser → Analyseur → Rendu**.
 
 ## Installation
 
@@ -225,41 +227,60 @@ L'espace avant `G` casse la ligature.
 
 - ✅ Rendu SVG vectoriel
 - ✅ Grilles d'accords avec notation rythmique
-- ✅ Groupement automatique des croches par battement (chemin legacy)
+- ✅ **Système CollisionManager** (v2.1.0) – placement intelligent des éléments évitant les chevauchements
+- ✅ **Espacement dynamique des signatures rythmiques** (v2.1.0) – calcul automatique de largeur et padding adaptatif
+- ✅ **Évitement de collision pour notes pointées** (v2.1.0) – courbes de liaison relevées automatiquement
+- ✅ Groupement automatique des croches par battement (basé sur analyseur)
+- ✅ **Ligatures inter-segments via analyseur** (v2.0.0) – ligatures continues au-delà des frontières d'accords
+- ✅ **Tuplets & signatures rythmiques complexes** (v2.1.0) – triolets, quintolets, ratios personnalisables
 - ✅ Barres de reprise & types de barres
-- ✅ Signatures rythmiques (simples & composées)
-- ✅ 4 mesures par ligne (auto)
-- ✅ Largeur de mesure dynamique
+- ✅ Support de signatures rythmiques (12+ signatures : 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 6/8, 7/8, 9/8, 11/8, 12/8, 15/16)
+- ✅ 4 mesures par ligne (automatique, avec sauts de ligne manuels)
+- ✅ Largeur de mesure dynamique basée sur la densité rythmique
 - ✅ Notes pointées, liaisons, silences
-- ✅ **Logger de debug inline** (v1.1.0)
-- ✅ **Rendu amélioré des ligatures complexes**
-- 🚧 **Ligatures inter-segments via analyseur** (v2.0.0)
-- 🚧 **Overlay de ligature basé sur analyse** (feature flag)
-- 🚧 Prévu : tuplets, appoggiatures, articulations, dynamiques, export
+- ✅ **Logger de debug inline** (v1.1.0) – panneau de debug pliable
+- ✅ **Rendu amélioré des ligatures** pour motifs rythmiques complexes avec support multi-niveaux
+- 🚧 Prévu : appoggiatures, articulations, dynamiques, formats d'export
 
 ### Limitations actuelles
 
 - Pas encore de dynamiques, articulations, appoggiatures
 - Pas d'export (PDF/PNG/MIDI) pour le moment
-- Métriques complexes en cours d'implémentation
 
 ### Feuille de route (haut niveau)
 | Jalon | Contenu |
 |-------|---------|
 | v1.x Maintenance | Stabilité, corrections, polissage de la doc |
 | v2.0 Analyseur | ✅ Séparation Parser → Analyzer → Renderer, beaming unifié |
-| v2.1 Tuplets & métriques complexes | 🚧 Implémentation complète des tuplets (ratios personnalisables), support des signatures temporelles complexes |
+| v2.1 Tuplets & gestion des collisions | ✅ Implémentation complète des tuplets (triolets, quintolets, ratios personnalisables), signatures temporelles complexes (12+), système intelligent d'évitement de collisions |
 | v2.2 Appoggiatures & ornements | Extension du modèle pour les notes d'agrément |
 | v2.3 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
 | v2.4 Export | Export PNG / SVG propre + POC MIDI |
 | v3.0 Édition | Édition interactive dans la note |
 
-## Architecture (refonte v2.0 – ✅ Terminée)
+## Architecture (v2.1 – ✅ Terminée avec gestion des collisions)
 
-Pipeline en 3 couches (implémentation complète) :
-1. **Parseur** – Extraction purement syntaxique (mesures, segments, groupes rythmiques, espaces, ties)
-2. **Analyseur** – Détermination des groupes de ligatures multi-niveaux (8/16/32/64), franchissant les segments d'accords
-3. **Renderer** – Dessin des éléments graphiques avec ligatures pilotées par l'analyseur
+Pipeline de rendu en 3 couches avec détection intelligente des collisions :
+
+1. **Parseur** (`ChordGridParser`) – Analyse syntaxique de la grille en mesures et segments structurés (tokens, groupes rythmiques, liaisons, silences, reconnaissance des espaces, tuplets).
+2. **Analyseur** (`MusicAnalyzer`) – Calcul de la sémantique musicale, en particulier les groupes de ligatures pouvant traverser les frontières de segments d'accords. Produit des `BeamGroup[]` avec des `NoteReference` pointant vers les notes analysées.
+3. **Renderer** (`SVGRenderer` + sous-renderers) – Dessine notes/hampes/liaisons et utilise les ligatures pilotées par l'analyseur pour un beaming inter-segments correct. **CollisionManager** assure un placement intelligent des éléments.
+
+#### Composants clés (v2.1)
+
+**CollisionManager** : Système central gérant les conflits spatiaux entre éléments rendus
+- Suivi des boîtes englobantes pour tous les éléments visuels (accords, notes, hampes, tuplets, silences, signatures rythmiques, points, liaisons)
+- Résolution basée sur les priorités (éléments fixes vs éléments mobiles)
+- Détection de collision via boîtes englobantes alignées sur les axes (AABB) avec marges configurables
+- Algorithme `findFreePosition()` avec recherche en spirale
+- Positionnement intelligent pour numéros de tuplets, symboles d'accords et courbes de liaison
+- Ajustement automatique : courbes de liaison relevées en cas de chevauchement avec les points de notes pointées
+
+**Espacement dynamique** : Système de mise en page adaptative
+- Largeur de signature rythmique calculée selon le contenu (longueur numérateur/dénominateur)
+- Padding gauche réactif prévenant le chevauchement avec la première mesure
+- Largeurs de mesure calculées à partir de la densité rythmique (plus de notes = mesure plus large)
+- Espacement plus serré et professionnel (facteur 0.53, marge 4px)
 
 #### Schéma Mermaid
 
@@ -267,13 +288,23 @@ Pipeline en 3 couches (implémentation complète) :
 flowchart TD
     A[Notation chordgrid] --> B[Parseur\nChordGridParser]
     B --> C[Analyseur\nMusicAnalyzer]
-    C --> D[Overlay des ligatures\nAnalyzerBeamOverlay]
-    D --> E[Renderer\nSVGRenderer + Measure/Note/Rest]
-    E --> F[Sortie SVG]
+    C --> D[Gestionnaire de collisions\nEnregistrement des éléments]
+    D --> E[Overlay des ligatures\nAnalyzerBeamOverlay]
+    E --> F[Renderer\nSVGRenderer + Measure/Note/Rest]
+    F --> G[Résolution des collisions\nAjustements]
+    G --> H[Sortie SVG]
 ```
 
 **Pourquoi un analyseur ?**
 Pour autoriser des ligatures cohérentes à travers des frontières d'accord sans espace et gérer la direction des beamlets avec des notes pointées.
+
+**Pourquoi le CollisionManager ?**
+La notation musicale professionnelle nécessite un espacement précis pour éviter les conflits visuels. Le CollisionManager :
+- Empêche les signatures rythmiques de chevaucher la première mesure
+- Positionne les numéros de tuplets au-dessus des symboles d'accords automatiquement
+- Ajuste les courbes de liaison pour éviter les points de notes pointées
+- Maintient des mises en page propres et lisibles quelle que soit la densité rythmique
+- Permet les améliorations futures (dynamiques, articulations) sans espacement manuel
 
 ### Exemple de ligature inter-segments
 ```chordgrid
@@ -288,11 +319,12 @@ Avec espace :
 Ligature cassée.
 
 ### Étapes prochaines
-- Remplacer complètement l'ancien beaming par la sortie de l'analyseur
-- Support des tuplets & grace notes
-- Tests de rendu (snapshots) pour SVG
-- Documentation avancée (cas limites, ties complexes)
-- Points d'accroche pour l'export
+- Documentation complète de l'API CollisionManager
+- Profilage des performances pour grandes grilles (100+ mesures)
+- Extension du système de collision pour dynamiques et articulations
+- Appoggiatures avec extension du modèle de durée
+- Tests de snapshot pour cohérence du rendu SVG
+- Points d'accroche pour export (PNG/PDF/MIDI)
 
 ## Développement
 

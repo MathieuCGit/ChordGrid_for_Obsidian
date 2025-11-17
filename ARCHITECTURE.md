@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models** and **Utilities**. The v2.0.0 refactoring is **complete**, with the analyzer-based beam rendering now fully integrated.
+This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models**, **Utilities**, and an intelligent **CollisionManager** system. The v2.1.0 release is **complete**, with full tuplet support, complex time signatures (12+), and professional collision avoidance integrated.
 
 ## Project Structure
 
@@ -11,7 +11,7 @@ chord-grid/
 ├── main.ts                          # Obsidian plugin entry point
 ├── src/
 │   ├── parser/                      # Parsing (syntax only)
-│   │   ├── ChordGridParser.ts       # Main parser (includes tie parsing)
+│   │   ├── ChordGridParser.ts       # Main parser (includes tie & tuplet parsing)
 │   │   └── type.ts                  # Type definitions
 │   ├── analyzer/                    # Musical analysis (beams across segments, levels)
 │   │   ├── MusicAnalyzer.ts         # Analyzer implementation
@@ -27,14 +27,17 @@ chord-grid/
 │   │   ├── NoteRenderer.ts          # Note rendering
 │   │   ├── RestRenderer.ts          # Rest rendering
 │   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer
+│   │   ├── CollisionManager.ts      # Collision detection & resolution
 │   │   └── constants.ts             # SVG/layout constants
 │   └── utils/
 │       ├── TieManager.ts            # Cross-measure tie management
 │       └── DebugLogger.ts           # Debug logging system
 └── test/
-  ├── *.spec.ts / *.test.ts        # Unit tests (parser / render)
-  ├── run_analyzer_tests.ts        # Analyzer tests
-  └── run_integration_analyzer.ts  # Parser→Analyzer integration
+  ├── *.spec.ts / *.test.ts          # Unit tests (parser / render / collision)
+  ├── collision_manager.spec.ts      # CollisionManager unit tests
+  ├── tie_dot_collision.spec.ts      # Tie-dot collision tests
+  ├── run_analyzer_tests.ts          # Analyzer tests
+  └── run_integration_analyzer.ts    # Parser→Analyzer integration
 
 ```
 
@@ -43,11 +46,15 @@ chord-grid/
 ```
 Text input (chordgrid notation)
      ↓
-   Parser (ChordGridParser) — syntax only
+   Parser (ChordGridParser) — syntax only (includes tuplets)
      ↓
-   Analyzer (MusicAnalyzer) — musical semantics
+   Analyzer (MusicAnalyzer) — musical semantics (beam groups)
      ↓
-   Renderer (SVGRenderer + Measure/Note/Rest)
+   CollisionManager — element registration (chords, notes, stems, tuplets, ties, dots)
+     ↓
+   Renderer (SVGRenderer + Measure/Note/Rest) — with collision-aware positioning
+     ↓
+   CollisionManager — resolution & adjustments (tie curves, tuplet numbers)
      ↓
    SVG Element (output)
 ```
@@ -57,25 +64,30 @@ Text input (chordgrid notation)
 ```mermaid
 flowchart LR
     A[Raw chordgrid text\n(code block)] --> B[Parser\nChordGridParser]
-    B -->|Measures + Segments + Rhythm Tokens| C[Analyzer\nMusicAnalyzer]
-    C -->|BeamGroups + NoteRefs| D[Renderer Orchestrator\nSVGRenderer]
-    D --> E[MeasureRenderer]
-    D --> F[NoteRenderer]
-    D --> G[RestRenderer]
-    D --> H[TieManager]
-    C --> I[AnalyzerBeamOverlay]
-    I --> D
-    H --> D
-    D --> Z[SVG Output]
+    B -->|Measures + Segments + Rhythm + Tuplets| C[Analyzer\nMusicAnalyzer]
+    C -->|BeamGroups + NoteRefs| D[CollisionManager\nElement Registration]
+    D --> E[Renderer Orchestrator\nSVGRenderer]
+    E --> F[MeasureRenderer]
+    E --> G[NoteRenderer]
+    E --> H[RestRenderer]
+    E --> I[TieManager]
+    C --> J[AnalyzerBeamOverlay]
+    J --> E
+    I --> E
+    D --> K[Collision Resolution\nAdjustments]
+    K --> E
+    E --> Z[SVG Output]
 
     classDef parser fill:#2b6cb0,stroke:#1a4568,stroke-width:1,color:#fff;
     classDef analyzer fill:#805ad5,stroke:#553c9a,color:#fff;
+    classDef collision fill:#dd6b20,stroke:#9c4221,color:#fff;
     classDef renderer fill:#38a169,stroke:#276749,color:#fff;
     classDef util fill:#718096,stroke:#4a5568,color:#fff;
     class B parser;
-    class C,I analyzer;
-    class D,E,F,G,Z renderer;
-    class H util;
+    class C,J analyzer;
+    class D,K collision;
+    class E,F,G,H,Z renderer;
+    class I util;
 ```
 
 ## Parser Module
@@ -173,6 +185,8 @@ ChordGrid
 ```
 SVGRenderer (orchestration)
     ↓
+CollisionManager (element tracking & resolution)
+    ↓
 MeasureRenderer (par mesure)
     ↓
 NoteRenderer / RestRenderer (par note)
@@ -181,32 +195,90 @@ NoteRenderer / RestRenderer (par note)
 ### SVGRenderer
 
 **Responsabilités :**
-- Calculer la taille globale du SVG
-- Positionner les mesures sur la grille (4 par ligne)
-- Gérer les sauts de ligne
-- Initialiser le TieManager
-- Dessiner les liaisons entre mesures
+- Calculer la taille globale du SVG avec espacement dynamique
+- Positionner les mesures sur la grille (4 par ligne, adaptatif)
+- Gérer les sauts de ligne (automatiques et manuels)
+- Initialiser CollisionManager et TieManager
+- Calculer largeur dynamique de la signature rythmique
+- Dessiner les liaisons entre mesures avec évitement de collision
+- Appliquer ajustements de collision (courbes de liaison, numéros de tuplets)
 
 **Paramètres de layout :**
 - `measuresPerLine` : 4 (défaut)
-- `measureWidth` : 200px
+- `baseMeasureWidth` : 240px (minimum, ajusté dynamiquement selon densité rythmique)
 - `measureHeight` : 120px
 - Espacement entre lignes : 20px
+- Padding gauche dynamique : calculé selon largeur signature rythmique
+- Facteur espacement signature : 0.53 (v2.1.0, optimisé)
+- Marge signature : 4px (v2.1.0, optimisé)
+
+### CollisionManager
+
+**Responsabilités :**
+- Enregistrer tous les éléments visuels avec leurs bounding boxes
+- Détecter les collisions potentielles entre éléments
+- Résoudre conflits spatiaux via repositionnement intelligent
+- Suggérer positions alternatives pour éléments mobiles
+- Gérer priorités (éléments fixes vs mobiles)
+
+**Types d'éléments gérés :**
+- `chord` : symboles d'accords
+- `time-signature` : indications de mesure
+- `note` : têtes de notes
+- `stem` : hampes
+- `beam` : barres de ligature
+- `tie` : liaisons
+- `tuplet-bracket` : crochets de tuplets
+- `tuplet-number` : numéros/ratios de tuplets
+- `rest` : silences
+- `barline` : barres de mesure
+- `staff-line` : lignes de portée
+- `dot` : points de notes pointées (v2.1.0)
+
+**Algorithmes de résolution :**
+- `hasCollision()` : détection AABB (Axis-Aligned Bounding Box) avec marges configurables
+- `findFreePosition()` : recherche en spirale pour position libre
+  - Directions : vertical, horizontal, both
+  - Tentatives max : 20 par défaut
+  - Step : `minSpacing + 2`
+- `suggestVerticalOffset()` : ajustement vertical spécifique par paire de types
+- Système de priorités : 0 = fixe (ne bouge pas), 10 = mobile (peut être déplacé)
+
+**Cas d'usage spécifiques (v2.1.0) :**
+- Signature rythmique vs première mesure : padding gauche ajusté automatiquement
+- Numéros de tuplets vs accords : décalage vertical via `findFreePosition`
+- Points de notes pointées vs courbes de liaison : courbe relevée (controlY ajusté)
 
 ### MeasureRenderer
 
 **Responsabilités :**
 - Dessiner barres de mesure (simple, double, reprises)
 - Dessiner ligne de portée
-- Positionner les accords
+- Positionner les accords avec évitement de collision
 - Répartir l'espace entre beats
 - Gérer séparations visuelles entre segments
+- Enregistrer tous éléments visuels dans CollisionManager (v2.1.0)
+
+**Éléments enregistrés dans CollisionManager :**
+- Symboles d'accords avec bbox calculé selon longueur texte
+- Têtes de notes (noteheads)
+- Hampes (stems) avec direction (up/down)
+- Barres de ligature (beams) multi-notes
+- Crochets et numéros de tuplets
+- Silences de toutes durées
+- Points de notes pointées (4x4px, priorité 9, v2.1.0)
+
+**Positionnement des accords :**
+- Position initiale : (measureX + noteX, staffY - 30)
+- Si collision détectée : `CollisionManager.findFreePosition('vertical')` appliqué
+- Position finale ajustée pour éviter overlap
 
 **Algorithme de layout :**
 1. Calculer espace disponible
 2. Allouer espace proportionnellement aux beats
 3. Insérer séparateurs pour changements d'accords
 4. Rendre chaque segment avec NoteRenderer
+5. Enregistrer éléments dans CollisionManager au fur et à mesure
 
 ### NoteRenderer
 
@@ -228,6 +300,7 @@ NoteRenderer / RestRenderer (par note)
 **Responsabilités :**
 - Dessiner tous types de silences
 - Gérer silences pointés
+- Enregistrer bounding boxes dans CollisionManager (v2.1.0)
 
 **Types de silences :**
 - Pause (1) : rectangle suspendu
@@ -237,18 +310,30 @@ NoteRenderer / RestRenderer (par note)
 - Quart de soupir (16) : double crochet
 - Etc.
 
+**Enregistrement collision (v2.1.0) :**
+- Chaque silence enregistré avec bbox approprié
+- Permet évitement par autres éléments (accords, tuplets, liaisons)
+
 ### TieManager
 
 **Responsabilités :**
 - Gérer liaisons traversant limites de rendu
 - Stocker liaisons "en attente" (pending)
 - Résoudre liaisons cross-ligne
+- Coordonner avec CollisionManager pour évitement (v2.1.0)
 
 **Workflow :**
 1. Note avec `tieToVoid` → `addPendingTie()`
 2. Rendu ligne suivante
 3. Note avec `tieFromVoid` → `resolvePendingFor()`
 4. Dessiner courbe de liaison entre les positions
+5. Ajuster controlY si collision détectée avec points de notes pointées (v2.1.0)
+
+**Détection et évitement de collision (v2.1.0) :**
+- Avant dessin, vérifier collision entre bbox de liaison et points de notes pointées
+- Si collision détectée : relever courbe (augmenter controlY)
+- Algorithme : `controlY_new = baseY - max(6, baseAmplitude * 0.6)`
+- Enregistrer bbox de liaison dans CollisionManager après ajustement
 
 ## Validation et erreurs
 

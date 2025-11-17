@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Ce plugin Obsidian permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de trois modules principaux : **Parsing**, **Modèles**, et **Rendu**.
+Ce plugin Obsidian (version 2.1.0) permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de quatre modules principaux : **Parsing**, **Analyse**, **Modèles**, et **Rendu**. La version 2.1.0 introduit un système complet de gestion des collisions pour un rendu optimal et automatique des éléments visuels.
 
 ## Structure du projet
 
@@ -13,6 +13,9 @@ chord-grid/
 │   ├── parser/                # Module de parsing
 │   │   ├── ChordGridParser.ts # Parser principal
 │   │   └── type.ts            # Définitions de types
+│   ├── analyzer/              # Module d'analyse musicale
+│   │   ├── MusicAnalyzer.ts   # Analyseur principal
+│   │   └── analyzer-types.ts  # Types d'analyse
 │   ├── models/                # Modèles de données
 │   │   ├── Beat.ts            # Modèle Beat
 │   │   ├── Measure.ts         # Modèle Measure
@@ -23,12 +26,22 @@ chord-grid/
 │   │   ├── MeasureRenderer.ts # Rendu de mesures
 │   │   ├── NoteRenderer.ts    # Rendu de notes
 │   │   ├── RestRenderer.ts    # Rendu de silences
-│   │   ├── BeamAndTieAnalyzer.ts # Analyse ligatures
-│   │   └── constants.ts       # Constantes SVG
+│   │   ├── AnalyzerBeamOverlay.ts # Overlay ligatures analysées
+│   │   ├── CollisionManager.ts # Gestion des collisions (v2.1.0)
+│   │   ├── constants.ts       # Constantes SVG
+│   │   └── TieManager.ts      # Gestion liaisons cross-mesure
 │   └── utils/                 # Utilitaires
-│       └── TieManager.ts      # Gestion liaisons cross-mesure
+│       ├── TieManager.ts      # (déprécié, déplacé dans renderer)
+│       └── DebugLogger.ts     # Logs de débogage
 └── test/                      # Tests unitaires
-
+    ├── parse.spec.ts          # Tests parsing
+    ├── beam_parse.spec.ts     # Tests ligatures
+    ├── beam_render.test.ts    # Tests rendu
+    ├── analyzer.spec.ts       # Tests analyseur
+    ├── tuplet_*.spec.ts       # Tests tuplets
+    ├── collision_manager.spec.ts # Tests collision (v2.1.0)
+    ├── tie_dot_collision.spec.ts # Tests tie-dot (v2.1.0)
+    └── ...                    # 174 tests au total
 ```
 
 ## Flux de données
@@ -36,13 +49,40 @@ chord-grid/
 ```
 Entrée texte (notation chordgrid)
          ↓
-   ChordGridParser
+   ChordGridParser (tokenisation, parsing)
          ↓
-    ChordGrid (structure)
+    ChordGrid (structure de données)
          ↓
-    SVGRenderer
+   MusicAnalyzer (analyse des ligatures)
          ↓
-   Élément SVG (sortie)
+  ChordGrid enrichi (avec BeamGroup[])
+         ↓
+    SVGRenderer (initialisation)
+         ↓
+  CollisionManager (enregistrement des éléments)
+         ↓
+  MeasureRenderer + NoteRenderer + RestRenderer
+         ↓
+  Collision Resolution (ajustements automatiques)
+         ↓
+   Élément SVG (sortie finale)
+```
+
+```mermaid
+graph TD
+    A[Notation chordgrid texte] --> B[ChordGridParser]
+    B --> C[Structure ChordGrid]
+    C --> D[MusicAnalyzer]
+    D --> E[ChordGrid enrichi]
+    E --> F[SVGRenderer]
+    F --> G[CollisionManager]
+    G --> H[MeasureRenderer]
+    H --> I[NoteRenderer / RestRenderer]
+    I --> J[Collision Resolution]
+    J --> K[SVG final]
+    
+    style G fill:#ffa500
+    style J fill:#ffa500
 ```
 
 ## Module Parser
@@ -95,6 +135,30 @@ Entrée texte (notation chordgrid)
 - `tieToVoid` : liaison vers note virtuelle (fin ligne)
 - `tieFromVoid` : liaison depuis note virtuelle (début ligne)
 
+## Module Analyzer
+
+### MusicAnalyzer
+
+**Responsabilités :**
+- Analyser la structure musicale des mesures
+- Identifier les groupes de ligatures (BeamGroup)
+- Enrichir la structure ChordGrid avec métadonnées d'analyse
+- Support des tuplets avec ratios personnalisables
+
+**Algorithme d'analyse :**
+1. Parcourir toutes les mesures de la grille
+2. Identifier les séquences de notes ligaturables (valeur >= 8)
+3. Respecter les séparations d'espace (breaks de ligature)
+4. Détecter les tuplets et calculer leurs ratios effectifs
+5. Créer les BeamGroup avec positions précises
+
+**Support des tuplets :**
+- Syntaxe : `(N:M notes)` où N = notes jouées, M = notes théoriques
+- Ratios par défaut : (3:2), (5:4), (6:4), (7:4), (9:8)
+- Ratios explicites supportés : `(5:6 notes)`, `(7:8 notes)`, etc.
+- Validation de durée : durée totale des notes doit correspondre au ratio
+- Affichage automatique du ratio dans le rendu SVG
+
 ## Module Modèles
 
 ### Hiérarchie des structures
@@ -138,6 +202,8 @@ ChordGrid
 ```
 SVGRenderer (orchestration)
     ↓
+CollisionManager (gestion des collisions)
+    ↓
 MeasureRenderer (par mesure)
     ↓
 NoteRenderer / RestRenderer (par note)
@@ -146,32 +212,90 @@ NoteRenderer / RestRenderer (par note)
 ### SVGRenderer
 
 **Responsabilités :**
-- Calculer la taille globale du SVG
-- Positionner les mesures sur la grille (4 par ligne)
-- Gérer les sauts de ligne
-- Initialiser le TieManager
-- Dessiner les liaisons entre mesures
+- Calculer la taille globale du SVG avec espacement dynamique
+- Positionner les mesures sur la grille (4 par ligne, adaptatif)
+- Gérer les sauts de ligne (automatiques et manuels)
+- Initialiser CollisionManager et TieManager
+- Calculer largeur dynamique de la signature rythmique
+- Dessiner les liaisons entre mesures avec évitement de collision
+- Appliquer ajustements de collision (courbes de liaison, numéros de tuplets)
 
 **Paramètres de layout :**
 - `measuresPerLine` : 4 (défaut)
-- `measureWidth` : 200px
+- `baseMeasureWidth` : 240px (minimum, ajusté dynamiquement selon densité rythmique)
 - `measureHeight` : 120px
 - Espacement entre lignes : 20px
+- Padding gauche dynamique : calculé selon largeur signature rythmique
+- Facteur espacement signature : 0.53 (v2.1.0, optimisé)
+- Marge signature : 4px (v2.1.0, optimisé)
+
+### CollisionManager
+
+**Responsabilités :**
+- Enregistrer tous les éléments visuels avec leurs bounding boxes
+- Détecter les collisions potentielles entre éléments
+- Résoudre conflits spatiaux via repositionnement intelligent
+- Suggérer positions alternatives pour éléments mobiles
+- Gérer priorités (éléments fixes vs mobiles)
+
+**Types d'éléments gérés :**
+- `chord` : symboles d'accords
+- `time-signature` : indications de mesure
+- `note` : têtes de notes
+- `stem` : hampes
+- `beam` : barres de ligature
+- `tie` : liaisons
+- `tuplet-bracket` : crochets de tuplets
+- `tuplet-number` : numéros/ratios de tuplets
+- `rest` : silences
+- `barline` : barres de mesure
+- `staff-line` : lignes de portée
+- `dot` : points de notes pointées (v2.1.0)
+
+**Algorithmes de résolution :**
+- `hasCollision()` : détection AABB (Axis-Aligned Bounding Box) avec marges configurables
+- `findFreePosition()` : recherche en spirale pour position libre
+  - Directions : vertical, horizontal, both
+  - Tentatives max : 20 par défaut
+  - Step : `minSpacing + 2`
+- `suggestVerticalOffset()` : ajustement vertical spécifique par paire de types
+- Système de priorités : 0 = fixe (ne bouge pas), 10 = mobile (peut être déplacé)
+
+**Cas d'usage spécifiques (v2.1.0) :**
+- Signature rythmique vs première mesure : padding gauche ajusté automatiquement
+- Numéros de tuplets vs accords : décalage vertical via `findFreePosition`
+- Points de notes pointées vs courbes de liaison : courbe relevée (controlY ajusté)
 
 ### MeasureRenderer
 
 **Responsabilités :**
 - Dessiner barres de mesure (simple, double, reprises)
 - Dessiner ligne de portée
-- Positionner les accords
+- Positionner les accords avec évitement de collision
 - Répartir l'espace entre beats
 - Gérer séparations visuelles entre segments
+- Enregistrer tous éléments visuels dans CollisionManager (v2.1.0)
+
+**Éléments enregistrés dans CollisionManager :**
+- Symboles d'accords avec bbox calculé selon longueur texte
+- Têtes de notes (noteheads)
+- Hampes (stems) avec direction (up/down)
+- Barres de ligature (beams) multi-notes
+- Crochets et numéros de tuplets
+- Silences de toutes durées
+- Points de notes pointées (4x4px, priorité 9, v2.1.0)
+
+**Positionnement des accords :**
+- Position initiale : (measureX + noteX, staffY - 30)
+- Si collision détectée : `CollisionManager.findFreePosition('vertical')` appliqué
+- Position finale ajustée pour éviter overlap
 
 **Algorithme de layout :**
 1. Calculer espace disponible
 2. Allouer espace proportionnellement aux beats
 3. Insérer séparateurs pour changements d'accords
 4. Rendre chaque segment avec NoteRenderer
+5. Enregistrer éléments dans CollisionManager au fur et à mesure
 
 ### NoteRenderer
 
@@ -193,6 +317,7 @@ NoteRenderer / RestRenderer (par note)
 **Responsabilités :**
 - Dessiner tous types de silences
 - Gérer silences pointés
+- Enregistrer bounding boxes dans CollisionManager (v2.1.0)
 
 **Types de silences :**
 - Pause (1) : rectangle suspendu
@@ -202,18 +327,30 @@ NoteRenderer / RestRenderer (par note)
 - Quart de soupir (16) : double crochet
 - Etc.
 
+**Enregistrement collision (v2.1.0) :**
+- Chaque silence enregistré avec bbox approprié
+- Permet évitement par autres éléments (accords, tuplets, liaisons)
+
 ### TieManager
 
 **Responsabilités :**
 - Gérer liaisons traversant limites de rendu
 - Stocker liaisons "en attente" (pending)
 - Résoudre liaisons cross-ligne
+- Coordonner avec CollisionManager pour évitement (v2.1.0)
 
 **Workflow :**
 1. Note avec `tieToVoid` → `addPendingTie()`
 2. Rendu ligne suivante
 3. Note avec `tieFromVoid` → `resolvePendingFor()`
 4. Dessiner courbe de liaison entre les positions
+5. Ajuster controlY si collision détectée avec points de notes pointées (v2.1.0)
+
+**Détection et évitement de collision (v2.1.0) :**
+- Avant dessin, vérifier collision entre bbox de liaison et points de notes pointées
+- Si collision détectée : relever courbe (augmenter controlY)
+- Algorithme : `controlY_new = baseY - max(6, baseAmplitude * 0.6)`
+- Enregistrer bbox de liaison dans CollisionManager après ajustement
 
 ## Validation et erreurs
 
