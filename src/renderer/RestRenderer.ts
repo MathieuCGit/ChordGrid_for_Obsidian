@@ -19,6 +19,7 @@
 
 import { NoteElement } from '../parser/type';
 import { SVG_NS } from './constants';
+import { CollisionManager } from './CollisionManager';
 
 /**
  * Classe de rendu des silences musicaux.
@@ -31,6 +32,7 @@ export class RestRenderer {
   // Rendering style constants
   private readonly dotRadius = 1.8;
   private readonly NOTE_HEIGHT = 30; // Hauteur de référence d'une quarter note (slash + stem)
+  constructor(private collisionManager?: CollisionManager) {}
   
   /**
    * Dessine un silence selon sa valeur rythmique.
@@ -43,19 +45,32 @@ export class RestRenderer {
   drawRest(svg: SVGElement, note: NoteElement, x: number, y: number) {
     if (note.value === 1) {
       this.drawWholeRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y, 10, 4, note);
     } else if (note.value === 2) {
       this.drawHalfRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 4, 10, 4, note);
     } else if (note.value === 4) {
       this.drawQuarterRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 24, 8, 24, note);
     } else if (note.value === 8) {
       this.drawEighthRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 18, 8, 18, note);
     } else if (note.value === 16) {
       this.drawSixteenthRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 24, 10, 24, note);
     } else if (note.value === 32) {
       this.drawThirtySecondRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 28, 10, 28, note);
     } else if (note.value === 64) {
       this.drawSixtyFourthRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 32, 12, 32, note);
     }
+  }
+
+  private registerRestBBox(x: number, y: number, width: number, height: number, note: NoteElement) {
+    if (!this.collisionManager) return;
+    const bbox = { x: x - width / 2, y, width, height };
+    this.collisionManager.registerElement('rest', bbox, 6, { value: note.value, dotted: note.dotted });
   }
   
   private drawWholeRest(svg: SVGElement, x: number, y: number, dotted: boolean) {

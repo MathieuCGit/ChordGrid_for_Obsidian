@@ -83,9 +83,10 @@ Checklist:
 1. Define scope and data shape changes (e.g., new note value, beam group property).
 2. Update relevant type definitions (`src/analyzer/analyzer-types.ts`, parser models, etc.).
 3. Implement logic (parser → analyzer → renderer path, as applicable).
-4. Add unit tests (parsing + analysis + rendering if visual change).
-5. Update README / docs with examples.
-6. Add CHANGELOG entry under `[Unreleased]`.
+4. Consider collision management: register new visual elements in `CollisionManager` if they occupy 2D space (v2.1+).
+5. Add unit tests (parsing + analysis + rendering if visual change).
+6. Update README / docs with examples.
+7. Add CHANGELOG entry under `[Unreleased]`.
 
 ## 8. Testing Requirements
 Minimum expectations for a new feature:
@@ -111,11 +112,11 @@ Before marking ready for review:
 
 ## 11. Roadmap Reference
 High-level planned milestones (see README for details):
-- v2.0: Analyzer core integration & removal of legacy beaming path.
-- v2.1: Tuplets / grace notes.
-- v2.2: Dynamics & articulation layer.
-- v2.3: Export (PNG / MIDI) & styling hooks.
-- v3.x: Interactive editing & richer musical semantics.
+- ✅ v2.0: Analyzer core integration & removal of legacy beaming path.
+- ✅ v2.1: Tuplets, collision management system (CollisionManager), dynamic spacing.
+- 🚧 v2.2: Dynamics & articulation layer.
+- 🚧 v2.3: Export (PNG / MIDI) & styling hooks.
+- 🚧 v3.x: Interactive editing & richer musical semantics.
 
 ## Questions / Help
 Open a GitHub Discussion or create an Issue tagged with `question`. Provide reproduction snippets in `chordgrid` blocks when relevant.

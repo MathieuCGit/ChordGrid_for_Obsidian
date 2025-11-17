@@ -137,7 +137,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 
 // src/parser/ChordGridParser.ts
-var ChordGridParser = class {
+var _ChordGridParser = class _ChordGridParser {
   /**
    * Parse une grille d'accords en notation textuelle.
    * 
@@ -149,8 +149,10 @@ var ChordGridParser = class {
    */
   parse(input) {
     const lines = input.trim().split("\n");
-    const firstLine = lines[0];
+    let firstLine = lines[0];
     const timeSignature = this.parseTimeSignature(firstLine);
+    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, "");
+    lines[0] = firstLine;
     const allMeasures = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
@@ -171,13 +173,54 @@ var ChordGridParser = class {
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       let foundQuarterNotes = 0;
+      const countedTuplets = /* @__PURE__ */ new Set();
       for (const beat of measure.beats) {
         for (const n of beat.notes) {
           if (!n.value) continue;
-          const baseWhole = 1 / n.value;
-          const dottedMultiplier = n.dotted ? 1.5 : 1;
-          const whole = baseWhole * dottedMultiplier;
-          foundQuarterNotes += whole * 4;
+          if (n.tuplet && !countedTuplets.has(n.tuplet.groupId)) {
+            countedTuplets.add(n.tuplet.groupId);
+            let baseLen = Infinity;
+            const tupletNotes = [];
+            for (const tupletBeat of measure.beats) {
+              for (const tupletNote of tupletBeat.notes) {
+                if (tupletNote.tuplet && tupletNote.tuplet.groupId === n.tuplet.groupId) {
+                  tupletNotes.push({ value: tupletNote.value, dotted: tupletNote.dotted });
+                  if (tupletNote.value > baseLen) {
+                    baseLen = tupletNote.value;
+                  }
+                }
+              }
+            }
+            if (!isFinite(baseLen)) {
+              baseLen = 4;
+            }
+            let cumulativeUnits = 0;
+            for (const tupletNote of tupletNotes) {
+              const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
+              const unitsOfBaseLen = baseLen / tupletNote.value * dottedMultiplier;
+              cumulativeUnits += unitsOfBaseLen;
+            }
+            let tupletRatio;
+            if (n.tuplet.ratio) {
+              tupletRatio = n.tuplet.ratio.denominator / n.tuplet.ratio.numerator;
+            } else {
+              const defaultRatio = _ChordGridParser.DEFAULT_TUPLET_RATIOS[n.tuplet.count];
+              if (defaultRatio) {
+                tupletRatio = defaultRatio.denominator / defaultRatio.numerator;
+              } else {
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletNotes.length)));
+                tupletRatio = normalCount / tupletNotes.length;
+              }
+            }
+            const cumulativeDuration = cumulativeUnits / baseLen;
+            const actualDuration = cumulativeDuration * tupletRatio;
+            foundQuarterNotes += actualDuration * 4;
+          } else if (!n.tuplet) {
+            const baseWhole = 1 / n.value;
+            const dottedMultiplier = n.dotted ? 1.5 : 1;
+            const whole = baseWhole * dottedMultiplier;
+            foundQuarterNotes += whole * 4;
+          }
         }
       }
       const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
@@ -217,8 +260,14 @@ var ChordGridParser = class {
               tieEnd: n.tieEnd || false,
               tieToVoid: n.tieToVoid || false,
               tieFromVoid: n.tieFromVoid || false,
-              beatIndex
+              beatIndex,
               // Preserve beat index to break beams at beat boundaries
+              tuplet: n.tuplet,
+              // Preserve tuplet information
+              hasLeadingSpace: n.hasLeadingSpace,
+              // Preserve spacing flag for tuplet subgroups
+              forcedBeamThroughTie: n.forcedBeamThroughTie
+              // Preserve [_] syntax
             });
           }
         });
@@ -286,11 +335,14 @@ var ChordGridParser = class {
       const isFirstMeasureOfLine = tokens.slice(0, ti).every((prev) => prev.content.trim().length === 0);
       const isLastMeasureOfLine = tokens.slice(ti + 1).every((next) => next.content.trim().length === 0);
       const chordSegments = [];
-      if (text.includes("[")) {
-        while ((m2 = segmentRe.exec(text)) !== null) {
+      const FORCED_BEAM_PLACEHOLDER = "";
+      const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
+      if (processedText.includes("[")) {
+        while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || "";
           const chord = (m2[2] || "").trim();
-          const rhythm = (m2[3] || "").trim();
+          let rhythm = (m2[3] || "").trim();
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, "g"), "[_]");
           const sourceText = m2[0];
           if (!firstChord && chord) firstChord = chord;
           anySource += (anySource ? " " : "") + sourceText;
@@ -342,15 +394,35 @@ var ChordGridParser = class {
    * @returns Objet TimeSignature avec numérateur et dénominateur
    * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
    */
+  /**
+   * Parse la signature temporelle et le mode de groupement optionnel.
+   * 
+   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * 
+   * @param line - Première ligne contenant la signature temporelle
+   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   */
   parseTimeSignature(line) {
-    const m = /^\s*(\d+)\/(\d+)/.exec(line);
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
     if (m) {
+      const numerator = parseInt(m[1], 10);
+      const denominator = parseInt(m[2], 10);
+      const groupingMode = m[3] || "auto";
       return {
-        numerator: parseInt(m[1], 10),
-        denominator: parseInt(m[2], 10)
+        numerator,
+        denominator,
+        beatsPerMeasure: numerator,
+        beatUnit: denominator,
+        groupingMode
       };
     }
-    return { numerator: 4, denominator: 4 };
+    return {
+      numerator: 4,
+      denominator: 4,
+      beatsPerMeasure: 4,
+      beatUnit: 4,
+      groupingMode: "auto"
+    };
   }
   /**
    * Regroupe les mesures en lignes pour le rendu.
@@ -367,6 +439,56 @@ var ChordGridParser = class {
     return lines;
   }
 };
+/**
+ * Table des ratios par défaut pour les tuplets courants.
+ * 
+ * Convention musicale (compatible MuseScore) :
+ * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+ * 
+ * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+ * 
+ * Exemples :
+ * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
+ * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
+ * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+ * 
+ * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
+ * où durée_cumulative est exprimée en unités de baseLen
+ * 
+ * Cette table peut être étendue selon les besoins musicaux.
+ * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+ */
+__publicField(_ChordGridParser, "DEFAULT_TUPLET_RATIOS", {
+  // Tuplets en temps simple (les plus courants)
+  3: { numerator: 3, denominator: 2 },
+  // Triplet : 3 notes dans le temps de 2
+  5: { numerator: 5, denominator: 4 },
+  // Quintuplet : 5 notes dans le temps de 4
+  6: { numerator: 6, denominator: 4 },
+  // Sextuplet : 6 notes dans le temps de 4
+  7: { numerator: 7, denominator: 4 },
+  // Septuplet : 7 notes dans le temps de 4
+  9: { numerator: 9, denominator: 8 },
+  // Nonuplet : 9 notes dans le temps de 8
+  10: { numerator: 10, denominator: 8 },
+  // Décuplet : 10 notes dans le temps de 8
+  11: { numerator: 11, denominator: 8 },
+  // 11-uplet : 11 notes dans le temps de 8
+  12: { numerator: 12, denominator: 8 },
+  // 12-uplet : 12 notes dans le temps de 8
+  13: { numerator: 13, denominator: 8 },
+  // 13-uplet : 13 notes dans le temps de 8
+  15: { numerator: 15, denominator: 8 },
+  // 15-uplet : 15 notes dans le temps de 8
+  // Tuplets en temps composé (moins courants, mais nécessaires)
+  2: { numerator: 2, denominator: 3 },
+  // Duplet : 2 notes dans le temps de 3
+  4: { numerator: 4, denominator: 3 },
+  // Quadruplet : 4 notes dans le temps de 3
+  8: { numerator: 8, denominator: 6 }
+  // Octuplet : 8 notes dans le temps de 6
+});
+var ChordGridParser = _ChordGridParser;
 var BeamAndTieAnalyzer = class {
   constructor() {
     __publicField(this, "tieContext");
@@ -386,18 +508,115 @@ var BeamAndTieAnalyzer = class {
     };
   }
   analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     const beats = [];
     let currentBeat = [];
+    let lastBeatLastNoteRef = null;
     let i = 0;
     let pendingTieFromVoid = false;
     while (i < rhythmStr.length) {
+      if (rhythmStr[i] === "{") {
+        const closeIdx = rhythmStr.indexOf("}", i);
+        if (closeIdx > i) {
+          let numStr = "";
+          let j = closeIdx + 1;
+          while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+            numStr += rhythmStr[j];
+            j++;
+          }
+          let explicitRatio;
+          if (j < rhythmStr.length && rhythmStr[j] === ":") {
+            j++;
+            let ratioStr = "";
+            while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+              ratioStr += rhythmStr[j];
+              j++;
+            }
+            const denominatorValue = parseInt(ratioStr, 10);
+            if (denominatorValue > 0 && numStr) {
+              explicitRatio = {
+                numerator: parseInt(numStr, 10),
+                denominator: denominatorValue
+              };
+            }
+          }
+          const tupletCount = parseInt(numStr, 10);
+          if (tupletCount > 0) {
+            const inner = rhythmStr.slice(i + 1, closeIdx);
+            const subGroups = inner.split(" ");
+            let tupletNoteIndex = 0;
+            for (let g = 0; g < subGroups.length; g++) {
+              const group = subGroups[g];
+              let k = 0;
+              let isFirstNoteOfThisSubGroup = true;
+              let pendingTieFromPrevious = false;
+              while (k < group.length) {
+                if (group[k] === "_") {
+                  if (k === 0) {
+                    pendingTieFromPrevious = true;
+                  } else {
+                    if (currentBeat.length > 0) {
+                      this.markTieStart(currentBeat);
+                    }
+                  }
+                  k++;
+                  continue;
+                }
+                let note2;
+                if (group[k] === "-") {
+                  note2 = this.parseNote(group, k + 1);
+                  note2.isRest = true;
+                  k += ((_a = note2.length) != null ? _a : 0) + 1;
+                } else {
+                  note2 = this.parseNote(group, k);
+                  k += (_b = note2.length) != null ? _b : 0;
+                }
+                if (pendingTieFromPrevious) {
+                  note2.tieEnd = true;
+                  pendingTieFromPrevious = false;
+                }
+                if ((_c = this.tieContext.lastNote) == null ? void 0 : _c.tieStart) {
+                  note2.tieEnd = true;
+                  this.tieContext.lastNote = null;
+                }
+                note2.tuplet = {
+                  count: tupletCount,
+                  groupId: `T${i}_${closeIdx}`,
+                  position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle",
+                  ...explicitRatio && { ratio: explicitRatio }
+                };
+                if (g > 0 && isFirstNoteOfThisSubGroup) {
+                  note2.hasLeadingSpace = true;
+                  isFirstNoteOfThisSubGroup = false;
+                }
+                currentBeat.push(note2);
+                tupletNoteIndex++;
+              }
+            }
+            i = j;
+            continue;
+          }
+        }
+      }
+      if (rhythmStr[i] === "[" && i + 2 < rhythmStr.length && rhythmStr[i + 1] === "_" && rhythmStr[i + 2] === "]") {
+        if (currentBeat.length > 0) {
+          const lastNote = currentBeat[currentBeat.length - 1];
+          lastNote.forcedBeamThroughTie = true;
+          lastNote.tieStart = true;
+          this.tieContext.lastNote = lastNote;
+        }
+        i += 3;
+        continue;
+      }
       if (rhythmStr[i] === "_") {
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
           pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
+        } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
+          lastBeatLastNoteRef.tieStart = true;
+          this.tieContext.lastNote = lastBeatLastNoteRef;
         } else {
           this.markTieStart(currentBeat);
         }
@@ -406,7 +625,9 @@ var BeamAndTieAnalyzer = class {
       }
       if (rhythmStr[i] === " ") {
         if (currentBeat.length > 0) {
+          const lastIdx = currentBeat.length - 1;
           beats.push(this.createBeat(currentBeat));
+          lastBeatLastNoteRef = beats[beats.length - 1].notes[lastIdx] || null;
           currentBeat = [];
         }
         i++;
@@ -417,7 +638,7 @@ var BeamAndTieAnalyzer = class {
         const note2 = this.parseNote(rhythmStr, i);
         note2.isRest = true;
         currentBeat.push(note2);
-        i += (_a = note2.length) != null ? _a : 0;
+        i += (_d = note2.length) != null ? _d : 0;
         continue;
       }
       const note = this.parseNote(rhythmStr, i);
@@ -425,12 +646,12 @@ var BeamAndTieAnalyzer = class {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      if ((_b = this.tieContext.lastNote) == null ? void 0 : _b.tieStart) {
+      if ((_e = this.tieContext.lastNote) == null ? void 0 : _e.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
       currentBeat.push(note);
-      i += (_c = note.length) != null ? _c : 0;
+      i += (_f = note.length) != null ? _f : 0;
     }
     if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));
@@ -534,12 +755,13 @@ var SVG_NS = "http://www.w3.org/2000/svg";
 
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
-  constructor() {
+  // Hauteur de référence d'une quarter note (slash + stem)
+  constructor(collisionManager) {
+    this.collisionManager = collisionManager;
     // Rendering style constants
     __publicField(this, "dotRadius", 1.8);
     __publicField(this, "NOTE_HEIGHT", 30);
   }
-  // Hauteur de référence d'une quarter note (slash + stem)
   /**
    * Dessine un silence selon sa valeur rythmique.
    * 
@@ -551,19 +773,31 @@ var RestRenderer = class {
   drawRest(svg, note, x, y) {
     if (note.value === 1) {
       this.drawWholeRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y, 10, 4, note);
     } else if (note.value === 2) {
       this.drawHalfRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 4, 10, 4, note);
     } else if (note.value === 4) {
       this.drawQuarterRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 24, 8, 24, note);
     } else if (note.value === 8) {
       this.drawEighthRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 18, 8, 18, note);
     } else if (note.value === 16) {
       this.drawSixteenthRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 24, 10, 24, note);
     } else if (note.value === 32) {
       this.drawThirtySecondRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 28, 10, 28, note);
     } else if (note.value === 64) {
       this.drawSixtyFourthRest(svg, x, y, note.dotted);
+      this.registerRestBBox(x, y - 32, 12, 32, note);
     }
+  }
+  registerRestBBox(x, y, width, height, note) {
+    if (!this.collisionManager) return;
+    const bbox = { x: x - width / 2, y, width, height };
+    this.collisionManager.registerElement("rest", bbox, 6, { value: note.value, dotted: note.dotted });
   }
   drawWholeRest(svg, x, y, dotted) {
     const width = 10;
@@ -681,21 +915,25 @@ var RestRenderer = class {
 // src/renderer/MeasureRenderer.ts
 init_DebugLogger();
 var MeasureRenderer = class {
-  /**
-   * Constructeur du renderer de mesure.
-   * 
-   * @param measure - Mesure à rendre
-   * @param x - Position X de départ de la mesure dans le SVG
-   * @param y - Position Y de départ de la mesure dans le SVG
-   * @param width - Largeur allouée à la mesure
-   */
-  constructor(measure, x, y, width, beamedAtLevel1) {
+  constructor(measure, x, y, width, beamedAtLevel1, collisionManager) {
     this.measure = measure;
     this.x = x;
     this.y = y;
     this.width = width;
     this.beamedAtLevel1 = beamedAtLevel1;
-    __publicField(this, "restRenderer", new RestRenderer());
+    this.collisionManager = collisionManager;
+    /**
+     * Constructeur du renderer de mesure.
+     * 
+     * @param measure - Mesure à rendre
+     * @param x - Position X de départ de la mesure dans le SVG
+     * @param y - Position Y de départ de la mesure dans le SVG
+     * @param width - Largeur allouée à la mesure
+     * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
+     * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
+     */
+    __publicField(this, "restRenderer");
+    this.restRenderer = new RestRenderer(this.collisionManager);
   }
   /**
    * Dessine la mesure complète dans le SVG.
@@ -738,7 +976,31 @@ var MeasureRenderer = class {
     const totalInnerPadding = innerPaddingPerSegment * segments.length;
     const totalSeparatorPixels = separatorsCount * separatorWidth;
     const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
-    const beatCellWidth = availableForBeatCells / totalBeats;
+    const headHalfMax = 6;
+    const valueMinSpacing = (v) => {
+      if (v >= 64) return 16;
+      if (v >= 32) return 20;
+      if (v >= 16) return 26;
+      if (v >= 8) return 24;
+      return 20;
+    };
+    const requiredBeatWidth = (beat) => {
+      var _a;
+      const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
+      if (noteCount <= 1) return 28 + 10 + headHalfMax;
+      const spacing = Math.max(
+        ...beat.notes.map((n) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base;
+        })
+      );
+      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+    };
+    const perSegmentRequired = segments.map((seg) => {
+      const reqs = (seg.beats || []).map((b) => requiredBeatWidth(b));
+      return reqs.reduce((a, b) => a + b, 0);
+    });
+    const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
     let currentX = this.x;
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
       const segment = segments[segmentIndex];
@@ -746,19 +1008,53 @@ var MeasureRenderer = class {
         currentX += separatorWidth;
       }
       const segBeatCount = segment.beats.length || 1;
-      const segmentWidth = segBeatCount * beatCellWidth + innerPaddingPerSegment;
+      const reqPerBeat = segment.beats.map((b) => requiredBeatWidth(b));
+      const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
+      const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
+      const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
       const segmentX = currentX + 10;
       const beatsWidth = segmentWidth - innerPaddingPerSegment;
-      const beatWidth = beatsWidth / segBeatCount;
+      let beatCursorX = segmentX;
       segment.beats.forEach((beat, beatIndex) => {
-        const beatX = segmentX + beatIndex * beatWidth;
+        const beatWidth = reqPerBeat[beatIndex] / reqSum * beatsWidth;
+        const beatX = beatCursorX;
         const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
         if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
-          const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, "22px", "bold");
+          const chordX = firstNoteX;
+          const chordY = this.y + 40;
+          const fontSize = 22;
+          const chordWidth = segment.chord.length * fontSize * 0.6;
+          let finalY = chordY;
+          if (this.collisionManager) {
+            const chordBBox = {
+              x: chordX - chordWidth / 2,
+              y: chordY - fontSize,
+              width: chordWidth,
+              height: fontSize + 4
+            };
+            if (this.collisionManager.hasCollision(chordBBox)) {
+              const adjustedPos = this.collisionManager.findFreePosition(
+                chordBBox,
+                "vertical",
+                ["chord"]
+              );
+              if (adjustedPos) {
+                finalY = adjustedPos.y + fontSize;
+              }
+            }
+            this.collisionManager.registerElement("chord", {
+              x: chordX - chordWidth / 2,
+              y: finalY - fontSize,
+              width: chordWidth,
+              height: fontSize + 4
+            }, 5, { chord: segment.chord, measureIndex, segmentIndex });
+          }
+          const chordText = this.createText(segment.chord, chordX, finalY, "22px", "bold");
           chordText.setAttribute("text-anchor", "middle");
           chordText.setAttribute("font-family", "Arial, sans-serif");
           svg.appendChild(chordText);
         }
+        beatCursorX += beatWidth;
       });
       currentX += segmentWidth;
     }
@@ -801,11 +1097,47 @@ var MeasureRenderer = class {
     const headHalfMax = 6;
     const startX = x + innerLeft;
     const endLimit = x + width - innerRight - headHalfMax;
-    const preferredSpacing = 20;
-    let spacing = preferredSpacing;
-    if (noteCount > 1) {
-      const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
-      spacing = Math.min(preferredSpacing, maxSpacing);
+    const tupletGroups = [];
+    const seenTupletGroups = /* @__PURE__ */ new Set();
+    beat.notes.forEach((note, i) => {
+      if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
+        seenTupletGroups.add(note.tuplet.groupId);
+        const groupNotes = beat.notes.filter((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
+        const startIdx = beat.notes.findIndex((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
+        tupletGroups.push({
+          startIndex: startIdx,
+          endIndex: startIdx + groupNotes.length - 1,
+          count: note.tuplet.count,
+          groupId: note.tuplet.groupId,
+          ratio: note.tuplet.ratio
+        });
+      }
+    });
+    const notePositionsX = [];
+    const densestSpacing = Math.max(...beat.notes.map((n) => {
+      if (n.isRest) return 20;
+      const v = n.value;
+      if (v >= 64) return 16;
+      if (v >= 32) return 20;
+      if (v >= 16) return 26;
+      if (v >= 8) return 24;
+      return 20;
+    }));
+    const availableSpan = Math.max(0, endLimit - startX);
+    const gapCount = Math.max(0, noteCount - 1);
+    const gapFactors = [];
+    for (let g = 0; g < gapCount; g++) {
+      const inSameTuplet = tupletGroups.some((T) => g >= T.startIndex && g + 1 <= T.endIndex);
+      gapFactors.push(inSameTuplet ? 0.85 : 1);
+    }
+    const desiredGaps = gapFactors.map((f) => densestSpacing * f);
+    const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
+    const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
+    const finalGaps = desiredGaps.map((g) => g * scale);
+    let cursorX = startX;
+    for (let i = 0; i < noteCount; i++) {
+      notePositionsX.push(cursorX);
+      if (i < gapCount) cursorX += finalGaps[i];
     }
     beat.notes.forEach((nv, noteIndex) => {
       var _a;
@@ -813,7 +1145,7 @@ var MeasureRenderer = class {
       if (noteCount === 1 && nv.isRest && nv.value === 1) {
         noteX = x + width / 2;
       } else {
-        noteX = startX + noteIndex * spacing;
+        noteX = notePositionsX[noteIndex];
       }
       if (nv.isRest) {
         this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
@@ -858,6 +1190,95 @@ var MeasureRenderer = class {
         stemTopY,
         stemBottomY
       });
+      if (this.collisionManager) {
+        const noteHeadBBox = {
+          x: headLeftX,
+          y: staffLineY - 12,
+          width: headRightX - headLeftX,
+          height: 24
+        };
+        this.collisionManager.registerElement("note", noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
+        if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0) {
+          const stemBBox = {
+            x: noteX - 3,
+            // approximate stem x based on drawStem logic
+            y: stemTopY,
+            width: 3,
+            height: stemBottomY - stemTopY
+          };
+          this.collisionManager.registerElement("stem", stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+        }
+      }
+    });
+    tupletGroups.forEach((tupletGroup) => {
+      const tupletStartX = notePositionsX[tupletGroup.startIndex];
+      const tupletEndX = notePositionsX[tupletGroup.endIndex];
+      const bracketY = staffLineY - 15;
+      const bracket = document.createElementNS(SVG_NS, "line");
+      bracket.setAttribute("x1", String(tupletStartX));
+      bracket.setAttribute("y1", String(bracketY));
+      bracket.setAttribute("x2", String(tupletEndX));
+      bracket.setAttribute("y2", String(bracketY));
+      bracket.setAttribute("stroke", "#000");
+      bracket.setAttribute("stroke-width", "1");
+      svg.appendChild(bracket);
+      const leftBar = document.createElementNS(SVG_NS, "line");
+      leftBar.setAttribute("x1", String(tupletStartX));
+      leftBar.setAttribute("y1", String(bracketY));
+      leftBar.setAttribute("x2", String(tupletStartX));
+      leftBar.setAttribute("y2", String(bracketY + 5));
+      leftBar.setAttribute("stroke", "#000");
+      leftBar.setAttribute("stroke-width", "1");
+      svg.appendChild(leftBar);
+      const rightBar = document.createElementNS(SVG_NS, "line");
+      rightBar.setAttribute("x1", String(tupletEndX));
+      rightBar.setAttribute("y1", String(bracketY));
+      rightBar.setAttribute("x2", String(tupletEndX));
+      rightBar.setAttribute("y2", String(bracketY + 5));
+      rightBar.setAttribute("stroke", "#000");
+      rightBar.setAttribute("stroke-width", "1");
+      svg.appendChild(rightBar);
+      if (this.collisionManager) {
+        const bracketBBox = {
+          x: tupletStartX,
+          y: bracketY - 6,
+          width: tupletEndX - tupletStartX,
+          height: 12
+        };
+        this.collisionManager.registerElement("tuplet-bracket", bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
+      }
+      const centerX = (tupletStartX + tupletEndX) / 2;
+      let tupletTextY = bracketY - 3;
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", String(centerX));
+      text.setAttribute("y", String(tupletTextY));
+      text.setAttribute("font-size", "10");
+      text.setAttribute("font-weight", "bold");
+      text.setAttribute("text-anchor", "middle");
+      if (tupletGroup.ratio) {
+        text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+      } else {
+        text.textContent = String(tupletGroup.count);
+      }
+      if (this.collisionManager) {
+        const textWidth = (text.textContent || "").length * 6;
+        let numberBBox = {
+          x: centerX - textWidth / 2,
+          y: tupletTextY - 10,
+          width: textWidth,
+          height: 12
+        };
+        if (this.collisionManager.hasCollision(numberBBox, ["tuplet-bracket", "tuplet-number"])) {
+          const adjusted = this.collisionManager.findFreePosition(numberBBox, "vertical", ["tuplet-number"]);
+          if (adjusted) {
+            tupletTextY = adjusted.y + 10;
+            text.setAttribute("y", String(tupletTextY));
+            numberBBox = { ...numberBBox, y: adjusted.y };
+          }
+        }
+        this.collisionManager.registerElement("tuplet-number", numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
+      }
+      svg.appendChild(text);
     });
     return firstNoteX;
   }
@@ -886,7 +1307,13 @@ var MeasureRenderer = class {
       dot.setAttribute("cy", (staffLineY - 4).toString());
       dot.setAttribute("r", "1.5");
       dot.setAttribute("fill", "#000");
+      dot.setAttribute("data-cg-dot", "1");
       svg.appendChild(dot);
+      if (this.collisionManager) {
+        const cx = centerX + 10;
+        const cy = staffLineY - 4;
+        this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+      }
     }
     return centerX;
   }
@@ -920,7 +1347,13 @@ var MeasureRenderer = class {
       dot.setAttribute("cy", (staffLineY - 4).toString());
       dot.setAttribute("r", "1.5");
       dot.setAttribute("fill", "#000");
+      dot.setAttribute("data-cg-dot", "1");
       svg.appendChild(dot);
+      if (this.collisionManager) {
+        const cx = x + 10;
+        const cy = staffLineY - 4;
+        this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+      }
     }
   }
   drawDiamondNoteHead(svg, x, y, hollow) {
@@ -1123,19 +1556,70 @@ var MusicAnalyzer = class {
     };
   }
   /**
-   * Flatten all notes from all segments into a single array with positions
+   * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
+   * 
+   * Rules:
+   * - noauto: user controls grouping via spaces (no auto-breaking)
+   * - binary: group by 2 eighths (1.0 quarter)
+   * - ternary: group by 3 eighths (1.5 quarters)
+   * - auto: detect from time signature
+   *   - denominator <= 4: binary (quarter-note based, group by 2)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
+   *   - else: irregular (space-based grouping, no auto-breaking)
+   */
+  resolveGroupingMode(timeSignature) {
+    if (timeSignature.groupingMode === "noauto") {
+      return "irregular";
+    }
+    if (timeSignature.groupingMode === "binary") {
+      return "binary";
+    }
+    if (timeSignature.groupingMode === "ternary") {
+      return "ternary";
+    }
+    const { numerator, denominator } = timeSignature;
+    if (denominator <= 4) {
+      return "binary";
+    }
+    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+      return "ternary";
+    }
+    return "irregular";
+  }
+  /**
+   * Calculate note duration in quarter-note units
+   */
+  getNoteDuration(note) {
+    var _a;
+    let duration = 4 / note.value;
+    if (note.dotted) {
+      duration *= 1.5;
+    }
+    if ((_a = note.tuplet) == null ? void 0 : _a.ratio) {
+      const { numerator, denominator } = note.tuplet.ratio;
+      duration *= denominator / numerator;
+    }
+    return duration;
+  }
+  /**
+   * Flatten all notes from all segments into a single array with positions and timing
    */
   flattenNotes(measure) {
     const allNotes = [];
     let absoluteIndex = 0;
+    let quarterPosition = 0;
     measure.segments.forEach((segment, segmentIndex) => {
       segment.notes.forEach((note, noteIndexInSegment) => {
+        const duration = this.getNoteDuration(note);
         allNotes.push({
           ...note,
           segmentIndex,
           noteIndexInSegment,
-          absoluteIndex: absoluteIndex++
+          absoluteIndex: absoluteIndex++,
+          quarterStart: quarterPosition,
+          quarterDuration: duration
         });
+        quarterPosition += duration;
       });
     });
     return allNotes;
@@ -1193,14 +1677,37 @@ var MusicAnalyzer = class {
         const aLevel = this.getBeamLevel(allNotes[aIdx].value);
         const bLevel = this.getBeamLevel(allNotes[bIdx].value);
         const notesLevel = Math.min(aLevel, bLevel);
+        const inTuplet = allNotes[aIdx].tuplet || allNotes[bIdx].tuplet;
+        const bNote = allNotes[bIdx];
+        const aNote = allNotes[aIdx];
+        if (bNote.hasLeadingSpace && !aNote.forcedBeamThroughTie) {
+          let minGroupLevel = Infinity;
+          for (let lookback = j; lookback >= 0; lookback--) {
+            const prevNote = allNotes[noteIndices[lookback]];
+            const prevLevel = this.getBeamLevel(prevNote.value);
+            minGroupLevel = Math.min(minGroupLevel, prevLevel);
+            if (lookback < j && prevNote.hasLeadingSpace) break;
+          }
+          if (minGroupLevel < Infinity) {
+            blockFromLevel = Math.min(blockFromLevel, Math.max(minGroupLevel, 2));
+          }
+        }
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find((n) => n.absoluteIndex === t);
           if (mid && mid.isRest) {
             const restLevel = this.getBeamLevel(mid.value);
-            if (restLevel === notesLevel - 1) {
-              blockFromLevel = Math.min(blockFromLevel, notesLevel);
+            if (inTuplet) {
+              if (restLevel < notesLevel) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             } else {
-              blockFromLevel = Math.min(blockFromLevel, restLevel);
+              if (restLevel === notesLevel - 1) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             }
           }
         }
@@ -1312,14 +1819,51 @@ var MusicAnalyzer = class {
     }
   }
   isHardBreakBetween(a, b, measure) {
-    var _a, _b;
+    var _a, _b, _c, _d;
+    if (a.forcedBeamThroughTie) {
+      DebugLogger2.log("\u{1F517} Forced beam through tie [_]", {
+        fromNote: a.absoluteIndex,
+        toNote: b.absoluteIndex
+      });
+      return false;
+    }
     if (a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
-      DebugLogger2.log("\u{1F50D} Beat boundary within segment", {
+      const aTuplet = a.tuplet;
+      const bTuplet = b.tuplet;
+      if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
+        return false;
+      }
+      DebugLogger2.log("\u{1F50D} Beat boundary within segment (space)", {
         fromBeat: a.beatIndex,
         toBeat: b.beatIndex,
         segment: a.segmentIndex
       });
       return true;
+    }
+    if (a.segmentIndex === b.segmentIndex && ((_c = a.beatIndex) != null ? _c : -1) === ((_d = b.beatIndex) != null ? _d : -1)) {
+      const aTuplet2 = a.tuplet;
+      const bTuplet2 = b.tuplet;
+      if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
+        return false;
+      }
+      if (measure.timeSignature) {
+        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
+        if (resolvedMode !== "irregular" && a.quarterStart !== void 0 && b.quarterStart !== void 0) {
+          const groupSize = resolvedMode === "binary" ? 1 : 1.5;
+          const aGroup = Math.floor(a.quarterStart / groupSize);
+          const bGroup = Math.floor(b.quarterStart / groupSize);
+          if (aGroup !== bGroup) {
+            DebugLogger2.log(`\u{1F3B5} Auto-break at ${resolvedMode} boundary`, {
+              aStart: a.quarterStart,
+              bStart: b.quarterStart,
+              groupSize,
+              aGroup,
+              bGroup
+            });
+            return true;
+          }
+        }
+      }
     }
     if (b.segmentIndex > a.segmentIndex) {
       const nextSegment = measure.segments[b.segmentIndex];
@@ -1342,6 +1886,17 @@ var MusicAnalyzer = class {
    */
   determineBeamletDirection(noteIndex, groupIndices, allNotes) {
     const posInGroup = groupIndices.indexOf(noteIndex);
+    const currentNote = allNotes[noteIndex];
+    if (currentNote.hasLeadingSpace) {
+      return "right";
+    }
+    if (posInGroup < groupIndices.length - 1) {
+      const nextIdx = groupIndices[posInGroup + 1];
+      const nextNote = allNotes[nextIdx];
+      if (nextNote.hasLeadingSpace) {
+        return "left";
+      }
+    }
     if (posInGroup > 0) {
       const prevIdx = groupIndices[posInGroup - 1];
       const prevNote = allNotes[prevIdx];
@@ -1442,6 +1997,201 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
 
 // src/renderer/SVGRenderer.ts
 init_DebugLogger();
+
+// src/renderer/CollisionManager.ts
+var CollisionManager = class {
+  /**
+   * Constructeur du gestionnaire de collisions.
+   * 
+   * @param config - Configuration optionnelle
+   */
+  constructor(config) {
+    __publicField(this, "elements", []);
+    __publicField(this, "config");
+    this.config = {
+      minSpacing: 2,
+      chordTupletVerticalSpacing: 8,
+      noteHorizontalSpacing: 4,
+      debugMode: false,
+      ...config
+    };
+  }
+  /**
+   * Enregistre un nouvel élément dans le gestionnaire.
+   * 
+   * @param type - Type de l'élément
+   * @param bbox - Zone occupée par l'élément
+   * @param priority - Priorité de l'élément (0 = fixe, 10 = mobile)
+   * @param metadata - Métadonnées optionnelles
+   */
+  registerElement(type, bbox, priority = 5, metadata) {
+    this.elements.push({ type, bbox, priority, metadata });
+    if (this.config.debugMode) {
+      console.log(`[CollisionManager] Registered ${type}`, bbox);
+    }
+  }
+  /**
+   * Vérifie si une zone entre en collision avec des éléments existants.
+   * 
+   * @param bbox - Zone à tester
+   * @param excludeTypes - Types d'éléments à exclure de la vérification
+   * @param spacing - Marge supplémentaire autour de la zone (défaut: minSpacing)
+   * @returns true si collision détectée
+   */
+  hasCollision(bbox, excludeTypes = [], spacing) {
+    const margin = spacing != null ? spacing : this.config.minSpacing;
+    return this.elements.some((element) => {
+      if (excludeTypes.includes(element.type)) {
+        return false;
+      }
+      return this.boxesCollide(bbox, element.bbox, margin);
+    });
+  }
+  /**
+   * Trouve tous les éléments en collision avec une zone donnée.
+   * 
+   * @param bbox - Zone à tester
+   * @param excludeTypes - Types d'éléments à exclure
+   * @param spacing - Marge supplémentaire
+   * @returns Liste des éléments en collision
+   */
+  findCollisions(bbox, excludeTypes = [], spacing) {
+    const margin = spacing != null ? spacing : this.config.minSpacing;
+    return this.elements.filter((element) => {
+      if (excludeTypes.includes(element.type)) {
+        return false;
+      }
+      return this.boxesCollide(bbox, element.bbox, margin);
+    });
+  }
+  /**
+   * Trouve une position libre pour un élément en ajustant sa position.
+   * 
+   * @param bbox - Zone souhaitée
+   * @param direction - Direction d'ajustement préférée
+   * @param excludeTypes - Types à exclure de la détection
+   * @param maxAttempts - Nombre maximum de tentatives
+   * @returns Nouvelle position ajustée ou null si aucune position libre trouvée
+   */
+  findFreePosition(bbox, direction = "vertical", excludeTypes = [], maxAttempts = 20) {
+    if (!this.hasCollision(bbox, excludeTypes)) {
+      return bbox;
+    }
+    const step = this.config.minSpacing + 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let candidate;
+      if (direction === "vertical") {
+        const offset = attempt % 2 === 1 ? -Math.ceil(attempt / 2) * step : Math.floor(attempt / 2) * step;
+        candidate = { ...bbox, y: bbox.y + offset };
+      } else if (direction === "horizontal") {
+        const offset = attempt % 2 === 1 ? Math.ceil(attempt / 2) * step : -Math.floor(attempt / 2) * step;
+        candidate = { ...bbox, x: bbox.x + offset };
+      } else {
+        const quadrant = attempt % 4;
+        const distance = Math.ceil(attempt / 4) * step;
+        if (quadrant === 0) candidate = { ...bbox, y: bbox.y - distance };
+        else if (quadrant === 1) candidate = { ...bbox, x: bbox.x + distance };
+        else if (quadrant === 2) candidate = { ...bbox, y: bbox.y + distance };
+        else candidate = { ...bbox, x: bbox.x - distance };
+      }
+      if (!this.hasCollision(candidate, excludeTypes)) {
+        if (this.config.debugMode) {
+          console.log(`[CollisionManager] Found free position after ${attempt} attempts`, candidate);
+        }
+        return candidate;
+      }
+    }
+    if (this.config.debugMode) {
+      console.warn(`[CollisionManager] Could not find free position after ${maxAttempts} attempts`);
+    }
+    return null;
+  }
+  /**
+   * Suggère un ajustement vertical optimal entre deux types d'éléments spécifiques.
+   * 
+   * @param elementType - Type d'élément à positionner
+   * @param referenceType - Type d'élément de référence
+   * @param defaultY - Position Y par défaut
+   * @returns Position Y ajustée
+   */
+  suggestVerticalOffset(elementType, referenceType, defaultY) {
+    if (elementType === "tuplet-number" && referenceType === "chord") {
+      return defaultY - this.config.chordTupletVerticalSpacing;
+    }
+    const refElements = this.elements.filter((e) => e.type === referenceType);
+    if (refElements.length === 0) {
+      return defaultY;
+    }
+    const closest = refElements.reduce((prev, curr) => {
+      const prevDist = Math.abs(prev.bbox.y - defaultY);
+      const currDist = Math.abs(curr.bbox.y - defaultY);
+      return currDist < prevDist ? curr : prev;
+    });
+    const refBottom = closest.bbox.y + closest.bbox.height;
+    if (defaultY > closest.bbox.y && defaultY < refBottom) {
+      return refBottom + this.config.minSpacing;
+    }
+    return defaultY;
+  }
+  /**
+   * Efface tous les éléments enregistrés.
+   * Utile pour réinitialiser entre différentes mesures ou lignes.
+   */
+  clear() {
+    this.elements = [];
+    if (this.config.debugMode) {
+      console.log("[CollisionManager] Cleared all elements");
+    }
+  }
+  /**
+   * Efface les éléments d'un type spécifique.
+   * 
+   * @param type - Type d'élément à effacer
+   */
+  clearType(type) {
+    const before = this.elements.length;
+    this.elements = this.elements.filter((e) => e.type !== type);
+    if (this.config.debugMode) {
+      console.log(`[CollisionManager] Cleared ${before - this.elements.length} elements of type ${type}`);
+    }
+  }
+  /**
+   * Obtient tous les éléments enregistrés (lecture seule).
+   * 
+   * @returns Copie du tableau des éléments
+   */
+  getElements() {
+    return [...this.elements];
+  }
+  /**
+   * Obtient les statistiques du gestionnaire.
+   * 
+   * @returns Statistiques sur les éléments enregistrés
+   */
+  getStats() {
+    const byType = {};
+    this.elements.forEach((e) => {
+      byType[e.type] = (byType[e.type] || 0) + 1;
+    });
+    return {
+      total: this.elements.length,
+      byType
+    };
+  }
+  /**
+   * Vérifie si deux bounding boxes se chevauchent (avec marge optionnelle).
+   * 
+   * @param a - Première box
+   * @param b - Deuxième box
+   * @param margin - Marge supplémentaire à considérer
+   * @returns true si collision détectée
+   */
+  boxesCollide(a, b, margin = 0) {
+    return !(a.x + a.width + margin < b.x || b.x + b.width + margin < a.x || a.y + a.height + margin < b.y || b.y + b.height + margin < a.y);
+  }
+};
+
+// src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
   /**
    * Rend une grille d'accords en élément SVG.
@@ -1461,6 +2211,12 @@ var SVGRenderer = class {
       baseMeasureWidth,
       measureHeight
     });
+    const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
+    const timeSigFontSize = 18;
+    const timeSigAvgCharFactor = 0.53;
+    const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
+    const baseLeftPadding = 10;
+    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4;
     const separatorWidth = 12;
     const innerPaddingPerSegment = 20;
     const headHalfMax = 6;
@@ -1475,7 +2231,12 @@ var SVGRenderer = class {
       var _a;
       const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
       if (noteCount <= 1) return 28 + 10 + headHalfMax;
-      const spacing = Math.max(...beat.notes.map((n) => valueMinSpacing(n.value)));
+      const spacing = Math.max(
+        ...beat.notes.map((n) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base;
+        })
+      );
       return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
     };
     const requiredMeasureWidth = (measure) => {
@@ -1531,6 +2292,9 @@ var SVGRenderer = class {
     svg.setAttribute("height", String(height));
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("xmlns", SVG_NS);
+    const collisionManager = new CollisionManager();
+    const tieManager = new TieManager();
+    const notePositions = [];
     const bg = document.createElementNS(SVG_NS, "rect");
     bg.setAttribute("x", "0");
     bg.setAttribute("y", "0");
@@ -1538,11 +2302,16 @@ var SVGRenderer = class {
     bg.setAttribute("height", String(height));
     bg.setAttribute("fill", "white");
     svg.appendChild(bg);
-    const timeSig = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-    const timeText = this.createText(timeSig, 10, 40, "18px", "bold");
+    const timeSigBaselineY = 40;
+    const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, "bold");
     svg.appendChild(timeText);
-    const notePositions = [];
-    const tieManager = new TieManager();
+    svg.__dynamicLineStartPadding = dynamicLineStartPadding;
+    collisionManager.registerElement("time-signature", {
+      x: baseLeftPadding,
+      y: timeSigBaselineY - timeSigFontSize,
+      width: timeSigWidthEstimate,
+      height: timeSigFontSize + 4
+    }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
     DebugLogger.log("\u{1F3BC} Rendering measures");
     let analyzedMeasures = [];
     let level1BeamSet;
@@ -1562,8 +2331,12 @@ var SVGRenderer = class {
                 tieEnd: n.tieEnd || false,
                 tieToVoid: n.tieToVoid || false,
                 tieFromVoid: n.tieFromVoid || false,
-                beatIndex
+                beatIndex,
                 // Preserve beat index for beam breaking
+                tuplet: n.tuplet,
+                // Preserve tuplet information
+                hasLeadingSpace: n.hasLeadingSpace
+                // Preserve spacing flag for tuplet subgroups
               });
             });
           });
@@ -1599,7 +2372,7 @@ var SVGRenderer = class {
       DebugLogger.error("Analyzer preparation failed", e);
       analyzedMeasures = [];
     }
-    const lineAccumulated = new Array(lines).fill(40);
+    const lineAccumulated = new Array(lines).fill(dynamicLineStartPadding);
     measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2, width: mWidth }) => {
       var _a, _b;
       const x = lineAccumulated[lineIndex];
@@ -1616,7 +2389,7 @@ var SVGRenderer = class {
           }
         });
       }
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet);
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager);
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
       if (analyzedMeasures[globalIndex2]) {
         drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions);
@@ -1624,7 +2397,7 @@ var SVGRenderer = class {
       lineAccumulated[lineIndex] += mWidth;
     });
     DebugLogger.log("\u{1F3B5} Note positions collected", { count: notePositions.length });
-    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions);
+    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
     return svg;
   }
   /**
@@ -1664,9 +2437,10 @@ var SVGRenderer = class {
    * @param tieManager - Gestionnaire de liaisons entre lignes
    * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
    */
-  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions) {
+  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, collisionManager) {
+    var _a;
     DebugLogger.log("\u{1F517} Starting tie detection and drawing");
-    const lineStartPadding = 40;
+    const lineStartPadding = (_a = svg.__dynamicLineStartPadding) != null ? _a : 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
     const lineOffsets = new Array(maxLineIndex + 1).fill(lineStartPadding);
     const measureXB = {};
@@ -1717,6 +2491,7 @@ var SVGRenderer = class {
         position: { x: n.x, y: n.y }
       }))
     });
+    const dotsForCollisions = collisionManager ? collisionManager.getElements().filter((e) => e.type === "dot") : [];
     const drawCurve = (startX, startY, endX, endY, isCross) => {
       DebugLogger.log("Drawing tie curve", {
         from: { x: startX, y: startY },
@@ -1726,7 +2501,24 @@ var SVGRenderer = class {
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
-      const controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      let controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      if (collisionManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const preliminaryTopY = controlY;
+        const preliminaryBottomY = Math.max(startY, endY);
+        const overlappingDot = dotsForCollisions.find((d2) => {
+          const db = d2.bbox;
+          const horiz = db.x < maxX && db.x + db.width > minX;
+          const vert = db.y + db.height >= preliminaryTopY && db.y <= preliminaryBottomY;
+          return horiz && vert;
+        });
+        if (overlappingDot) {
+          const raise = Math.max(6, baseAmp * 0.6);
+          controlY -= raise;
+          DebugLogger.log("\u25B2 Raising tie curve to avoid dotted note dot", { raise, newControlY: controlY });
+        }
+      }
       const midX = (startX + endX) / 2;
       const d = `M ${startX} ${startY} Q ${midX} ${controlY} ${endX} ${endY}`;
       path.setAttribute("d", d);
@@ -1734,6 +2526,13 @@ var SVGRenderer = class {
       path.setAttribute("stroke-width", "1.5");
       path.setAttribute("fill", "none");
       svg.appendChild(path);
+      if (collisionManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const topY = controlY;
+        const bottomY = Math.max(startY, endY);
+        collisionManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+      }
     };
     const drawHalfToMeasureRight = (measureIdx, startX, startY) => {
       const bounds = measureXB[measureIdx];

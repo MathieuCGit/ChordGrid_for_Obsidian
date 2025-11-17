@@ -39,6 +39,17 @@ export interface ParsedNote {
   tieToVoid?: boolean;
   tieFromVoid?: boolean;
   beatIndex?: number;  // Beat index within the segment (to break beams at beat boundaries)
+  tuplet?: {
+    count: number;
+    groupId: string;
+    position: 'start' | 'middle' | 'end';
+    ratio?: {
+      numerator: number;
+      denominator: number;
+    };
+  };
+  hasLeadingSpace?: boolean;  // True if there was explicit whitespace before this note in tuplet syntax
+  forcedBeamThroughTie?: boolean; // from parser syntax [_]
   // No beam information here - that's for the analyzer
 }
 
@@ -69,6 +80,8 @@ export interface NoteWithPosition extends ParsedNote {
   segmentIndex: number;
   noteIndexInSegment: number;
   absoluteIndex: number;  // Index in flattened array of all measure notes
+  quarterStart?: number;   // Start position in quarter-note units from measure start
+  quarterDuration?: number; // Duration in quarter-note units
 }
 
 /**

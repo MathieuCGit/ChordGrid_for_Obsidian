@@ -32,6 +32,7 @@ import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
 import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
 import { DebugLogger } from '../utils/DebugLogger';
+import { CollisionManager } from './CollisionManager';
 
 /**
  * Classe principale pour le rendu SVG des grilles d'accords.
@@ -58,7 +59,14 @@ export class SVGRenderer {
       measureHeight 
     });
 
-    // Pre-compute dynamic widths per measure based on rhythmic density
+  // Pre-compute dynamic widths per measure based on rhythmic density
+  // (Time signature width factored into initial padding later)
+  const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
+  const timeSigFontSize = 18;
+  const timeSigAvgCharFactor = 0.53; // further reduced for tighter spacing
+  const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
+  const baseLeftPadding = 10;
+  const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4; // minimal margin after metric
     const separatorWidth = 12;
     const innerPaddingPerSegment = 20;
     const headHalfMax = 6; // for diamond
@@ -73,9 +81,14 @@ export class SVGRenderer {
     };
     const requiredBeatWidth = (beat: any) => {
       const noteCount = beat?.notes?.length || 0;
-  if (noteCount <= 1) return 28 + 10 + headHalfMax; // increased minimal single-note width
-      const spacing = Math.max(...beat.notes.map((n: any) => valueMinSpacing(n.value)));
-  return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8; // +8 extra breathing room
+      if (noteCount <= 1) return 28 + 10 + headHalfMax; // increased minimal single-note width
+      const spacing = Math.max(
+        ...beat.notes.map((n: any) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base; // give short rests a bit more room when estimating width
+        })
+      );
+      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8; // +8 extra breathing room
     };
     const requiredMeasureWidth = (measure: any) => {
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
@@ -146,6 +159,11 @@ export class SVGRenderer {
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('xmlns', SVG_NS);
 
+    // Initialize managers
+    const collisionManager = new CollisionManager();
+    const tieManager = new TieManager();
+    const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
+
     // white background
     const bg = document.createElementNS(SVG_NS, 'rect');
     bg.setAttribute('x', '0');
@@ -155,13 +173,17 @@ export class SVGRenderer {
     bg.setAttribute('fill', 'white');
     svg.appendChild(bg);
 
-    // time signature text
-    const timeSig = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-    const timeText = this.createText(timeSig, 10, 40, '18px', 'bold');
+    // time signature text (already measured before layout)
+    const timeSigBaselineY = 40;
+    const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, 'bold');
     svg.appendChild(timeText);
-
-  const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
-  const tieManager = new TieManager();
+    (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
+    collisionManager.registerElement('time-signature', {
+      x: baseLeftPadding,
+      y: timeSigBaselineY - timeSigFontSize,
+      width: timeSigWidthEstimate,
+      height: timeSigFontSize + 4
+    }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
 
     DebugLogger.log('🎼 Rendering measures');
     // Prepare analyzed measures for beam rendering
@@ -185,7 +207,9 @@ export class SVGRenderer {
                 tieEnd: n.tieEnd || false,
                 tieToVoid: n.tieToVoid || false,
                 tieFromVoid: n.tieFromVoid || false,
-                beatIndex  // Preserve beat index for beam breaking
+                beatIndex,  // Preserve beat index for beam breaking
+                tuplet: n.tuplet,  // Preserve tuplet information
+                hasLeadingSpace: n.hasLeadingSpace  // Preserve spacing flag for tuplet subgroups
               });
             });
           });
@@ -222,7 +246,8 @@ export class SVGRenderer {
       analyzedMeasures = [];
     }
 
-    const lineAccumulated: number[] = new Array(lines).fill(40);
+  // Use dynamic padding instead of fixed 40 to prevent overlap with multi-digit time signatures
+  const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
     measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex, width: mWidth}) => {
       const x = lineAccumulated[lineIndex];
       const y = lineIndex * (measureHeight + 20) + 20;
@@ -239,7 +264,7 @@ export class SVGRenderer {
           }
         });
       }
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet);
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager);
       mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
       // Draw analyzer beams overlay
@@ -252,7 +277,7 @@ export class SVGRenderer {
   DebugLogger.log('🎵 Note positions collected', { count: notePositions.length });
   
   // draw ties using collected notePositions and the TieManager for cross-line ties
-  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions);
+  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
 
     return svg;
   }
@@ -300,11 +325,13 @@ export class SVGRenderer {
     notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[],
     svgWidth: number,
     tieManager: TieManager,
-    measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[]
+    measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
+    collisionManager?: CollisionManager
   ) {
     DebugLogger.log('🔗 Starting tie detection and drawing');
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
-    const lineStartPadding = 40; // must match createSVG lineAccumulated init
+  // Use same dynamic padding as measure start to align tie rendering
+  const lineStartPadding = (svg as any).__dynamicLineStartPadding ?? 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map(m => m.lineIndex));
     const lineOffsets: number[] = new Array(maxLineIndex + 1).fill(lineStartPadding);
     const measureXB: Record<number, { xStart: number; xEnd: number; y: number }> = {};
@@ -381,6 +408,8 @@ export class SVGRenderer {
       }))
     });
 
+    const dotsForCollisions = collisionManager ? collisionManager.getElements().filter(e => e.type === 'dot') : [];
+
     const drawCurve = (startX: number, startY: number, endX: number, endY: number, isCross: boolean) => {
       DebugLogger.log('Drawing tie curve', { 
         from: { x: startX, y: startY }, 
@@ -391,7 +420,25 @@ export class SVGRenderer {
       const path = document.createElementNS(SVG_NS, 'path');
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
-      const controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      let controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      // Collision avoidance: raise curve if any dot lies inside the preliminary tie area
+      if (collisionManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const preliminaryTopY = controlY;
+        const preliminaryBottomY = Math.max(startY, endY);
+        const overlappingDot = dotsForCollisions.find(d => {
+          const db = d.bbox;
+          const horiz = db.x < maxX && (db.x + db.width) > minX;
+          const vert = db.y + db.height >= preliminaryTopY && db.y <= preliminaryBottomY; // simple overlap test
+          return horiz && vert;
+        });
+        if (overlappingDot) {
+          const raise = Math.max(6, baseAmp * 0.6);
+          controlY -= raise; // move curve further up
+          DebugLogger.log('▲ Raising tie curve to avoid dotted note dot', { raise, newControlY: controlY });
+        }
+      }
       const midX = (startX + endX) / 2;
       const d = `M ${startX} ${startY} Q ${midX} ${controlY} ${endX} ${endY}`;
       path.setAttribute('d', d);
@@ -399,6 +446,14 @@ export class SVGRenderer {
       path.setAttribute('stroke-width', '1.5');
       path.setAttribute('fill', 'none');
       svg.appendChild(path);
+      // Register tie bounding box approximation
+      if (collisionManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const topY = controlY;
+        const bottomY = Math.max(startY, endY);
+        collisionManager.registerElement('tie', { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+      }
     };
 
     const drawHalfToMeasureRight = (measureIdx: number, startX: number, startY: number) => {
@@ -555,5 +610,7 @@ export class SVGRenderer {
       totalMatched: matched.size, 
       totalNotes: notePositions.length 
     });
+
+    // Tie curves already adjusted during drawing if collision with dots detected.
   }
 }

@@ -2,7 +2,7 @@
 
 Cas problématique : la dernière croche de `[_4 2_8]` devrait être ligaturée avec `G[8]`
 
-```chord-grid
+```chordgrid
 4/4 | Am[4. 8_4 4_] | [_4 2_8]G[8] |
 ```
 

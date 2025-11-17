@@ -4,7 +4,11 @@
 
 > Affiche des grilles d'accords avec une notation rythmique précise, rendue en SVG net et scalable dans vos notes Obsidian.
 
-**Version :** 2.0.0 · **Licence :** GPL-3.0 · **Statut :** Stable
+**Version :** 2.1.0 · **Licence :** GPL-3.0 · **Statut :** Stable
+
+**Dernière version :** [v2.1.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.1.0) - **NOUVEAU : Système de gestion des collisions pour une mise en page professionnelle**
+
+Ce plugin analyse une syntaxe textuelle légère et la transforme en mesures musicales structurées (accords, groupes rythmiques, liaisons, silences), puis les rend avec une logique de ligature automatique via une architecture propre en 3 étapes : **Parser → Analyseur → Rendu**.
 
 ## Installation
 
@@ -29,6 +33,15 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 ### Syntaxe
 
 **Indication de mesure :** `4/4`, `3/4`, `6/8`, `12/8`, etc.
+
+**Modes de groupement (v2.1+) :** Contrôle le comportement automatique de ligature des croches
+- `4/4 binary` - Force le groupement par 2 croches (tous les 1.0 temps de noire)
+- `6/8 ternary` - Force le groupement par 3 croches (tous les 1.5 temps de noire)
+- `4/4 noauto` - Désactive complètement l'auto-groupement ; contrôle utilisateur via espaces
+- Par défaut (sans mot-clé) - Détection automatique selon la métrique :
+  - Binaire : dénominateurs ≤ 4 (2/4, 3/4, 4/4, 5/4, etc.)
+  - Ternaire : dénominateurs ≥ 8 avec numérateurs 3, 6, 9 ou 12 (6/8, 9/8, 12/8)
+  - Irrégulier : autres métriques (5/8, 7/8, 11/8) - pas d'auto-groupement, contrôlé par espaces
 
 **Barres de mesure :**
 - `|` : barre simple
@@ -67,8 +80,43 @@ Exemple : `C[4 -4 88_4]` = noire, soupir de noire, deux croches avec la dernièr
 - Les nombres collés décrivent un battement groupé (ex: `88` = 2 croches liées)
 - Les espaces séparent les groupes de ligature
 - Le point `.` crée une note pointée (`4.` noire pointée, `8.` croche pointée)
-- Le `_` crée une liaison (tie). Exemple : `[88_4]` lie la dernière croche au début de la noire suivante
-- On peut lier à travers une barre de mesure : `C[2 4_88_] | [_8]`
+
+**Liaisons (Ties) :**
+- Utilisez le tiret bas `_` pour créer des liaisons entre notes
+- `_` **après** une note = la note démarre une liaison (émet)
+- `_` **avant** une note = la note reçoit une liaison (termine)
+- Exemples :
+  - `[88_4]` = liaison entre la dernière croche et la noire
+  - `[2 4_88_]` = liaison de la noire vers les deux croches
+  - `C[2 4_88_] | [_8]` = liaison à travers la barre de mesure (dernière croche de la mesure 1 liée à la première croche de la mesure 2)
+  - `{8_8_8}3` = les trois notes du triolet liées ensemble
+  - `4_{8 8 8}3` = noire liée à la première note du triolet
+  - `{8 8 8_}3 4` = dernière note du triolet liée à la noire suivante
+  - `| 4_ | {_8 8 8}3 |` = liaison cross-mesure vers un tuplet
+
+**Triolets et tuplets (v2.1+) :**
+Les tuplets permettent de grouper des notes pour jouer N notes dans le temps normalement occupé par un nombre différent. Syntaxe : `{notes}N` où N est le nombre du tuplet.
+
+- **Notation compacte** (notes collées) : `{888}3` = triolet avec toutes les notes liées par une ligature
+- **Notation espacée** (notes séparées) : `{8 8 8}3` = triolet avec crochets indépendants
+- **Ligatures multi-niveaux** : `{161616 161616}6` = 6 doubles-croches groupées en 2×3, avec ligature niveau 1 reliant les 6 notes et ligatures niveau 2 en deux segments
+- **Liaisons dans les tuplets** : `{8_8_8}3` = triolet avec toutes les notes liées
+- **Liaisons traversant les tuplets** :
+  - `4_{8 8 8}3` = noire liée au début du triolet
+  - `{8 8 8_}3 4` = triolet lié à la note suivante
+  - `| 4_ | {_8 8 8}3 |` = liaison cross-mesure vers un tuplet
+- **Patterns de liaisons complexes** : `4_{8_8_8}3_4` = liaison continue à travers tout le tuplet
+
+Exemples :
+- `{888}3` = triolet de croches (ligature complète)
+- `{8 8 8}3` = triolet de croches (crochets séparés)
+- `{444}3` = triolet de noires
+- `{8 -8 8}3` = triolet avec silence au milieu
+- `{161616}3` = triolet de doubles-croches
+- `{161616 161616}6` = sextolet avec ligatures multi-niveaux avancées
+- `{8_8_8}3` = triolet avec toutes les notes liées (legato)
+- `{8_8 8}3` = triolet avec les deux premières notes liées
+- Mesure complète en 4/4 : `| [{888}3 {888}3 {888}3 {888}3] |`
 
 Rappel :
 - `_` en fin ou début de groupe permet de lier vers/depuis la mesure suivante
@@ -96,6 +144,13 @@ Rappel :
 | `4_88_ | [_8]` | Liaison à travers la barre de mesure |
 | `C[8]G[8]` | Ligature inter-segments si aucun espace (analyseur) |
 | `C[8] G[8]` | Espace = ligature cassée |
+| `{888}3` | Triolet de croches (ligature complète) |
+| `{8 8 8}3` | Triolet de croches (crochets séparés) |
+| `{161616 161616}6` | Sextolet avec ligatures multi-niveaux (2×3) |
+| `{8_8_8}3` | Triolet avec toutes les notes liées |
+| `4_{8 8 8}3` | Noire liée à la première note du triolet |
+| `{8 8 8_}3 4` | Dernière note du triolet liée à la noire |
+| `| 4_ | {_8 8 8}3 |` | Liaison cross-mesure vers un tuplet |
 
 ### Exemples
 
@@ -135,6 +190,21 @@ Rappel :
 4/4 | C[2 4_88_] | [_8] G[8 4 4 4] | Am[88_4 4 88_] | [_4] Dm[2.] | C[4 4 4_88_] | [_88 4] D[4 4] |
 ```
 
+**Triolets et tuplets (v2.1+) :**
+```chordgrid
+4/4 | C[{888}3 4] | G[{161616}3 {161616}3] | Am[{444}3] | F[{888}3 {888}3 {888}3] |
+```
+
+**Tuplets avec liaisons (v2.1+) :**
+```chordgrid
+4/4 | C[{8_8_8}3] | G[4_{8 8 8}3] | Am[{8 8 8_}3 4] |
+```
+
+**Liaisons cross-mesure avec tuplets (v2.1+) :**
+```chordgrid
+4/4 | C[4 4 4 4_] | D[{_8 8 8_}3 _4 4 4] |
+```
+
 **Attention aux espaces avant un accord :**
 ```chordgrid
 [_8] G[8 4 4 4]
@@ -157,41 +227,60 @@ L'espace avant `G` casse la ligature.
 
 - ✅ Rendu SVG vectoriel
 - ✅ Grilles d'accords avec notation rythmique
-- ✅ Groupement automatique des croches par battement (chemin legacy)
+- ✅ **Système CollisionManager** (v2.1.0) – placement intelligent des éléments évitant les chevauchements
+- ✅ **Espacement dynamique des signatures rythmiques** (v2.1.0) – calcul automatique de largeur et padding adaptatif
+- ✅ **Évitement de collision pour notes pointées** (v2.1.0) – courbes de liaison relevées automatiquement
+- ✅ Groupement automatique des croches par battement (basé sur analyseur)
+- ✅ **Ligatures inter-segments via analyseur** (v2.0.0) – ligatures continues au-delà des frontières d'accords
+- ✅ **Tuplets & signatures rythmiques complexes** (v2.1.0) – triolets, quintolets, ratios personnalisables
 - ✅ Barres de reprise & types de barres
-- ✅ Signatures rythmiques (simples & composées)
-- ✅ 4 mesures par ligne (auto)
-- ✅ Largeur de mesure dynamique
+- ✅ Support de signatures rythmiques (12+ signatures : 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 6/8, 7/8, 9/8, 11/8, 12/8, 15/16)
+- ✅ 4 mesures par ligne (automatique, avec sauts de ligne manuels)
+- ✅ Largeur de mesure dynamique basée sur la densité rythmique
 - ✅ Notes pointées, liaisons, silences
-- ✅ **Logger de debug inline** (v1.1.0)
-- ✅ **Rendu amélioré des ligatures complexes**
-- 🚧 **Ligatures inter-segments via analyseur** (v2.0.0)
-- 🚧 **Overlay de ligature basé sur analyse** (feature flag)
-- 🚧 Prévu : tuplets, appoggiatures, articulations, dynamiques, export
+- ✅ **Logger de debug inline** (v1.1.0) – panneau de debug pliable
+- ✅ **Rendu amélioré des ligatures** pour motifs rythmiques complexes avec support multi-niveaux
+- 🚧 Prévu : appoggiatures, articulations, dynamiques, formats d'export
 
 ### Limitations actuelles
 
-- Overlay d'analyse expérimental (fallback legacy)
-- Pas encore de dynamiques, articulations, appoggiatures, tuplets
+- Pas encore de dynamiques, articulations, appoggiatures
 - Pas d'export (PDF/PNG/MIDI) pour le moment
-- Cas très complexes avec notes pointées + silences : décisions limitées en mode legacy
 
 ### Feuille de route (haut niveau)
 | Jalon | Contenu |
 |-------|---------|
 | v1.x Maintenance | Stabilité, corrections, polissage de la doc |
-| v2.0 Analyseur | Séparation Parser → Analyzer → Renderer, beaming unifié |
-| v2.1 Tuplets & appoggiatures | Extension du modèle de durée |
-| v2.2 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
-| v2.3 Export | Export PNG / SVG propre + POC MIDI |
+| v2.0 Analyseur | ✅ Séparation Parser → Analyzer → Renderer, beaming unifié |
+| v2.1 Tuplets & gestion des collisions | ✅ Implémentation complète des tuplets (triolets, quintolets, ratios personnalisables), signatures temporelles complexes (12+), système intelligent d'évitement de collisions |
+| v2.2 Appoggiatures & ornements | Extension du modèle pour les notes d'agrément |
+| v2.3 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
+| v2.4 Export | Export PNG / SVG propre + POC MIDI |
 | v3.0 Édition | Édition interactive dans la note |
 
-## Architecture (refonte v2.0 – ✅ Terminée)
+## Architecture (v2.1 – ✅ Terminée avec gestion des collisions)
 
-Pipeline en 3 couches (implémentation complète) :
-1. **Parseur** – Extraction purement syntaxique (mesures, segments, groupes rythmiques, espaces, ties)
-2. **Analyseur** – Détermination des groupes de ligatures multi-niveaux (8/16/32/64), franchissant les segments d'accords
-3. **Renderer** – Dessin des éléments graphiques avec ligatures pilotées par l'analyseur
+Pipeline de rendu en 3 couches avec détection intelligente des collisions :
+
+1. **Parseur** (`ChordGridParser`) – Analyse syntaxique de la grille en mesures et segments structurés (tokens, groupes rythmiques, liaisons, silences, reconnaissance des espaces, tuplets).
+2. **Analyseur** (`MusicAnalyzer`) – Calcul de la sémantique musicale, en particulier les groupes de ligatures pouvant traverser les frontières de segments d'accords. Produit des `BeamGroup[]` avec des `NoteReference` pointant vers les notes analysées.
+3. **Renderer** (`SVGRenderer` + sous-renderers) – Dessine notes/hampes/liaisons et utilise les ligatures pilotées par l'analyseur pour un beaming inter-segments correct. **CollisionManager** assure un placement intelligent des éléments.
+
+#### Composants clés (v2.1)
+
+**CollisionManager** : Système central gérant les conflits spatiaux entre éléments rendus
+- Suivi des boîtes englobantes pour tous les éléments visuels (accords, notes, hampes, tuplets, silences, signatures rythmiques, points, liaisons)
+- Résolution basée sur les priorités (éléments fixes vs éléments mobiles)
+- Détection de collision via boîtes englobantes alignées sur les axes (AABB) avec marges configurables
+- Algorithme `findFreePosition()` avec recherche en spirale
+- Positionnement intelligent pour numéros de tuplets, symboles d'accords et courbes de liaison
+- Ajustement automatique : courbes de liaison relevées en cas de chevauchement avec les points de notes pointées
+
+**Espacement dynamique** : Système de mise en page adaptative
+- Largeur de signature rythmique calculée selon le contenu (longueur numérateur/dénominateur)
+- Padding gauche réactif prévenant le chevauchement avec la première mesure
+- Largeurs de mesure calculées à partir de la densité rythmique (plus de notes = mesure plus large)
+- Espacement plus serré et professionnel (facteur 0.53, marge 4px)
 
 #### Schéma Mermaid
 
@@ -199,13 +288,23 @@ Pipeline en 3 couches (implémentation complète) :
 flowchart TD
     A[Notation chordgrid] --> B[Parseur\nChordGridParser]
     B --> C[Analyseur\nMusicAnalyzer]
-    C --> D[Overlay des ligatures\nAnalyzerBeamOverlay]
-    D --> E[Renderer\nSVGRenderer + Measure/Note/Rest]
-    E --> F[Sortie SVG]
+    C --> D[Gestionnaire de collisions\nEnregistrement des éléments]
+    D --> E[Overlay des ligatures\nAnalyzerBeamOverlay]
+    E --> F[Renderer\nSVGRenderer + Measure/Note/Rest]
+    F --> G[Résolution des collisions\nAjustements]
+    G --> H[Sortie SVG]
 ```
 
 **Pourquoi un analyseur ?**
 Pour autoriser des ligatures cohérentes à travers des frontières d'accord sans espace et gérer la direction des beamlets avec des notes pointées.
+
+**Pourquoi le CollisionManager ?**
+La notation musicale professionnelle nécessite un espacement précis pour éviter les conflits visuels. Le CollisionManager :
+- Empêche les signatures rythmiques de chevaucher la première mesure
+- Positionne les numéros de tuplets au-dessus des symboles d'accords automatiquement
+- Ajuste les courbes de liaison pour éviter les points de notes pointées
+- Maintient des mises en page propres et lisibles quelle que soit la densité rythmique
+- Permet les améliorations futures (dynamiques, articulations) sans espacement manuel
 
 ### Exemple de ligature inter-segments
 ```chordgrid
@@ -220,11 +319,12 @@ Avec espace :
 Ligature cassée.
 
 ### Étapes prochaines
-- Remplacer complètement l'ancien beaming par la sortie de l'analyseur
-- Support des tuplets & grace notes
-- Tests de rendu (snapshots) pour SVG
-- Documentation avancée (cas limites, ties complexes)
-- Points d'accroche pour l'export
+- Documentation complète de l'API CollisionManager
+- Profilage des performances pour grandes grilles (100+ mesures)
+- Extension du système de collision pour dynamiques et articulations
+- Appoggiatures avec extension du modèle de durée
+- Tests de snapshot pour cohérence du rendu SVG
+- Points d'accroche pour export (PNG/PDF/MIDI)
 
 ## Développement
 

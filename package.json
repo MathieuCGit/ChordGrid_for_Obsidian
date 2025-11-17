@@ -1,12 +1,13 @@
 {
   "name": "obsidian-chord-grid",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Obsidian plugin to render chord grids with rhythmic notation (SVG).",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck main.ts && node esbuild.config.mjs production",
-    "test": "ts-node ./test/parse.spec.ts",
+    "test": "jest",
+    "test:parse": "ts-node ./test/parse.spec.ts",
     "debug": "ts-node ./test/debug_parse.ts"
   },
   "keywords": [
@@ -19,12 +20,15 @@
   "author": "Mathieu CONAN",
   "license": "GPL-3.0",
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.27.0",
+    "jest": "^30.2.0",
     "obsidian": "latest",
+    "ts-jest": "^29.4.5",
     "ts-node": "10.9.1",
     "tslib": "2.6.2",
     "typescript": "5.3.3"

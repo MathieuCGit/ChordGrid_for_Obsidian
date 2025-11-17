@@ -1,61 +1,46 @@
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 
-function assert(condition: boolean, msg: string) {
-  if (!condition) {
-    console.error('ASSERT FAILED:', msg);
-    process.exit(1);
-  }
-}
+declare const describe: any;
+declare const it: any;
+declare const expect: any;
+declare const beforeEach: any;
 
-const parser = new ChordGridParser();
+describe('ChordGridParser - parsing examples', () => {
+  let parser: ChordGridParser;
 
-const examples = [
-  {
-    name: 'chord segments test',
-    input: '4/4 | Dm[4 4] G[88 88] |',
-    valid: true,
-    check: (result: { grid: { measures: Array<{ chordSegments?: Array<{chord: string}> }> } }) => {
-      const m = result.grid.measures[0];
-      if (!m.chordSegments || m.chordSegments.length !== 2) {
-        assert(false, "Should have 2 chord segments");
-        return;
-      }
-      assert(m.chordSegments[0].chord === "Dm", "First segment should be Dm");
-      assert(m.chordSegments[1].chord === "G", "Second segment should be G");
-    }
-  },
-  {
-    name: 'simple 4/4',
-    input: '4/4 | G[4 4 4 4] |',
-    valid: true
-  },
-  {
-    name: 'repeat example from README',
-    input: '4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||',
-    valid: true
-  },
-  {
-    name: 'cross-measure tie',
-    input: '4/4 | C[2 4_88_] | [_8] G[8 4 4 4] |',
-    valid: true
-  },
-  {
-    name: 'invalid measure length',
-    input: '4/4 | C[4 4 4] |',
-    valid: false
-  }
-];
+  beforeEach(() => {
+    parser = new ChordGridParser();
+  });
 
-for (const ex of examples) {
-  console.log('Running:', ex.name);
-  const result = parser.parse(ex.input);
-  const ok = result.errors.length === 0;
-  if (ex.valid) {
-    assert(ok, `${ex.name} should be valid but had errors: ${JSON.stringify(result.errors)}`);
-  } else {
-    assert(!ok, `${ex.name} should be invalid but had no errors`);
-  }
-  console.log('  -> errors:', result.errors.map(e => e.message));
-}
+  it('should parse chord segments correctly', () => {
+    const result = parser.parse('4/4 | Dm[4 4] G[88 88] |');
+    expect(result.errors).toHaveLength(0);
+    
+    const m = result.grid.measures[0];
+    expect(m.chordSegments).toHaveLength(2);
+    expect(m.chordSegments[0].chord).toBe('Dm');
+    expect(m.chordSegments[1].chord).toBe('G');
+  });
 
-console.log('All tests passed.');
+  it('should parse simple 4/4 measure', () => {
+    const result = parser.parse('4/4 | G[4 4 4 4] |');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should parse repeat example from README', () => {
+    const result = parser.parse('4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should parse cross-measure tie', () => {
+    const result = parser.parse('4/4 | C[2 4_88_] | [_8] G[8 4 4 4] |');
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should detect invalid measure length', () => {
+    const result = parser.parse('4/4 | C[4 4 4] |');
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0].message).toContain('expected 4 quarter-notes');
+  });
+});
+

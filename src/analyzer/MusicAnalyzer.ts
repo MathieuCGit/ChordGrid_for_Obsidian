@@ -11,6 +11,7 @@
  * - Respect segment boundaries when leadingSpace=true
  * - Handle beamlets for isolated notes
  * - Apply musical notation rules (e.g., beamlet direction with dotted notes)
+ * - Auto-detect binary vs ternary grouping and break beams at beat boundaries
  * 
  * @example
  * ```typescript
@@ -20,7 +21,7 @@
  * ```
  */
 
-import { NoteValue } from '../parser/type';
+import { NoteValue, GroupingMode, TimeSignature } from '../parser/type';
 import {
   ParsedMeasure,
   ParsedSegment,
@@ -82,21 +83,86 @@ export class MusicAnalyzer {
     };
   }
   
+  
   /**
-   * Flatten all notes from all segments into a single array with positions
+   * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
+   * 
+   * Rules:
+   * - noauto: user controls grouping via spaces (no auto-breaking)
+   * - binary: group by 2 eighths (1.0 quarter)
+   * - ternary: group by 3 eighths (1.5 quarters)
+   * - auto: detect from time signature
+   *   - denominator <= 4: binary (quarter-note based, group by 2)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
+   *   - else: irregular (space-based grouping, no auto-breaking)
+   */
+  private resolveGroupingMode(timeSignature: TimeSignature): 'binary' | 'ternary' | 'irregular' {
+    // Handle explicit modes
+    if (timeSignature.groupingMode === 'noauto') {
+      return 'irregular';
+    }
+    if (timeSignature.groupingMode === 'binary') {
+      return 'binary';
+    }
+    if (timeSignature.groupingMode === 'ternary') {
+      return 'ternary';
+    }
+    
+    // Auto-detection for 'auto' mode
+    const { numerator, denominator } = timeSignature;
+    
+    if (denominator <= 4) {
+      return 'binary';
+    }
+    
+    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+      return 'ternary';
+    }
+    
+    // Irregular meters default to no auto-grouping
+    return 'irregular';
+  }
+  
+  /**
+   * Calculate note duration in quarter-note units
+   */
+  private getNoteDuration(note: ParsedNote): number {
+    let duration = 4 / note.value; // Convert to quarter-note units
+    if (note.dotted) {
+      duration *= 1.5;
+    }
+    
+    // Handle tuplet ratio if present
+    if (note.tuplet?.ratio) {
+      const { numerator, denominator } = note.tuplet.ratio;
+      duration *= (denominator / numerator);
+    }
+    
+    return duration;
+  }
+  
+  /**
+   * Flatten all notes from all segments into a single array with positions and timing
    */
   private flattenNotes(measure: ParsedMeasure): NoteWithPosition[] {
     const allNotes: NoteWithPosition[] = [];
     let absoluteIndex = 0;
+    let quarterPosition = 0; // Running quarter-note position
     
     measure.segments.forEach((segment, segmentIndex) => {
       segment.notes.forEach((note, noteIndexInSegment) => {
+        const duration = this.getNoteDuration(note);
+        
         allNotes.push({
           ...note,
           segmentIndex,
           noteIndexInSegment,
-          absoluteIndex: absoluteIndex++
+          absoluteIndex: absoluteIndex++,
+          quarterStart: quarterPosition,
+          quarterDuration: duration
         });
+        
+        quarterPosition += duration;
       });
     });
     
@@ -170,23 +236,62 @@ export class MusicAnalyzer {
         const bLevel = this.getBeamLevel(allNotes[bIdx].value);
         const notesLevel = Math.min(aLevel, bLevel);
         
+        // Check if we're in a tuplet (special beam rules for rests in tuplets)
+        const inTuplet = (allNotes[aIdx] as any).tuplet || (allNotes[bIdx] as any).tuplet;
+        
+  // Check if note b has hasLeadingSpace (space-induced break)
+  const bNote = allNotes[bIdx];
+  // Exception: If previous note forced beam through tie, ignore space break
+  const aNote = allNotes[aIdx];
+  if ((bNote as any).hasLeadingSpace && !(aNote as any).forcedBeamThroughTie) {
+          // Find minimum beam level in the previous subgroup (notes before this one in the tuplet)
+          // Look backward from current note to find the minimum level of the group
+          let minGroupLevel = Infinity;
+          for (let lookback = j; lookback >= 0; lookback--) {
+            const prevNote = allNotes[noteIndices[lookback]];
+            const prevLevel = this.getBeamLevel(prevNote.value);
+            minGroupLevel = Math.min(minGroupLevel, prevLevel);
+            
+            // Stop at previous hasLeadingSpace boundary
+            if (lookback < j && (prevNote as any).hasLeadingSpace) break;
+          }
+          
+          // Block from max(minGroupLevel, 2) onwards
+          // Rule: space separates beams at the minimum level and above, BUT never level 1
+          // Example: if group has 8th notes (level 1), block from level 2+ (preserve level 1)
+          // Example: if group has 16th notes (level 2), block from level 2+ (preserve level 1 only)
+          // Example: if group has 32nd notes (level 3), block from level 3+ (preserve levels 1 and 2)
+          if (minGroupLevel < Infinity) {
+            blockFromLevel = Math.min(blockFromLevel, Math.max(minGroupLevel, 2));
+          }
+        }
+        
         // Scan between aAbs and bAbs for rests
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find(n => n.absoluteIndex === t);
           if (mid && (mid as any).isRest) {
             const restLevel = this.getBeamLevel((mid as any).value);
             
-            // Exception: if a rest can be decomposed into units matching the adjacent notes,
-            // maintain the beam at the notes' level and only break higher levels
-            // Example: 16-816 (rest -8 = two -16) → maintain level 1, break level 2+
-            // Rule: if rest level = notes level - 1, only block from notes level
-            if (restLevel === notesLevel - 1) {
-              // Rest is one level below notes (e.g., -8 between two 16)
-              // Block only from the notes' level and above
-              blockFromLevel = Math.min(blockFromLevel, notesLevel);
+            if (inTuplet) {
+              // In tuplets: rests below notes level don't break that level
+              // But rests at same level DO break that level (create beamlets)
+              // Example: {16-1616}3 → rest -16 DOES break level 2 (creates beamlets)
+              // Example: {16-816}3 → rest -8 doesn't break level 2 (maintains beam)
+              // Rule: if rest level < notes level, block from (notes level + 1)
+              //       if rest level >= notes level, block from rest level
+              if (restLevel < notesLevel) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             } else {
-              // Normal case: rest blocks from its own level
-              blockFromLevel = Math.min(blockFromLevel, restLevel);
+              // Outside tuplets: use original rule
+              // Example: 16-816 → rest -8 blocks from level 2 (can decompose to two -16)
+              if (restLevel === notesLevel - 1) {
+                blockFromLevel = Math.min(blockFromLevel, notesLevel);
+              } else {
+                blockFromLevel = Math.min(blockFromLevel, restLevel);
+              }
             }
           }
         }
@@ -331,14 +436,73 @@ export class MusicAnalyzer {
   }
 
   private isHardBreakBetween(a: NoteWithPosition, b: NoteWithPosition, measure: ParsedMeasure): boolean {
-    // Beat boundary within same segment
+     // Check if previous note has forced beam through tie ([_] syntax)
+     // This takes absolute priority over all other rules
+     if ((a as any).forcedBeamThroughTie) {
+       DebugLogger.log('🔗 Forced beam through tie [_]', {
+         fromNote: a.absoluteIndex,
+         toNote: b.absoluteIndex
+       });
+       return false; // Don't break beam
+     }
+     
+    // PRIORITY 1: Beat boundary within same segment (explicit space in syntax)
+    // If notes are in different beats, they are separated by space = hard break
+    // EXCEPTION: when both notes belong to the SAME tuplet group, we do NOT create a hard break here.
+    //            Instead, we preserve the primary beam (level 1) and let higher-level beams
+    //            be blocked via blocksBetween using hasLeadingSpace logic. This matches common
+    //            engraving where tuplets keep a continuous primary beam even if spaced.
     if (a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) {
-      DebugLogger.log('🔍 Beat boundary within segment', {
+      const aTuplet = (a as any).tuplet;
+      const bTuplet = (b as any).tuplet;
+      if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
+        // Inside same tuplet group: do not hard-break; higher-level beam breaks handled later
+        return false;
+      }
+      DebugLogger.log('🔍 Beat boundary within segment (space)', {
         fromBeat: a.beatIndex,
         toBeat: b.beatIndex,
         segment: a.segmentIndex
       });
       return true;
+    }
+    
+    // PRIORITY 2: Auto-break at beat boundaries based on grouping mode
+    // Only applies WITHIN the same beat (no explicit space)
+    if (a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) === (b.beatIndex ?? -1)) {
+      // Do NOT auto-break within the same tuplet group; tuplets should keep primary beam continuity
+      const aTuplet2 = (a as any).tuplet;
+      const bTuplet2 = (b as any).tuplet;
+      if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
+        // Skip auto-breaks for tuplets; spacing-level breaks handled by blocksBetween
+        return false;
+      }
+      if (measure.timeSignature) {
+        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
+        
+        // Skip auto-breaking for irregular meters and noauto mode
+        if (resolvedMode !== 'irregular' && a.quarterStart !== undefined && b.quarterStart !== undefined) {
+          // Group size in quarter-note units:
+          // - binary: 2 eighths = 1.0 quarters
+          // - ternary: 3 eighths = 1.5 quarters
+          const groupSize = resolvedMode === 'binary' ? 1.0 : 1.5;
+          
+          // Determine which beat group each note belongs to
+          const aGroup = Math.floor(a.quarterStart / groupSize);
+          const bGroup = Math.floor(b.quarterStart / groupSize);
+          
+          if (aGroup !== bGroup) {
+            DebugLogger.log(`🎵 Auto-break at ${resolvedMode} boundary`, {
+              aStart: a.quarterStart,
+              bStart: b.quarterStart,
+              groupSize,
+              aGroup,
+              bGroup
+            });
+            return true;
+          }
+        }
+      }
     }
     
     // Segment boundary with leadingSpace
@@ -369,6 +533,21 @@ export class MusicAnalyzer {
     allNotes: NoteWithPosition[]
   ): 'left' | 'right' {
     const posInGroup = groupIndices.indexOf(noteIndex);
+    const currentNote = allNotes[noteIndex];
+    
+    // Check if note is preceded by space (hasLeadingSpace) → point right
+    if ((currentNote as any).hasLeadingSpace) {
+      return 'right';
+    }
+    
+    // Check if note is followed by space → point left
+    if (posInGroup < groupIndices.length - 1) {
+      const nextIdx = groupIndices[posInGroup + 1];
+      const nextNote = allNotes[nextIdx];
+      if ((nextNote as any).hasLeadingSpace) {
+        return 'left';
+      }
+    }
     
     // Check previous note in group
     if (posInGroup > 0) {

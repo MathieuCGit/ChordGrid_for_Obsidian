@@ -5,9 +5,11 @@
 > Display clean chord grids with precise rhythmic notation rendered as crisp, scalable SVG inside your Obsidian notes.
 
 <!-- Badges (manual style to avoid external services) -->
-**Version:** 2.0.0 · **License:** GPL-3.0 · **Status:** Stable
+**Version:** 2.1.0 · **License:** GPL-3.0 · **Status:** Stable
 
-This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic. A refactor toward a 3‑stage pipeline (Parser → Analyzer → Renderer) is underway.
+**Latest Release:** [v2.1.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.1.0) - **NEW: Collision management system for professional-quality layout**
+
+This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic using a clean 3‑stage pipeline: **Parser → Analyzer → Renderer**.
 
 ## Installation
 
@@ -39,6 +41,15 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 ### Syntax
 
 **Time signature:** `4/4`, `3/4`, `6/8`, `12/8`, etc.
+
+**Grouping modes (v2.1+):** Control automatic beam grouping behavior
+- `4/4 binary` - Force grouping by 2 eighth notes (every 1.0 quarter note)
+- `6/8 ternary` - Force grouping by 3 eighth notes (every 1.5 quarter notes)
+- `4/4 noauto` - Disable auto-grouping entirely; user controls via spaces
+- Default (no keyword) - Auto-detection based on time signature:
+  - Binary: denominators ≤ 4 (2/4, 3/4, 4/4, 5/4, etc.)
+  - Ternary: denominators ≥ 8 with numerators 3, 6, 9, or 12 (6/8, 9/8, 12/8)
+  - Irregular: other meters (5/8, 7/8, 11/8) - no auto-grouping, space-controlled
 
 **Bar lines:**
 - `|` : Single bar
@@ -78,8 +89,43 @@ Example: `C[4 -4 88_4]` = quarter note, quarter rest, two eighth notes with the 
 - Numbers grouped together represent one beat (e.g., `88` = 2 eighth notes in the same beat, with connected beams)
 - Numbers separated by spaces represent different beaming groups
 - Use a simple dot to create dotted notes. For example 4. is a quarter note dotted, 8. is a eight note dotted.
-- Use underscore `_` result in adding tie for example [88_4] will add a tie between the last eight note of the first beat ant the quarter note on the second beat
-- Create a link through measure lines will be written like C[2 4_88_] | [_8] which will link the last eight note of the first measure with the first eight note of the next measure.
+
+**Ties (Liaisons):**
+- Use underscore `_` to create ties between notes
+- `_` **after** a note = note starts a tie (sends/emits)
+- `_` **before** a note = note receives a tie (receives/ends)
+- Examples:
+  - `[88_4]` = tie between last eighth note and quarter note
+  - `[2 4_88_]` = tie from quarter to two eighths
+  - `C[2 4_88_] | [_8]` = tie across measure boundary (last eighth of measure 1 tied to first eighth of measure 2)
+  - `{8_8_8}3` = all three notes of triplet tied together
+  - `4_{8 8 8}3` = quarter note tied to first note of triplet
+  - `{8 8 8_}3 4` = last note of triplet tied to following quarter
+  - `| 4_ | {_8 8 8}3 |` = cross-measure tie into tuplet
+
+**Tuplets (v2.1+):**
+Tuplets allow grouping notes to play N notes in the time normally occupied by a different number. Syntax: `{notes}N` where N is the tuplet number.
+
+- **Compact notation** (notes together): `{888}3` = triplet with all notes beamed together
+- **Spaced notation** (notes separated): `{8 8 8}3` = triplet with independent flags
+- **Multi-level beaming**: `{161616 161616}6` = 6 sixteenth notes grouped as 2×3, with level-1 beam connecting all 6, and level-2 beams in two segments
+- **Ties within tuplets**: `{8_8_8}3` = triplet with all notes tied
+- **Ties crossing tuplet boundaries**: 
+  - `4_{8 8 8}3` = quarter tied into tuplet
+  - `{8 8 8_}3 4` = tuplet tied to following note
+  - `| 4_ | {_8 8 8}3 |` = cross-measure tie into tuplet
+- **Complex tie patterns**: `4_{8_8_8}3_4` = continuous tie through entire tuplet
+
+Examples:
+- `{888}3` = eighth note triplet (fully beamed)
+- `{8 8 8}3` = eighth note triplet (separate flags)
+- `{444}3` = quarter note triplet
+- `{8 -8 8}3` = triplet with rest in the middle
+- `{161616}3` = sixteenth note triplet
+- `{161616 161616}6` = sextuplet with advanced multi-level beaming
+- `{8_8_8}3` = triplet with all notes tied (legato)
+- `{8_8 8}3` = triplet with first two notes tied
+- Full measure in 4/4: `| [{888}3 {888}3 {888}3 {888}3] |`
 
 Notes on syntax:
 - Use `_` to indicate a tie. Underscores may appear at the end or start of a rhythm group to tie across measures/lines (e.g. `C[2 4_88_] | [_8]`).
@@ -108,6 +154,13 @@ Notes on syntax:
 | `4_88_ | [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
+| `{888}3` | Eighth note triplet (fully beamed) |
+| `{8 8 8}3` | Eighth note triplet (separate flags) |
+| `{161616 161616}6` | Sextuplet with multi-level beaming (2×3) |
+| `{8_8_8}3` | Triplet with all notes tied together |
+| `4_{8 8 8}3` | Quarter note tied to first note of triplet |
+| `{8 8 8_}3 4` | Last note of triplet tied to quarter |
+| `| 4_ | {_8 8 8}3 |` | Cross-measure tie into tuplet |
 
 ### Examples
 
@@ -145,6 +198,21 @@ Notes on syntax:
 **Tied chords**
 ```chordgrid
 4/4 | C[2 4_88_] | [_8] G[8 4 4 4] | Am[88_4 4 88_] | [_4] Dm[2.] | C[4 4 4_88_] | [_88 4] D[4 4] |
+```
+
+**Tuplets (v2.1+)**
+```chordgrid
+4/4 | C[{888}3 4] | G[{161616}3 {161616}3] | Am[{444}3] | F[{888}3 {888}3 {888}3] |
+```
+
+**Tuplets with ties (v2.1+)**
+```chordgrid
+4/4 | C[{8_8_8}3 4] | G[4_{8 8 8}3] | Am[{8 8 8_}3 4] | F[4_{8_8_8}3_4] |
+```
+
+**Cross-measure ties with tuplets (v2.1+)**
+```chordgrid
+4/4 | C[4 4 4 4_] | D[{_8 8 8}3 4 4 4] | G[4 4 4 4_] | Am[{_8 8 8_}3 _4 4 4] |
 ```
 
 NOTE: If you want to keep beam grouped by beat take care of space placement. For example
@@ -205,17 +273,20 @@ chord-grid/
 
 - ✅ Vector SVG rendering
 - ✅ Chord charts with rhythmic notation
-- ✅ Automatic eighth note beaming by beat (legacy path)
+- ✅ **CollisionManager system** (v2.1.0) – intelligent element placement avoiding overlaps
+- ✅ **Dynamic time signature spacing** (v2.1.0) – automatic width calculation and adaptive padding
+- ✅ **Dotted note collision avoidance** (v2.1.0) – tie curves raised automatically
+- ✅ Automatic eighth note beaming by beat (analyzer-driven)
+- ✅ **Analyzer-based cross-segment beaming** (v2.0.0) – continuous beams across chord boundaries
+- ✅ **Tuplets & complex time signatures** (v2.1.0) – triplets, quintuplets, customizable ratios
 - ✅ Repeat bars & barline types
-- ✅ Time signature support (simple + compound)
-- ✅ 4 measures per line (automatic)
-- ✅ Dynamic measure width
+- ✅ Time signature support (12+ signatures: 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 6/8, 7/8, 9/8, 11/8, 12/8, 15/16)
+- ✅ 4 measures per line (automatic, with manual line breaks)
+- ✅ Dynamic measure width based on rhythmic density
 - ✅ Dotted notes, ties, rests
 - ✅ **Inline Debug Logger** (v1.1.0) – collapsible debug panel
-- ✅ **Improved beam rendering** for complex rhythmic patterns
-- 🚧 **Analyzer-based cross-segment beaming** (v2.0.0) – continuous beams without spaces
-- 🚧 **Configurable analyzer overlay** (feature flag)
-- 🚧 Planned: tuplets, grace notes, articulations, dynamics, export formats
+- ✅ **Improved beam rendering** for complex rhythmic patterns with multi-level support
+- 🚧 Planned: grace notes, articulations, dynamics, export formats
 
 ## Debugging
 
@@ -231,28 +302,44 @@ For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
 
 ## Current Limitations
 
-- Analyzer beam overlay is experimental (legacy beaming kept)
-- No dynamics, articulations, grace notes, tuplets yet
+- No dynamics, articulations, grace notes yet
 - No export to PDF/PNG/MIDI yet
-- Beaming decisions limited for very complex mixed dotted/rest patterns in legacy path
+- Complex time signatures under implementation
 
 ### Roadmap (High Level)
 | Milestone | Highlights |
 |-----------|-----------|
 | v1.x Maintenance | Stability, bug fixes, doc polish |
-| v2.0 Analyzer Core | Full Parser → Analyzer → Renderer separation, unified beaming |
-| v2.1 Tuplets & Grace | Extend duration model; advanced beam groups |
-| v2.2 Dynamics & Articulation | Symbol layer, extensible rendering decorators |
-| v2.3 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
+| v2.0 Analyzer Core | ✅ Full Parser → Analyzer → Renderer separation, unified beaming |
+| v2.1 Tuplets & Collision Management | ✅ Complete tuplet implementation (triplets, quintuplets, customizable ratios), complex time signatures (12+), intelligent collision avoidance system |
+| v2.2 Grace Notes & Ornaments | Extend duration model for grace notes and musical ornaments |
+| v2.3 Dynamics & Articulation | Symbol layer, extensible rendering decorators |
+| v2.4 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
 | v3.0 Interactive Editing | In-note editing handles, real-time validation |
 
-## Architecture (v2.0 refactor – ✅ Complete)
+## Architecture (v2.1 – ✅ Complete with Collision Management)
 
-The rendering pipeline has been fully refactored into three clear stages:
+The rendering pipeline uses a clean 3-stage architecture with intelligent collision detection:
 
-1. **Parser** – Performs syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness).
-2. **Analyzer** – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
-3. **Renderer** – Draws notes/stems/ties and uses analyzer-driven beams for proper cross-segment beaming.
+1. **Parser** (`ChordGridParser`) – Performs syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness, tuplets).
+2. **Analyzer** (`MusicAnalyzer`) – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
+3. **Renderer** (`SVGRenderer` + sub-renderers) – Draws notes/stems/ties and uses analyzer-driven beams for proper cross-segment beaming. **CollisionManager** ensures intelligent element placement.
+
+#### Key Components (v2.1)
+
+**CollisionManager**: Central system managing spatial conflicts between rendered elements
+- Tracks bounding boxes for all visual elements (chords, notes, stems, tuplets, rests, time signatures, dots, ties)
+- Priority-based resolution (fixed elements vs. mobile elements)
+- Collision detection using axis-aligned bounding boxes (AABB) with configurable margins
+- `findFreePosition()` algorithm with spiral search pattern
+- Smart positioning for tuplet numbers, chord symbols, and tie curves
+- Automatic adjustment: tie curves raised when overlapping dotted note dots
+
+**Dynamic Spacing**: Adaptive layout system
+- Time signature width calculated based on content (numerator/denominator length)
+- Responsive left padding prevents overlap with first measure
+- Measure widths computed from rhythmic density (more notes = wider measure)
+- Tighter, more professional spacing (factor 0.53, margin 4px)
 
 #### Mermaid diagram
 
@@ -260,13 +347,23 @@ The rendering pipeline has been fully refactored into three clear stages:
 flowchart TD
     A[Chordgrid notation] --> B[Parser\nChordGridParser]
     B --> C[Analyzer\nMusicAnalyzer]
-    C --> D[AnalyzerBeamOverlay]
-    D --> E[Renderer\nSVGRenderer + Measure/Note/Rest]
-    E --> F[SVG output]
+    C --> D[Collision Manager\nElement Registration]
+    D --> E[AnalyzerBeamOverlay]
+    E --> F[Renderer\nSVGRenderer + Measure/Note/Rest]
+    F --> G[Collision Resolution\nAdjustments]
+    G --> H[SVG output]
 ```
 
 ### Why the analyzer?
 Previously, beams could not cross chord boundaries even when musically continuous (e.g. `[8]G[8]`). The analyzer flattens measure notes, respects rests and whitespace, and builds multi‑level beam groups (8/16/32/64) including correct beamlet direction for dotted values.
+
+### Why the CollisionManager?
+Professional music notation requires precise spacing to avoid visual conflicts. The CollisionManager:
+- Prevents time signatures from overlapping the first measure
+- Positions tuplet numbers above chord symbols automatically
+- Adjusts tie curves to avoid dotted note dots
+- Maintains clean, readable layouts across all rhythmic densities
+- Enables future enhancements (dynamics, articulations) without manual spacing
 
 ### Cross-segment beaming examples
 
@@ -281,11 +378,12 @@ The two isolated eighths before the space will beam together if there is no spac
 Here the space before `G` breaks the beam, producing two separate single stems.
 
 ### Planned next steps
-* Replace legacy measure beaming with analyzer output (remove duplication)
-* Extend analyzer for tuplets & grace notes
-* Snapshot tests for SVG beam rendering
-* Documentation updates for advanced rhythmic cases
-* Introduce export hooks
+* Comprehensive documentation for CollisionManager API
+* Performance profiling for large grids (100+ measures)
+* Extend collision system for dynamics and articulations
+* Grace notes with duration model extension
+* Snapshot tests for SVG rendering consistency
+* Export hooks (PNG/PDF/MIDI)
 
 ## License
 

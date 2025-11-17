@@ -22,6 +22,8 @@
  * - Silences : préfixe `-` devant la valeur (ex: `-4` pour un soupir)
  * - Liaisons : underscore `_` pour lier des notes (ex: `4_88_` ou `[_8]`)
  * - Ligatures : notes groupées sans espace sont liées par une ligature (ex: `88` = 2 croches liées)
+ * - Ligature forcée avec liaison : `[_]` force la ligature à continuer malgré la liaison
+ *   (ex: `888[_]88` = liaison ET ligature, vs `888 _88` = liaison SANS ligature)
  *
  * @example
  * ```typescript
@@ -39,6 +41,44 @@
 export class ChordGridParser {
 
   /**
+   * Table des ratios par défaut pour les tuplets courants.
+   * 
+   * Convention musicale (compatible MuseScore) :
+   * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+   * 
+   * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+   * 
+   * Exemples :
+   * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
+   * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
+   * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+   * 
+   * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
+   * où durée_cumulative est exprimée en unités de baseLen
+   * 
+   * Cette table peut être étendue selon les besoins musicaux.
+   * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+   */
+  private static readonly DEFAULT_TUPLET_RATIOS: Record<number, { numerator: number, denominator: number }> = {
+    // Tuplets en temps simple (les plus courants)
+    3: { numerator: 3, denominator: 2 },   // Triplet : 3 notes dans le temps de 2
+    5: { numerator: 5, denominator: 4 },   // Quintuplet : 5 notes dans le temps de 4
+    6: { numerator: 6, denominator: 4 },   // Sextuplet : 6 notes dans le temps de 4
+    7: { numerator: 7, denominator: 4 },   // Septuplet : 7 notes dans le temps de 4
+    9: { numerator: 9, denominator: 8 },   // Nonuplet : 9 notes dans le temps de 8
+    10: { numerator: 10, denominator: 8 }, // Décuplet : 10 notes dans le temps de 8
+    11: { numerator: 11, denominator: 8 }, // 11-uplet : 11 notes dans le temps de 8
+    12: { numerator: 12, denominator: 8 }, // 12-uplet : 12 notes dans le temps de 8
+    13: { numerator: 13, denominator: 8 }, // 13-uplet : 13 notes dans le temps de 8
+    15: { numerator: 15, denominator: 8 }, // 15-uplet : 15 notes dans le temps de 8
+    
+    // Tuplets en temps composé (moins courants, mais nécessaires)
+    2: { numerator: 2, denominator: 3 },   // Duplet : 2 notes dans le temps de 3
+    4: { numerator: 4, denominator: 3 },   // Quadruplet : 4 notes dans le temps de 3
+    8: { numerator: 8, denominator: 6 },   // Octuplet : 8 notes dans le temps de 6
+  };
+
+  /**
    * Parse une grille d'accords en notation textuelle.
    * 
    * @param input - Chaîne contenant la grille d'accords en notation textuelle
@@ -49,10 +89,16 @@ export class ChordGridParser {
    */
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
-    const firstLine = lines[0];
+    let firstLine = lines[0];
     
     // Parser la signature temporelle
     const timeSignature = this.parseTimeSignature(firstLine);
+    
+    // Retirer le motif "N/M" ou "N/M binary/ternary/noauto" de la première ligne
+    // pour éviter qu'il soit parsé comme mesure
+    // Consomme aussi l'éventuel | qui suit immédiatement
+    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, '');
+    lines[0] = firstLine;
     
   // Parser toutes les mesures
   const allMeasures: Measure[] = [];
@@ -85,13 +131,92 @@ export class ChordGridParser {
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       let foundQuarterNotes = 0;
+      
+      // Track tuplets we've already counted to avoid double-counting
+      const countedTuplets = new Set<string>();
+      
       for (const beat of measure.beats) {
         for (const n of beat.notes) {
           if (!n.value) continue;
-          const baseWhole = 1 / n.value; // fraction of whole note
-          const dottedMultiplier = n.dotted ? 1.5 : 1;
-          const whole = baseWhole * dottedMultiplier;
-          foundQuarterNotes += whole * 4; // convert to quarter-note units
+          
+          // Handle tuplets specially
+          if (n.tuplet && !countedTuplets.has(n.tuplet.groupId)) {
+            countedTuplets.add(n.tuplet.groupId);
+            
+            // Step 1: Find baseLen (smallest note value in the tuplet) and collect all notes
+            let baseLen = Infinity;
+            const tupletNotes: { value: number, dotted: boolean }[] = [];
+            
+            for (const tupletBeat of measure.beats) {
+              for (const tupletNote of tupletBeat.notes) {
+                if (tupletNote.tuplet && tupletNote.tuplet.groupId === n.tuplet.groupId) {
+                  tupletNotes.push({ value: tupletNote.value, dotted: tupletNote.dotted });
+                  // Find smallest note value (highest numeric value = shortest duration)
+                  if (tupletNote.value > baseLen) {
+                    baseLen = tupletNote.value;
+                  }
+                }
+              }
+            }
+            
+            // If no valid notes found, default to quarter note
+            if (!isFinite(baseLen)) {
+              baseLen = 4;
+            }
+            
+            // Step 2: Calculate cumulative duration in units of baseLen
+            let cumulativeUnits = 0;
+            for (const tupletNote of tupletNotes) {
+              const dottedMultiplier = tupletNote.dotted ? 1.5 : 1;
+              // Convert to units of baseLen
+              // Example: if baseLen = 16 and noteValue = 8, then 8 = 2 units of 16
+              const unitsOfBaseLen = (baseLen / tupletNote.value) * dottedMultiplier;
+              cumulativeUnits += unitsOfBaseLen;
+            }
+            
+            // Step 3: Calculate tuplet ratio
+            // Priority: 1) explicit ratio from {...}N:M syntax
+            //           2) default ratio from table for common cases
+            //           3) automatic calculation as fallback
+            //
+            // Convention musicale (compatible MuseScore) :
+            // N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+            // Exemple : {816-16 1616 8 8}5:4 = 5 croches dans le temps de 4 croches
+            //           où N=5 représente la durée cumulative normalisée (10 doubles-croches = 5 croches)
+            // Calcul : durée_réelle = (cumulativeDuration / N) × M
+            let tupletRatio: number;
+            
+            if (n.tuplet.ratio) {
+              // Use explicit ratio (e.g., {816-16 1616 8 8}5:4)
+              // actualDuration = (cumulativeDuration / N) × M
+              tupletRatio = n.tuplet.ratio.denominator / n.tuplet.ratio.numerator;
+            } else {
+              // Check default ratio table (uses tuplet.count)
+              const defaultRatio = ChordGridParser.DEFAULT_TUPLET_RATIOS[n.tuplet.count];
+              if (defaultRatio) {
+                tupletRatio = defaultRatio.denominator / defaultRatio.numerator;
+              } else {
+                // Fallback to automatic calculation based on note count
+                // For a triplet (3 notes in the time of 2): ratio = 2/3
+                // General formula: N notes take the time of (power-of-2 ≤ N) notes of same value
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletNotes.length)));
+                tupletRatio = normalCount / tupletNotes.length;
+              }
+            }
+            
+            // Step 4: Calculate actual duration
+            // Convert cumulative units back to whole note fraction using baseLen
+            const cumulativeDuration = cumulativeUnits / baseLen;
+            const actualDuration = cumulativeDuration * tupletRatio;
+            foundQuarterNotes += actualDuration * 4; // convert to quarter-note units
+          } else if (!n.tuplet) {
+            // Regular note (not in a tuplet)
+            const baseWhole = 1 / n.value; // fraction of whole note
+            const dottedMultiplier = n.dotted ? 1.5 : 1;
+            const whole = baseWhole * dottedMultiplier;
+            foundQuarterNotes += whole * 4; // convert to quarter-note units
+          }
+          // Skip notes already counted as part of a tuplet
         }
       }
 
@@ -139,6 +264,9 @@ export class ChordGridParser {
               tieToVoid: n.tieToVoid || false,
               tieFromVoid: n.tieFromVoid || false,
               beatIndex,  // Preserve beat index to break beams at beat boundaries
+              tuplet: n.tuplet, // Preserve tuplet information
+                hasLeadingSpace: n.hasLeadingSpace, // Preserve spacing flag for tuplet subgroups
+                forcedBeamThroughTie: n.forcedBeamThroughTie, // Preserve [_] syntax
             });
           }
         });
@@ -244,13 +372,21 @@ export class ChordGridParser {
 
       const chordSegments: ChordSegment[] = [];
       
+      // PREPROCESSING: Replace [_] with temporary placeholder to avoid bracket conflicts
+      const FORCED_BEAM_PLACEHOLDER = '\u0001'; // Use control character as placeholder
+      const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
+      
       // Check if text contains brackets (chord[rhythm] syntax)
-      if (text.includes('[')) {
+      if (processedText.includes('[')) {
         // Use bracket-based parsing
-        while ((m2 = segmentRe.exec(text)) !== null) {
+        while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || '';
           const chord = (m2[2] || '').trim();
-          const rhythm = (m2[3] || '').trim();
+          let rhythm = (m2[3] || '').trim();
+          
+          // Restore [_] from placeholder in rhythm string
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, 'g'), '[_]');
+          
           const sourceText = m2[0];
           if (!firstChord && chord) firstChord = chord;
           anySource += (anySource ? ' ' : '') + sourceText;
@@ -314,16 +450,38 @@ export class ChordGridParser {
    * @returns Objet TimeSignature avec numérateur et dénominateur
    * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
    */
+  /**
+   * Parse la signature temporelle et le mode de groupement optionnel.
+   * 
+   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * 
+   * @param line - Première ligne contenant la signature temporelle
+   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   */
   private parseTimeSignature(line: string): TimeSignature {
-    const m = /^\s*(\d+)\/(\d+)/.exec(line);
+    // Match: "4/4" optionally followed by "binary", "ternary", or "noauto"
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
     if (m) {
+      const numerator = parseInt(m[1], 10);
+      const denominator = parseInt(m[2], 10);
+      const groupingMode = (m[3] as GroupingMode) || 'auto';
+      
       return {
-        numerator: parseInt(m[1], 10),
-        denominator: parseInt(m[2], 10)
-      } as TimeSignature;
+        numerator,
+        denominator,
+        beatsPerMeasure: numerator,
+        beatUnit: denominator,
+        groupingMode
+      };
     }
     // Fallback default
-    return { numerator: 4, denominator: 4 } as TimeSignature;
+    return { 
+      numerator: 4, 
+      denominator: 4, 
+      beatsPerMeasure: 4, 
+      beatUnit: 4,
+      groupingMode: 'auto'
+    };
   }
 
   /**
@@ -407,67 +565,192 @@ class BeamAndTieAnalyzer {
     // continuity decision in createBeat must use the *previous* group's
     // spacing flag. We'll update lastGroupHasSpace at the end of this
     // function so the next group can observe it.
-    const beats: Beat[] = [];
-    let currentBeat: NoteElement[] = [];
+  const beats: Beat[] = [];
+  let currentBeat: NoteElement[] = [];
+  // Track a reference to the cloned last note of the previous beat (as stored in beats) to support ties across spaces
+  let lastBeatLastNoteRef: NoteElement | null = null;
     let i = 0;
     
     let pendingTieFromVoid = false;
     
     while (i < rhythmStr.length) {
+      // Détection d'un tuplet : { ... }N
+      if (rhythmStr[i] === '{') {
+        // Chercher la fermeture '}'
+        const closeIdx = rhythmStr.indexOf('}', i);
+        if (closeIdx > i) {
+          // Chercher le chiffre du tuplet et le ratio optionnel après '}'
+          // Format: }N ou }N:M
+          let numStr = '';
+          let j = closeIdx + 1;
+          while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+            numStr += rhythmStr[j];
+            j++;
+          }
+          
+          // Vérifier si un ratio explicite est fourni (:M)
+          let explicitRatio: { numerator: number, denominator: number } | undefined;
+          if (j < rhythmStr.length && rhythmStr[j] === ':') {
+            j++; // Passer le ':'
+            let ratioStr = '';
+            while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
+              ratioStr += rhythmStr[j];
+              j++;
+            }
+            const denominatorValue = parseInt(ratioStr, 10);
+            if (denominatorValue > 0 && numStr) {
+              explicitRatio = {
+                numerator: parseInt(numStr, 10),
+                denominator: denominatorValue
+              };
+            }
+          }
+          
+          const tupletCount = parseInt(numStr, 10);
+          if (tupletCount > 0) {
+            // Extraire le contenu entre { }
+            const inner = rhythmStr.slice(i + 1, closeIdx);
+            // Split par espace pour gérer les sous-groupes
+            const subGroups = inner.split(' ');
+            let tupletNoteIndex = 0;
+            
+            for (let g = 0; g < subGroups.length; g++) {
+              const group = subGroups[g];
+              let k = 0;
+              let isFirstNoteOfThisSubGroup = true;
+              let pendingTieFromPrevious = false;
+              
+              while (k < group.length) {
+                // Gestion des underscores (liaisons) dans les tuplets
+                if (group[k] === '_') {
+                  if (k === 0) {
+                    // Underscore au début du sous-groupe
+                    // La note précédente doit être liée à la suivante
+                    pendingTieFromPrevious = true;
+                  } else {
+                    // Underscore après une note : marquer la liaison
+                    if (currentBeat.length > 0) {
+                      this.markTieStart(currentBeat);
+                    }
+                  }
+                  k++;
+                  continue;
+                }
+                
+                // Parse chaque note du sous-groupe
+                let note: NoteElement;
+                if (group[k] === '-') {
+                  note = this.parseNote(group, k + 1);
+                  note.isRest = true;
+                  k += (note.length ?? 0) + 1;
+                } else {
+                  note = this.parseNote(group, k);
+                  k += (note.length ?? 0);
+                }
+                
+                // Si un underscore précédait cette note
+                if (pendingTieFromPrevious) {
+                  note.tieEnd = true;
+                  pendingTieFromPrevious = false;
+                }
+                
+                // Check if previous note had tieStart (from markTieStart)
+                if (this.tieContext.lastNote?.tieStart) {
+                  note.tieEnd = true;
+                  this.tieContext.lastNote = null;
+                }
+                
+                // Ajout propriété tuplet (use tupletCount from annotation)
+                note.tuplet = {
+                  count: tupletCount,
+                  groupId: `T${i}_${closeIdx}`,
+                  position:
+                    tupletNoteIndex === 0 ? 'start' :
+                    tupletNoteIndex === tupletCount - 1 ? 'end' : 'middle',
+                  ...(explicitRatio && { ratio: explicitRatio })
+                };
+                // Mark first note of each subgroup after the first with leading space flag
+                if (g > 0 && isFirstNoteOfThisSubGroup) {
+                  note.hasLeadingSpace = true;
+                  isFirstNoteOfThisSubGroup = false;
+                }
+                currentBeat.push(note);
+                tupletNoteIndex++;
+              }
+            }
+            i = j;
+            continue;
+          }
+        }
+      }
+      
+      // Gestion des [_] forced beam syntax (checked BEFORE standalone _)
+      if (rhythmStr[i] === '[' && i + 2 < rhythmStr.length && 
+          rhythmStr[i + 1] === '_' && rhythmStr[i + 2] === ']') {
+        // Mark last note with forced beam through tie
+        if (currentBeat.length > 0) {
+          const lastNote = currentBeat[currentBeat.length - 1];
+          lastNote.forcedBeamThroughTie = true;
+          lastNote.tieStart = true;
+          this.tieContext.lastNote = lastNote;
+        }
+        i += 3; // Skip [_]
+        continue;
+      }
+      
       // Gestion des underscores (liaisons)
       if (rhythmStr[i] === '_') {
-        // Si on est à la fin du groupe rythmique et fin de ligne
         if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
+          // Underscore at end of group and end of line → tie to void from the LAST note of current beat
           this.markTieToVoid(currentBeat);
         } else if (i === 0 && isFirstMeasureOfLine) {
-          // Liaison depuis le vide (début de ligne)
-          // Marquer que la prochaine note doit avoir tieFromVoid
+          // Underscore at very start of measure (line) → tie from void to the next note
           pendingTieFromVoid = true;
           this.tieContext.pendingTieToVoid = false;
+        } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
+          // Underscore immediately after a space: tie should start from the cloned last note of the PREVIOUS beat
+          lastBeatLastNoteRef.tieStart = true;
+          this.tieContext.lastNote = lastBeatLastNoteRef;
         } else {
+          // Normal case inside a beat: mark tie start on last note of the current beat
           this.markTieStart(currentBeat);
         }
         i++;
         continue;
       }
-      
       // Gestion des espaces
       if (rhythmStr[i] === ' ') {
         if (currentBeat.length > 0) {
+          // Close current beat and remember a reference to its cloned last note for cross-space ties
+          const lastIdx = currentBeat.length - 1;
           beats.push(this.createBeat(currentBeat));
+          lastBeatLastNoteRef = beats[beats.length - 1].notes[lastIdx] || null;
           currentBeat = [];
         }
         i++;
         continue;
       }
-      
-      // NEW: Gestion des silences (-)
+      // Gestion des silences (-)
       if (rhythmStr[i] === '-') {
         i++;
         const note = this.parseNote(rhythmStr, i);
         note.isRest = true;
         currentBeat.push(note);
-  i += (note.length ?? 0);
+        i += (note.length ?? 0);
         continue;
       }
-      
       // Lecture d'une valeur de note
       const note = this.parseNote(rhythmStr, i);
-      
-      // Gestion liaison depuis le vide (si un _ était en début de ligne)
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      
-      // Gestion de la liaison entrante normale
       if (this.tieContext.lastNote?.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
-      
       currentBeat.push(note);
-  i += (note.length ?? 0);
+      i += (note.length ?? 0);
     }
     
       if (currentBeat.length > 0) {
@@ -608,6 +891,7 @@ import {
   Measure,
   BarlineType,
   TimeSignature,
+  GroupingMode,
   ChordGrid,
   ValidationError,
   ParseResult,

@@ -68,6 +68,35 @@ export interface NoteElement {
   // parser/runtime hints (optional)
   position?: number;
   length?: number;
+  /**
+   * Informations de tuplet si la note appartient à un groupe de tuplet.
+   * - count : nombre de notes dans le tuplet (ex: 3 pour triolet, 5 pour quintolet)
+   * - groupId : identifiant unique du groupe tuplet
+   * - position : 'start' | 'middle' | 'end' (facilite le rendu du bracket et des ligatures)
+   * - ratio : ratio explicite numerator:denominator (ex: {8 8 8}3:2 → {numerator: 3, denominator: 2})
+   *           Si non fourni, le ratio par défaut ou automatique sera utilisé
+   */
+  tuplet?: {
+    count: number;
+    groupId: string;
+    position: 'start' | 'middle' | 'end';
+    ratio?: {
+      numerator: number;
+      denominator: number;
+    };
+  };
+  /**
+   * Flag indiquant qu'il y avait un espace lexical avant cette note dans le texte source.
+   * Utilisé pour casser les ligatures de niveau supérieur dans les tuplets.
+   * Ex: {161616 161616}6 → l'espace entre les groupes casse la ligature niveau 2 mais garde niveau 1
+   */
+  hasLeadingSpace?: boolean;
+  /**
+   * Flag indiquant que la liaison doit forcer la continuation de la ligature.
+   * Activé avec la syntaxe [_] (ex: 888[_]88 = liaison + ligature forcée)
+   * Permet de surpasser la règle normale "espace casse ligature" pour des cas spéciaux.
+   */
+  forcedBeamThroughTie?: boolean;
 }
 
 /**
@@ -137,16 +166,31 @@ export interface Measure {
 }
 
 /**
+ * Mode de groupement des notes pour les ligatures.
+ * - 'binary': groupement par 2 (temps binaire) - ex: 88 88
+ * - 'ternary': groupement par 3 (temps composé) - ex: 888 888
+ * - 'noauto': pas d'auto-groupement, l'utilisateur contrôle via les espaces
+ * - 'auto': détection automatique basée sur la signature temporelle
+ */
+export type GroupingMode = 'binary' | 'ternary' | 'noauto' | 'auto';
+
+/**
  * Signature temporelle (time signature).
  * 
- * Définit le nombre de temps par mesure et la valeur de note par temps.
- * Exemple : 4/4 = 4 temps de noire par mesure
+ * Définit le nombre de temps par mesure, la valeur de note par temps,
+ * et le mode de groupement des ligatures.
+ * 
+ * Exemples :
+ * - 4/4 = 4 temps de noire par mesure (binaire par défaut)
+ * - 6/8 = 6 croches par mesure en 2 groupes de 3 (ternaire par défaut)
+ * - Peut être explicité : "4/4 binary" ou "6/8 ternary"
  */
 export interface TimeSignature {
   numerator: number;
   denominator: number;
   beatsPerMeasure: number;
   beatUnit: number;
+  groupingMode: GroupingMode;
 }
 
 /**

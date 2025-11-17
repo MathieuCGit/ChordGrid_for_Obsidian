@@ -24,6 +24,7 @@ import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/t
 import { SVG_NS } from './constants';
 import { RestRenderer } from './RestRenderer';
 import { DebugLogger } from '../utils/DebugLogger';
+import { CollisionManager } from './CollisionManager';
 
 /**
  * Position d'une note dans le SVG avec métadonnées pour les liaisons.
@@ -61,17 +62,22 @@ export class MeasureRenderer {
      * @param x - Position X de départ de la mesure dans le SVG
      * @param y - Position Y de départ de la mesure dans le SVG
      * @param width - Largeur allouée à la mesure
+     * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
+     * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
      */
+    private readonly restRenderer: RestRenderer;
+
     constructor(
         private readonly measure: Measure,
         private readonly x: number,
         private readonly y: number,
         private readonly width: number,
         // Optional: set of `${segmentIndex}:${noteIndexInSegment}` that are in a level-1 beam group (length >=2)
-        private readonly beamedAtLevel1?: Set<string>
-    ) {}
-
-    private readonly restRenderer = new RestRenderer();
+        private readonly beamedAtLevel1?: Set<string>,
+        private readonly collisionManager?: CollisionManager
+    ) {
+        this.restRenderer = new RestRenderer(this.collisionManager);
+    }
 
     /**
      * Dessine la mesure complète dans le SVG.
@@ -112,8 +118,8 @@ export class MeasureRenderer {
     // Track per-segment note index to map to analyzer references
     const segmentNoteCursor: number[] = new Array(segments.length).fill(0);
 
-        // Layout segments: allocate widths proportional to number of beats, but
-        // insert a visible separator when a segment has leadingSpace=true.
+        // Layout segments: allocate widths proportional to per-beat required width,
+        // but insert a visible separator when a segment has leadingSpace=true.
         const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
         const separatorWidth = 12; // px gap when source had a space
         const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + ((idx > 0 && seg.leadingSpace) ? 1 : 0), 0);
@@ -122,10 +128,36 @@ export class MeasureRenderer {
         const totalInnerPadding = innerPaddingPerSegment * segments.length;
         const totalSeparatorPixels = separatorsCount * separatorWidth;
 
-        const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
-        const beatCellWidth = availableForBeatCells / totalBeats;
+    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
+        // Helper spacing functions (must mirror SVGRenderer)
+        const headHalfMax = 6;
+        const valueMinSpacing = (v: number) => {
+            if (v >= 64) return 16;
+            if (v >= 32) return 20;
+            if (v >= 16) return 26;
+            if (v >= 8)  return 24;
+            return 20;
+        };
+        const requiredBeatWidth = (beat: Beat) => {
+            const noteCount = beat?.notes?.length || 0;
+            if (noteCount <= 1) return 28 + 10 + headHalfMax;
+            const spacing = Math.max(
+                ...beat.notes.map(n => {
+                    const base = valueMinSpacing(n.value);
+                    return n.isRest ? base + 4 : base; // rests need a tad more space visually
+                })
+            );
+            return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+        };
 
         // iterate segments and place beats
+        // Pre-compute required width sums per segment to distribute measure space fairly
+        const perSegmentRequired: number[] = segments.map(seg => {
+            const reqs = (seg.beats || []).map(b => requiredBeatWidth(b as Beat));
+            return reqs.reduce((a, b) => a + b, 0);
+        });
+        const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
+
         let currentX = this.x; // segment left
         for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
             const segment = segments[segmentIndex];
@@ -136,21 +168,68 @@ export class MeasureRenderer {
             }
 
             const segBeatCount = segment.beats.length || 1;
-            const segmentWidth = segBeatCount * beatCellWidth + innerPaddingPerSegment;
+            // Determine required width per beat for this segment
+            const reqPerBeat = segment.beats.map(b => requiredBeatWidth(b));
+            const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
+            // Allocate segment width proportionally to this segment's requirement within the measure
+            const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
+            const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
             const segmentX = currentX + 10; // inner left padding
             const beatsWidth = segmentWidth - innerPaddingPerSegment;
-            const beatWidth = beatsWidth / segBeatCount;
 
+            // Prefix-sum to place each beat proportionally
+            let beatCursorX = segmentX;
             segment.beats.forEach((beat: Beat, beatIndex: number) => {
-                const beatX = segmentX + (beatIndex * beatWidth);
+                const beatWidth = (reqPerBeat[beatIndex] / reqSum) * beatsWidth;
+                const beatX = beatCursorX;
                 const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
                 if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
-                    const chordText = this.createText(segment.chord, firstNoteX, this.y + 40, '22px', 'bold');
+                    const chordX = firstNoteX;
+                    const chordY = this.y + 40;
+                    const fontSize = 22;
+                    
+                    // Estimate chord text width (rough approximation: 0.6 * fontSize per character)
+                    const chordWidth = segment.chord.length * fontSize * 0.6;
+                    
+                    // Check for collisions and adjust position if needed
+                    let finalY = chordY;
+                    if (this.collisionManager) {
+                        const chordBBox = {
+                            x: chordX - chordWidth / 2,
+                            y: chordY - fontSize,
+                            width: chordWidth,
+                            height: fontSize + 4
+                        };
+                        
+                        // Check if there's a collision
+                        if (this.collisionManager.hasCollision(chordBBox)) {
+                            // Try to find a free vertical position excluding other chord texts
+                            const adjustedPos = this.collisionManager.findFreePosition(
+                                chordBBox,
+                                'vertical',
+                                ['chord']
+                            );
+                            if (adjustedPos) {
+                                finalY = adjustedPos.y + fontSize; // Convert back to baseline
+                            }
+                        }
+                        
+                        // Register the chord element
+                        this.collisionManager.registerElement('chord', {
+                            x: chordX - chordWidth / 2,
+                            y: finalY - fontSize,
+                            width: chordWidth,
+                            height: fontSize + 4
+                        }, 5, { chord: segment.chord, measureIndex, segmentIndex });
+                    }
+                    
+                    const chordText = this.createText(segment.chord, chordX, finalY, '22px', 'bold');
                     chordText.setAttribute('text-anchor', 'middle');
                     chordText.setAttribute('font-family', 'Arial, sans-serif');
                     svg.appendChild(chordText);
                 }
+                beatCursorX += beatWidth;
             });
 
             currentX += segmentWidth;
@@ -230,24 +309,64 @@ export class MeasureRenderer {
         const startX = x + innerLeft;
         const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
 
-        // Preferred compact spacing but clamped to fit in beat width
-        const preferredSpacing = 20;
-        let spacing = preferredSpacing;
-        if (noteCount > 1) {
-            const maxSpacing = Math.max(4, (endLimit - startX) / (noteCount - 1));
-            spacing = Math.min(preferredSpacing, maxSpacing);
+        // Detect tuplet groups in this beat
+        const tupletGroups: Array<{startIndex: number, endIndex: number, count: number, groupId: string, ratio?: {numerator: number, denominator: number}}> = [];
+        const seenTupletGroups = new Set<string>();
+        beat.notes.forEach((note, i) => {
+            if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
+                seenTupletGroups.add(note.tuplet.groupId);
+                const groupNotes = beat.notes.filter(n => n.tuplet && n.tuplet.groupId === note.tuplet!.groupId);
+                const startIdx = beat.notes.findIndex(n => n.tuplet && n.tuplet.groupId === note.tuplet!.groupId);
+                tupletGroups.push({
+                    startIndex: startIdx,
+                    endIndex: startIdx + groupNotes.length - 1,
+                    count: note.tuplet.count,
+                    groupId: note.tuplet.groupId,
+                    ratio: note.tuplet.ratio
+                });
+            }
+        });
+
+        // Calculate individual note positions with adaptive spacing and clamping to beat width
+        const notePositionsX: number[] = [];
+        // Determine ideal base spacing from densest note value
+        const densestSpacing = Math.max(...beat.notes.map(n => {
+            if (n.isRest) return 20; // rests: neutral spacing
+            const v = n.value;
+            if (v >= 64) return 16;
+            if (v >= 32) return 20;
+            if (v >= 16) return 26;
+            if (v >= 8)  return 24;
+            return 20;
+        }));
+        const availableSpan = Math.max(0, endLimit - startX);
+        // Build per-gap factors: compress tuplet-internal gaps slightly
+        const gapCount = Math.max(0, noteCount - 1);
+        const gapFactors: number[] = [];
+        for (let g = 0; g < gapCount; g++) {
+            const inSameTuplet = tupletGroups.some(T => g >= T.startIndex && g + 1 <= T.endIndex);
+            gapFactors.push(inSameTuplet ? 0.85 : 1.0);
+        }
+        const desiredGaps = gapFactors.map(f => densestSpacing * f);
+        const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
+        const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
+        const finalGaps = desiredGaps.map(g => g * scale);
+
+        let cursorX = startX;
+        for (let i = 0; i < noteCount; i++) {
+            notePositionsX.push(cursorX);
+            if (i < gapCount) cursorX += finalGaps[i];
         }
 
         beat.notes.forEach((nv, noteIndex) => {
-            // Calculate note position
-            // For a single whole rest (value=1), center it in the beat
+            // Calculate note position using precalculated positions
             let noteX: number;
             if (noteCount === 1 && nv.isRest && nv.value === 1) {
                 // Center the whole rest in the beat area
                 noteX = x + width / 2;
             } else {
-                // Left-aligned progression with clamped spacing
-                noteX = startX + noteIndex * spacing;
+                // Use precalculated position with tuplet spacing
+                noteX = notePositionsX[noteIndex];
             }
             
             // Render rests properly
@@ -300,7 +419,114 @@ export class MeasureRenderer {
                 stemTopY,
                 stemBottomY
             });
+
+            // Register note head & stem for collision management
+            if (this.collisionManager) {
+                const noteHeadBBox = {
+                    x: headLeftX,
+                    y: staffLineY - 12,
+                    width: headRightX - headLeftX,
+                    height: 24
+                };
+                this.collisionManager.registerElement('note', noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
+                if (hasStem && stemTopY !== undefined && stemBottomY !== undefined) {
+                    const stemBBox = {
+                        x: noteX - 3, // approximate stem x based on drawStem logic
+                        y: stemTopY,
+                        width: 3,
+                        height: stemBottomY - stemTopY
+                    };
+                    this.collisionManager.registerElement('stem', stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+                }
+            }
         });
+        
+        // Draw tuplet brackets if any
+        tupletGroups.forEach(tupletGroup => {
+            const tupletStartX = notePositionsX[tupletGroup.startIndex];
+            const tupletEndX = notePositionsX[tupletGroup.endIndex];
+            // Position bracket above staff line (stems go DOWN from staffLineY + 5)
+            // Place bracket above the note heads at a comfortable distance
+            const bracketY = staffLineY - 15; // Above note heads, below where beams would be
+            
+            // Horizontal line
+            const bracket = document.createElementNS(SVG_NS, 'line');
+            bracket.setAttribute('x1', String(tupletStartX));
+            bracket.setAttribute('y1', String(bracketY));
+            bracket.setAttribute('x2', String(tupletEndX));
+            bracket.setAttribute('y2', String(bracketY));
+            bracket.setAttribute('stroke', '#000');
+            bracket.setAttribute('stroke-width', '1');
+            svg.appendChild(bracket);
+            
+            // Left vertical bar (pointing down)
+            const leftBar = document.createElementNS(SVG_NS, 'line');
+            leftBar.setAttribute('x1', String(tupletStartX));
+            leftBar.setAttribute('y1', String(bracketY));
+            leftBar.setAttribute('x2', String(tupletStartX));
+            leftBar.setAttribute('y2', String(bracketY + 5));
+            leftBar.setAttribute('stroke', '#000');
+            leftBar.setAttribute('stroke-width', '1');
+            svg.appendChild(leftBar);
+            
+            // Right vertical bar (pointing down)
+            const rightBar = document.createElementNS(SVG_NS, 'line');
+            rightBar.setAttribute('x1', String(tupletEndX));
+            rightBar.setAttribute('y1', String(bracketY));
+            rightBar.setAttribute('x2', String(tupletEndX));
+            rightBar.setAttribute('y2', String(bracketY + 5));
+            rightBar.setAttribute('stroke', '#000');
+            rightBar.setAttribute('stroke-width', '1');
+            svg.appendChild(rightBar);
+
+            // Register tuplet bracket bounding box (approx width & height)
+            if (this.collisionManager) {
+                const bracketBBox = {
+                    x: tupletStartX,
+                    y: bracketY - 6,
+                    width: tupletEndX - tupletStartX,
+                    height: 12
+                };
+                this.collisionManager.registerElement('tuplet-bracket', bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
+            }
+            
+            // Tuplet number or ratio centered above the bracket
+            const centerX = (tupletStartX + tupletEndX) / 2;
+            let tupletTextY = bracketY - 3;
+            const text = document.createElementNS(SVG_NS, 'text');
+            text.setAttribute('x', String(centerX));
+            text.setAttribute('y', String(tupletTextY));
+            text.setAttribute('font-size', '10');
+            text.setAttribute('font-weight', 'bold');
+            text.setAttribute('text-anchor', 'middle');
+            // Display ratio if explicitly provided, otherwise just count
+            if (tupletGroup.ratio) {
+                text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+            } else {
+                text.textContent = String(tupletGroup.count);
+            }
+            // Collision adjust for tuplet number against chords or other elements
+            if (this.collisionManager) {
+                const textWidth = (text.textContent || '').length * 6; // rough monospace approximation
+                let numberBBox = {
+                    x: centerX - textWidth / 2,
+                    y: tupletTextY - 10,
+                    width: textWidth,
+                    height: 12
+                };
+                if (this.collisionManager.hasCollision(numberBBox, ['tuplet-bracket','tuplet-number'])) {
+                    const adjusted = this.collisionManager.findFreePosition(numberBBox, 'vertical', ['tuplet-number']);
+                    if (adjusted) {
+                        tupletTextY = adjusted.y + 10; // baseline correction
+                        text.setAttribute('y', String(tupletTextY));
+                        numberBBox = { ...numberBBox, y: adjusted.y };
+                    }
+                }
+                this.collisionManager.registerElement('tuplet-number', numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
+            }
+            svg.appendChild(text);
+        });
+        
         return firstNoteX;
     }
 
@@ -330,7 +556,14 @@ export class MeasureRenderer {
             dot.setAttribute('cy', (staffLineY - 4).toString());
             dot.setAttribute('r', '1.5');
             dot.setAttribute('fill', '#000');
+            // Tag for later collision adjustment (we don't have measureIndex here; defer to parent context if needed)
+            dot.setAttribute('data-cg-dot', '1');
             svg.appendChild(dot);
+            if (this.collisionManager) {
+                const cx = centerX + 10;
+                const cy = staffLineY - 4;
+                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+            }
         }
 
         return centerX;
@@ -369,7 +602,13 @@ export class MeasureRenderer {
             dot.setAttribute('cy', (staffLineY - 4).toString());
             dot.setAttribute('r', '1.5');
             dot.setAttribute('fill', '#000');
+            dot.setAttribute('data-cg-dot', '1');
             svg.appendChild(dot);
+            if (this.collisionManager) {
+                const cx = x + 10;
+                const cy = staffLineY - 4;
+                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+            }
         }
     }
 
