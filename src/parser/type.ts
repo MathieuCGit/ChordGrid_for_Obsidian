@@ -231,4 +231,5 @@ export interface ParseResult {
   grid: ChordGrid;
   errors: ValidationError[];
   measures: Measure[];
+  stemsDirection?: 'up' | 'down';
 }

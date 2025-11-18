@@ -44,11 +44,18 @@ export class SVGRenderer {
    * @param grid - Structure ChordGrid contenant les mesures à rendre
    * @returns Élément SVG prêt à être inséré dans le DOM
    */
-  render(grid: ChordGrid): SVGElement {
-    return this.createSVG(grid);
+  /**
+   * Rend une grille d'accords en élément SVG.
+   * @param grid - Structure ChordGrid contenant les mesures à rendre
+   * @param stemsDirection - Optionnel, direction des hampes ('up' | 'down'), par défaut 'up'
+   */
+  render(grid: ChordGrid, stemsDirection?: 'up' | 'down'): SVGElement {
+  // Par défaut, hampes vers le haut si non précisé
+  const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
+  return this.createSVG(grid, stemsDir);
   }
 
-  private createSVG(grid: ChordGrid): SVGElement {
+  private createSVG(grid: ChordGrid, stemsDirection?: 'up' | 'down'): SVGElement {
   const measuresPerLine = 4;
   const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
   const measureHeight = 120;
@@ -153,25 +160,25 @@ export class SVGRenderer {
     const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
     const height = lines * (measureHeight + 20) + 20;
 
-    const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('xmlns', SVG_NS);
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', 'auto');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('xmlns', SVG_NS);
 
     // Initialize managers
     const collisionManager = new CollisionManager();
     const tieManager = new TieManager();
     const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
 
-    // white background
-    const bg = document.createElementNS(SVG_NS, 'rect');
-    bg.setAttribute('x', '0');
-    bg.setAttribute('y', '0');
-    bg.setAttribute('width', String(width));
-    bg.setAttribute('height', String(height));
-    bg.setAttribute('fill', 'white');
-    svg.appendChild(bg);
+  // white background
+  const bg = document.createElementNS(SVG_NS, 'rect');
+  bg.setAttribute('x', '0');
+  bg.setAttribute('y', '0');
+  bg.setAttribute('width', String(width));
+  bg.setAttribute('height', String(height));
+  bg.setAttribute('fill', 'white');
+  svg.appendChild(bg);
 
     // time signature text (already measured before layout)
     const timeSigBaselineY = 40;
@@ -264,12 +271,14 @@ export class SVGRenderer {
           }
         });
       }
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager);
-      mr.drawMeasure(svg, globalIndex, notePositions, grid);
+  // Toujours forcer 'up' par défaut si non précisé
+  const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
+  const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir ?? 'up');
+  mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
       // Draw analyzer beams overlay
       if (analyzedMeasures[globalIndex]) {
-        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any);
+        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any, stemsDir);
       }
       lineAccumulated[lineIndex] += mWidth;
     });
@@ -277,7 +286,7 @@ export class SVGRenderer {
   // DebugLogger supprimé
   
   // draw ties using collected notePositions and the TieManager for cross-line ties
-  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
+  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager, stemsDirection);
 
     return svg;
   }
@@ -326,7 +335,8 @@ export class SVGRenderer {
     svgWidth: number,
     tieManager: TieManager,
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
-    collisionManager?: CollisionManager
+    collisionManager?: CollisionManager,
+    stemsDirection?: 'up' | 'down'
   ) {
   // DebugLogger supprimé
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
@@ -400,23 +410,34 @@ export class SVGRenderer {
       const path = document.createElementNS(SVG_NS, 'path');
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
-      let controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
-      // Collision avoidance: raise curve if any dot lies inside the preliminary tie area
+      
+      // Position de la courbe selon la direction des hampes
+      // Hampes UP : liaisons EN DESSOUS des notes (controlY plus grand)
+      // Hampes DOWN : liaisons AU DESSUS des notes (controlY plus petit)
+      let controlY: number;
+      if (stemsDirection === 'up') {
+        // Liaisons en dessous
+        controlY = Math.max(startY, endY) + (isCross ? baseAmp + 10 : baseAmp);
+      } else {
+        // Liaisons au-dessus (comportement original)
+        controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      }
+      
+      // Collision avoidance: adjust curve if any dot overlaps
       if (collisionManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const preliminaryTopY = controlY;
-        const preliminaryBottomY = Math.max(startY, endY);
+        const preliminaryTopY = stemsDirection === 'up' ? Math.min(startY, endY) : controlY;
+        const preliminaryBottomY = stemsDirection === 'up' ? controlY : Math.max(startY, endY);
         const overlappingDot = dotsForCollisions.find(d => {
           const db = d.bbox;
           const horiz = db.x < maxX && (db.x + db.width) > minX;
-          const vert = db.y + db.height >= preliminaryTopY && db.y <= preliminaryBottomY; // simple overlap test
+          const vert = db.y + db.height >= preliminaryTopY && db.y <= preliminaryBottomY;
           return horiz && vert;
         });
         if (overlappingDot) {
-          const raise = Math.max(6, baseAmp * 0.6);
-          controlY -= raise; // move curve further up
-          // DebugLogger supprimé
+          const adjust = Math.max(6, baseAmp * 0.6);
+          controlY += stemsDirection === 'up' ? adjust : -adjust;
         }
       }
       const midX = (startX + endX) / 2;
@@ -430,8 +451,8 @@ export class SVGRenderer {
       if (collisionManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const topY = controlY;
-        const bottomY = Math.max(startY, endY);
+        const topY = Math.min(controlY, startY, endY);
+        const bottomY = Math.max(controlY, startY, endY);
         collisionManager.registerElement('tie', { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
       }
     };

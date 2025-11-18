@@ -73,7 +73,7 @@ export default class ChordGridPlugin extends Plugin {
 
           // DebugLogger supprimé
           const renderer = new SVGRenderer();
-          const svg = renderer.render(grid);
+          const svg = renderer.render(grid, result.stemsDirection);
           el.appendChild(svg);
         } catch (err) {
           // DebugLogger supprimé

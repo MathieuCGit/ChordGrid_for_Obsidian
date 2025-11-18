@@ -1,32 +1,4 @@
 /**
- * @file MeasureRenderer.ts
- * @description Rendu SVG d'une mesure musicale individuelle.
- * 
- * Cette classe est responsable du rendu graphique d'une mesure complète,
- * incluant :
- * - Les barres de mesure (simples, doubles, reprises)
- * - La ligne de portée
- * - Les accords et leurs changements au sein de la mesure
- * - Les notes et silences avec leurs ligatures
- * - Le positionnement relatif des beats selon l'espace disponible
- * 
- * Le renderer gère également la séparation visuelle entre différents segments
- * d'accords lorsqu'un espace est présent dans la notation source.
- * 
- * @example
- * ```typescript
- * const renderer = new MeasureRenderer(measure, x, y, width);
- * renderer.drawMeasure(svg, measureIndex, notePositions, grid);
- * ```
- */
-
-import { Measure, Beat, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
-import { SVG_NS } from './constants';
-import { RestRenderer } from './RestRenderer';
-// DebugLogger supprimé pour release utilisateur
-import { CollisionManager } from './CollisionManager';
-
-/**
  * Position d'une note dans le SVG avec métadonnées pour les liaisons.
  */
 interface NotePosition {
@@ -38,8 +10,61 @@ interface NotePosition {
     chordIndex: number;
     beatIndex: number;
     noteIndex: number;
-    segmentNoteIndex?: number; // index of the note within its chord segment (for analyzer overlay)
+    segmentNoteIndex?: number;
     tieStart?: boolean;
+    tieEnd?: boolean;
+    globalTimeIndex?: number;
+    tieToVoid?: boolean;
+    tieFromVoid?: boolean;
+    stemTopY?: number;
+    stemBottomY?: number;
+}
+import { RestRenderer } from './RestRenderer';
+import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
+import { CollisionManager } from './CollisionManager';
+import { SVG_NS } from './constants';
+/**
+ * @file MeasureRenderer.ts
+ * @description Rendu SVG d'une mesure musicale individuelle.
+ * 
+ * Cette classe est responsable du rendu graphique d'une mesure complète,
+        if (nv.isRest) {
+            this.restRenderer.drawRest(svg, nv, x, staffLineY);
+            return;
+        }
+        if (nv.value === 1) {
+            this.drawDiamondNoteHead(svg, x, staffLineY, true);
+        } else if (nv.value === 2) {
+            this.drawDiamondNoteHead(svg, x, staffLineY, true);
+            this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+        } else {
+            // For beamable notes (>=8), draw slash + stem but no flag (analyzer overlay draws beams)
+            this.drawSlash(svg, x, staffLineY);
+            this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+            // If not part of a primary beam group, render flags directly here
+            if (drawFlagsForIsolated) {
+                const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+                if (level > 0) {
+                    this.drawFlag(svg, x, staffLineY, level);
+                }
+            }
+        }
+        // Correction : bloc 'if (nv.dotted)' replacé à l'intérieur de la méthode
+        if (nv.dotted) {
+            const dot = document.createElementNS(SVG_NS, 'circle');
+            dot.setAttribute('cx', (x + 10).toString());
+            dot.setAttribute('cy', (staffLineY - 4).toString());
+            dot.setAttribute('r', '1.5');
+            dot.setAttribute('fill', '#000');
+            dot.setAttribute('data-cg-dot', '1');
+            svg.appendChild(dot);
+            if (this.collisionManager) {
+                const cx = x + 10;
+                const cy = staffLineY - 4;
+                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+            }
+        }
+    }
     tieEnd?: boolean;
         globalTimeIndex?: number; // Updated to match Note_Element interface
     tieToVoid?: boolean;
@@ -66,16 +91,18 @@ export class MeasureRenderer {
      * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
      */
     private readonly restRenderer: RestRenderer;
+    private readonly stemsDirection: 'up' | 'down';
 
     constructor(
         private readonly measure: Measure,
         private readonly x: number,
         private readonly y: number,
         private readonly width: number,
-        // Optional: set of `${segmentIndex}:${noteIndexInSegment}` that are in a level-1 beam group (length >=2)
         private readonly beamedAtLevel1?: Set<string>,
-        private readonly collisionManager?: CollisionManager
+        private readonly collisionManager?: CollisionManager,
+        stemsDirection?: 'up' | 'down'
     ) {
+        this.stemsDirection = stemsDirection === 'down' ? 'down' : 'up';
         this.restRenderer = new RestRenderer(this.collisionManager);
     }
 
@@ -371,7 +398,7 @@ export class MeasureRenderer {
             const localIndexInSegment = segmentNoteCursor[chordIndex];
             const isInPrimaryBeam = !!this.beamedAtLevel1?.has(`${chordIndex}:${localIndexInSegment}`);
             const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-            this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+            const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
             if (firstNoteX === null) firstNoteX = noteX;
 
             let headLeftX: number;
@@ -386,8 +413,8 @@ export class MeasureRenderer {
                 headRightX = noteX + slashHalf;
             }
             const hasStem = nv.value >= 2;
-            const stemTopY = hasStem ? staffLineY + 5 : undefined;
-            const stemBottomY = hasStem ? staffLineY + 30 : undefined;
+            const stemTopY = stemCoords.stemTopY;
+            const stemBottomY = stemCoords.stemBottomY;
 
             notePositions.push({
                 x: noteX,
@@ -560,21 +587,23 @@ export class MeasureRenderer {
     /**
      * Draw a single note without beams or flags (for analyzer path).
      * Analyzer overlay will handle beams; this just draws head and stem.
+     * Retourne les coordonnées de la hampe si elle existe.
      */
-    private drawSingleNoteWithoutBeam(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, drawFlagsForIsolated: boolean = false): void {
+    private drawSingleNoteWithoutBeam(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, drawFlagsForIsolated: boolean = false): { stemTopY?: number; stemBottomY?: number; } {
         if (nv.isRest) {
             this.restRenderer.drawRest(svg, nv, x, staffLineY);
-            return;
+            return {};
         }
+        let stemInfo: { topY: number; bottomY: number; } | undefined;
         if (nv.value === 1) {
             this.drawDiamondNoteHead(svg, x, staffLineY, true);
         } else if (nv.value === 2) {
             this.drawDiamondNoteHead(svg, x, staffLineY, true);
-            this.drawStem(svg, x, staffLineY, 25);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
         } else {
             // For beamable notes (>=8), draw slash + stem but no flag (analyzer overlay draws beams)
             this.drawSlash(svg, x, staffLineY);
-            this.drawStem(svg, x, staffLineY, 25);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
             // If not part of a primary beam group, render flags directly here
             if (drawFlagsForIsolated) {
                 const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
@@ -583,7 +612,6 @@ export class MeasureRenderer {
                 }
             }
         }
-
         if (nv.dotted) {
             const dot = document.createElementNS(SVG_NS, 'circle');
             dot.setAttribute('cx', (x + 10).toString());
@@ -598,6 +626,44 @@ export class MeasureRenderer {
                 this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
             }
         }
+        return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
+    }
+
+    /**
+     * Dessine une hampe orientée selon stemsDirection ('up' ou 'down').
+     * Retourne les coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
+     */
+    private drawStemWithDirection(svg: SVGElement, x: number, y: number, height: number, direction: 'up' | 'down'): { x: number; topY: number; bottomY: number; } {
+        const slashLength = 10;
+        // Position de la hampe selon la direction (notation musicale standard)
+        // Hampes UP : à droite de la note head
+        // Hampes DOWN : à gauche de la note head
+        const stemStartX = direction === 'up' ? (x + slashLength/2) : (x - slashLength/2);
+        
+        let stemStartY: number, stemEndY: number;
+        if (direction === 'up') {
+            // Hampes vers le haut : part du HAUT de la tête de note et monte
+            stemStartY = y - slashLength/2;  // Haut de la tête de note
+            stemEndY = stemStartY - height;
+        } else {
+            // Hampes vers le bas : part du BAS de la tête de note et descend
+            stemStartY = y + slashLength/2;  // Bas de la tête de note
+            stemEndY = stemStartY + height;
+        }
+        const stem = document.createElementNS(SVG_NS, 'line');
+        stem.setAttribute('x1', stemStartX.toString());
+        stem.setAttribute('y1', stemStartY.toString());
+        stem.setAttribute('x2', stemStartX.toString());
+        stem.setAttribute('y2', stemEndY.toString());
+        stem.setAttribute('stroke', '#000');
+        stem.setAttribute('stroke-width', '2');
+        svg.appendChild(stem);
+        // Retourner les vraies valeurs top et bottom (le plus petit y est le top, le plus grand y est le bottom)
+        return { 
+            x: stemStartX, 
+            topY: Math.min(stemStartY, stemEndY), 
+            bottomY: Math.max(stemStartY, stemEndY) 
+        };
     }
 
     private drawDiamondNoteHead(svg: SVGElement, x: number, y: number, hollow: boolean): void {

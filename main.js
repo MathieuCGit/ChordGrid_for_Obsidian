@@ -149,10 +149,24 @@ var _ChordGridParser = class _ChordGridParser {
    */
   parse(input) {
     const lines = input.trim().split("\n");
-    let firstLine = lines[0];
-    const timeSignature = this.parseTimeSignature(firstLine);
-    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, "");
-    lines[0] = firstLine;
+    let stemsDirection = "up";
+    let timeSignatureLine = lines[0];
+    if (/^\s*stems-down/i.test(timeSignatureLine)) {
+      stemsDirection = "down";
+      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-down\s*/i, "");
+    } else if (/^\s*stems-up/i.test(timeSignatureLine)) {
+      stemsDirection = "up";
+      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-up\s*/i, "");
+    }
+    if (timeSignatureLine.trim() === "" && lines.length > 1) {
+      timeSignatureLine = lines[1];
+      lines.splice(0, 2, timeSignatureLine);
+    } else {
+      lines[0] = timeSignatureLine;
+    }
+    const timeSignature = this.parseTimeSignature(timeSignatureLine);
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, "");
+    lines[0] = timeSignatureLine;
     const allMeasures = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
@@ -234,7 +248,7 @@ var _ChordGridParser = class _ChordGridParser {
         });
       }
     }
-    return { grid, errors, measures: allMeasures };
+    return { grid, errors, measures: allMeasures, stemsDirection };
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -914,7 +928,7 @@ var RestRenderer = class {
 
 // src/renderer/MeasureRenderer.ts
 var MeasureRenderer = class {
-  constructor(measure, x, y, width, beamedAtLevel1, collisionManager) {
+  constructor(measure, x, y, width, beamedAtLevel1, collisionManager, stemsDirection) {
     this.measure = measure;
     this.x = x;
     this.y = y;
@@ -932,6 +946,8 @@ var MeasureRenderer = class {
      * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
      */
     __publicField(this, "restRenderer");
+    __publicField(this, "stemsDirection");
+    this.stemsDirection = stemsDirection === "down" ? "down" : "up";
     this.restRenderer = new RestRenderer(this.collisionManager);
   }
   /**
@@ -1141,7 +1157,7 @@ var MeasureRenderer = class {
       const localIndexInSegment = segmentNoteCursor[chordIndex];
       const isInPrimaryBeam = !!((_a = this.beamedAtLevel1) == null ? void 0 : _a.has(`${chordIndex}:${localIndexInSegment}`));
       const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-      this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+      const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
       if (firstNoteX === null) firstNoteX = noteX;
       let headLeftX;
       let headRightX;
@@ -1155,8 +1171,8 @@ var MeasureRenderer = class {
         headRightX = noteX + slashHalf;
       }
       const hasStem = nv.value >= 2;
-      const stemTopY = hasStem ? staffLineY + 5 : void 0;
-      const stemBottomY = hasStem ? staffLineY + 30 : void 0;
+      const stemTopY = stemCoords.stemTopY;
+      const stemBottomY = stemCoords.stemBottomY;
       notePositions.push({
         x: noteX,
         y: staffLineY,
@@ -1305,20 +1321,22 @@ var MeasureRenderer = class {
   /**
    * Draw a single note without beams or flags (for analyzer path).
    * Analyzer overlay will handle beams; this just draws head and stem.
+   * Retourne les coordonnées de la hampe si elle existe.
    */
   drawSingleNoteWithoutBeam(svg, nv, x, staffLineY, drawFlagsForIsolated = false) {
     if (nv.isRest) {
       this.restRenderer.drawRest(svg, nv, x, staffLineY);
-      return;
+      return {};
     }
+    let stemInfo;
     if (nv.value === 1) {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
     } else if (nv.value === 2) {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
-      this.drawStem(svg, x, staffLineY, 25);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
     } else {
       this.drawSlash(svg, x, staffLineY);
-      this.drawStem(svg, x, staffLineY, 25);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
       if (drawFlagsForIsolated) {
         const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
         if (level > 0) {
@@ -1340,6 +1358,36 @@ var MeasureRenderer = class {
         this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
       }
     }
+    return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
+  }
+  /**
+   * Dessine une hampe orientée selon stemsDirection ('up' ou 'down').
+   * Retourne les coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
+   */
+  drawStemWithDirection(svg, x, y, height, direction) {
+    const slashLength = 10;
+    const stemStartX = direction === "up" ? x + slashLength / 2 : x - slashLength / 2;
+    let stemStartY, stemEndY;
+    if (direction === "up") {
+      stemStartY = y - slashLength / 2;
+      stemEndY = stemStartY - height;
+    } else {
+      stemStartY = y + slashLength / 2;
+      stemEndY = stemStartY + height;
+    }
+    const stem = document.createElementNS(SVG_NS, "line");
+    stem.setAttribute("x1", stemStartX.toString());
+    stem.setAttribute("y1", stemStartY.toString());
+    stem.setAttribute("x2", stemStartX.toString());
+    stem.setAttribute("y2", stemEndY.toString());
+    stem.setAttribute("stroke", "#000");
+    stem.setAttribute("stroke-width", "2");
+    svg.appendChild(stem);
+    return {
+      x: stemStartX,
+      topY: Math.min(stemStartY, stemEndY),
+      bottomY: Math.max(stemStartY, stemEndY)
+    };
   }
   drawDiamondNoteHead(svg, x, y, hollow) {
     const diamondSize = 6;
@@ -1914,7 +1962,7 @@ var MusicAnalyzer = class {
 };
 
 // src/renderer/AnalyzerBeamOverlay.ts
-function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
+function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions, stemsDirection = "up") {
   const beamGap = 5;
   const level1Beamed = /* @__PURE__ */ new Set();
   for (const g of analyzed.beamGroups) {
@@ -1934,9 +1982,16 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
     });
     const valid = refs.filter((r) => r.pos);
     if (valid.length === 0) continue;
-    const stemBottoms = valid.map((v) => v.pos.stemBottomY || v.pos.y + 30);
-    const baseStemBottom = stemBottoms.length ? Math.min(...stemBottoms) : valid[0].pos.y + 30;
-    const beamY = baseStemBottom - (level - 1) * beamGap;
+    let beamY;
+    if (stemsDirection === "up") {
+      const stemTops = valid.map((v) => v.pos.stemTopY || v.pos.y - 30);
+      const baseStemTop = stemTops.length ? Math.min(...stemTops) : valid[0].pos.y - 30;
+      beamY = baseStemTop + (level - 1) * beamGap;
+    } else {
+      const stemBottoms = valid.map((v) => v.pos.stemBottomY || v.pos.y + 30);
+      const baseStemBottom = stemBottoms.length ? Math.max(...stemBottoms) : valid[0].pos.y + 30;
+      beamY = baseStemBottom - (level - 1) * beamGap;
+    }
     if (group.isPartial) {
       const p = valid[0].pos;
       if (group.level > 1) {
@@ -1946,7 +2001,8 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
           return;
         }
       }
-      const startX = p.x - 10 / 2 + 2;
+      const slashLength = 10;
+      const startX = stemsDirection === "up" ? p.x + slashLength / 2 : p.x - slashLength / 2;
       const beamletLength = 8;
       const endX = group.direction === "right" ? startX + beamletLength : startX - beamletLength;
       const beamlet = document.createElementNS(SVG_NS, "line");
@@ -1960,8 +2016,9 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
     } else {
       const first = valid[0].pos;
       const last = valid[valid.length - 1].pos;
-      const startX = first.x - 10 / 2 + 2;
-      const endX = last.x - 10 / 2 + 2;
+      const slashLength = 10;
+      const startX = stemsDirection === "up" ? first.x + slashLength / 2 : first.x - slashLength / 2;
+      const endX = stemsDirection === "up" ? last.x + slashLength / 2 : last.x - slashLength / 2;
       const beam = document.createElementNS(SVG_NS, "line");
       beam.setAttribute("x1", String(startX));
       beam.setAttribute("y1", String(beamY));
@@ -2175,10 +2232,16 @@ var SVGRenderer = class {
    * @param grid - Structure ChordGrid contenant les mesures à rendre
    * @returns Élément SVG prêt à être inséré dans le DOM
    */
-  render(grid) {
-    return this.createSVG(grid);
+  /**
+   * Rend une grille d'accords en élément SVG.
+   * @param grid - Structure ChordGrid contenant les mesures à rendre
+   * @param stemsDirection - Optionnel, direction des hampes ('up' | 'down'), par défaut 'up'
+   */
+  render(grid, stemsDirection) {
+    const stemsDir = stemsDirection === "down" ? "down" : "up";
+    return this.createSVG(grid, stemsDir);
   }
-  createSVG(grid) {
+  createSVG(grid, stemsDirection) {
     const measuresPerLine = 4;
     const baseMeasureWidth = 240;
     const measureHeight = 120;
@@ -2253,8 +2316,8 @@ var SVGRenderer = class {
     const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
     const height = lines * (measureHeight + 20) + 20;
     const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("width", String(width));
-    svg.setAttribute("height", String(height));
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "auto");
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("xmlns", SVG_NS);
     const collisionManager = new CollisionManager();
@@ -2351,14 +2414,15 @@ var SVGRenderer = class {
           }
         });
       }
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager);
+      const stemsDir = stemsDirection === "down" ? "down" : "up";
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir != null ? stemsDir : "up");
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
       if (analyzedMeasures[globalIndex2]) {
-        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions);
+        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
       }
       lineAccumulated[lineIndex] += mWidth;
     });
-    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
+    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager, stemsDirection);
     return svg;
   }
   /**
@@ -2398,7 +2462,7 @@ var SVGRenderer = class {
    * @param tieManager - Gestionnaire de liaisons entre lignes
    * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
    */
-  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, collisionManager) {
+  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, collisionManager, stemsDirection) {
     var _a;
     const lineStartPadding = (_a = svg.__dynamicLineStartPadding) != null ? _a : 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
@@ -2438,12 +2502,17 @@ var SVGRenderer = class {
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
-      let controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      let controlY;
+      if (stemsDirection === "up") {
+        controlY = Math.max(startY, endY) + (isCross ? baseAmp + 10 : baseAmp);
+      } else {
+        controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      }
       if (collisionManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const preliminaryTopY = controlY;
-        const preliminaryBottomY = Math.max(startY, endY);
+        const preliminaryTopY = stemsDirection === "up" ? Math.min(startY, endY) : controlY;
+        const preliminaryBottomY = stemsDirection === "up" ? controlY : Math.max(startY, endY);
         const overlappingDot = dotsForCollisions.find((d2) => {
           const db = d2.bbox;
           const horiz = db.x < maxX && db.x + db.width > minX;
@@ -2451,8 +2520,8 @@ var SVGRenderer = class {
           return horiz && vert;
         });
         if (overlappingDot) {
-          const raise = Math.max(6, baseAmp * 0.6);
-          controlY -= raise;
+          const adjust = Math.max(6, baseAmp * 0.6);
+          controlY += stemsDirection === "up" ? adjust : -adjust;
         }
       }
       const midX = (startX + endX) / 2;
@@ -2465,8 +2534,8 @@ var SVGRenderer = class {
       if (collisionManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const topY = controlY;
-        const bottomY = Math.max(startY, endY);
+        const topY = Math.min(controlY, startY, endY);
+        const bottomY = Math.max(controlY, startY, endY);
         collisionManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
       }
     };
@@ -2602,7 +2671,7 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
           }
           const renderer = new SVGRenderer();
-          const svg = renderer.render(grid);
+          const svg = renderer.render(grid, result.stemsDirection);
           el.appendChild(svg);
         } catch (err) {
           const error = err;

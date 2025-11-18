@@ -89,16 +89,37 @@ export class ChordGridParser {
    */
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
-    let firstLine = lines[0];
     
+    // Détection du mot-clé stems-up ou stems-down sur la première ligne
+    let stemsDirection: 'up' | 'down' = 'up';
+    let timeSignatureLine = lines[0];
+    
+    if (/^\s*stems-down/i.test(timeSignatureLine)) {
+      stemsDirection = 'down';
+      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-down\s*/i, '');
+    } else if (/^\s*stems-up/i.test(timeSignatureLine)) {
+      stemsDirection = 'up';
+      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-up\s*/i, '');
+    }
+    
+    // Si après avoir retiré stems-up/down la ligne est vide, utiliser la ligne suivante pour la signature
+    if (timeSignatureLine.trim() === '' && lines.length > 1) {
+      timeSignatureLine = lines[1];
+      // Reconstruire lines en supprimant la première ligne vide et en utilisant la deuxième
+      lines.splice(0, 2, timeSignatureLine);
+    } else {
+      // Mettre à jour la première ligne
+      lines[0] = timeSignatureLine;
+    }
+
     // Parser la signature temporelle
-    const timeSignature = this.parseTimeSignature(firstLine);
-    
+    const timeSignature = this.parseTimeSignature(timeSignatureLine);
+
     // Retirer le motif "N/M" ou "N/M binary/ternary/noauto" de la première ligne
     // pour éviter qu'il soit parsé comme mesure
     // Consomme aussi l'éventuel | qui suit immédiatement
-    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, '');
-    lines[0] = firstLine;
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, '');
+    lines[0] = timeSignatureLine;
     
   // Parser toutes les mesures
   const allMeasures: Measure[] = [];
@@ -233,7 +254,7 @@ export class ChordGridParser {
       }
     }
 
-    return { grid, errors, measures: allMeasures };
+  return { grid, errors, measures: allMeasures, stemsDirection };
   }
 
   /**
