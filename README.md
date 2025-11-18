@@ -40,7 +40,25 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 
 ### Syntax
 
-**Time signature:** `4/4`, `3/4`, `6/8`, `12/8`, etc.
+**Time Signature:** `4/4`, `3/4`, `6/8`, `12/8`, etc.
+
+**Stem Direction (v2.2+):** Control the direction of note stems following musical notation standards
+- `stems-up` (default) - Stems point upward (right of notehead, beams above, ties below) - standard for treble clef/solo notation
+- `stems-down` - Stems point downward (left of notehead, beams below, ties above) - standard for bass clef/lower voice notation
+- Keyword placement: 
+  - Separate line before time signature: `stems-down\n4/4`
+  - Same line as time signature: `stems-down 4/4`
+- Examples:
+  ```chordgrid
+  stems-down
+  4/4 | C[88 4 4] | G[4 4 2] |
+  ```
+  or
+  ```chordgrid
+  stems-down 4/4 | C[88 4 4] | G[4 4 2] |
+  ```
+
+**Responsive SVG (v2.2+):** All chord grids now render with responsive SVG that automatically adapts to container width while maintaining proper aspect ratio.
 
 **Grouping modes (v2.1+):** Control automatic beam grouping behavior
 - `4/4 binary` - Force grouping by 2 eighth notes (every 1.0 quarter note)
@@ -273,6 +291,8 @@ chord-grid/
 
 - ✅ Vector SVG rendering
 - ✅ Chord charts with rhythmic notation
+- ✅ **Stem direction control** (v2.2.0) – stems-up/stems-down keywords following musical notation standards
+- ✅ **Responsive SVG rendering** (v2.2.0) – automatic adaptation to container width with proper aspect ratio
 - ✅ **CollisionManager system** (v2.1.0) – intelligent element placement avoiding overlaps
 - ✅ **Dynamic time signature spacing** (v2.1.0) – automatic width calculation and adaptive padding
 - ✅ **Dotted note collision avoidance** (v2.1.0) – tie curves raised automatically
@@ -312,14 +332,15 @@ For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
 | v1.x Maintenance | Stability, bug fixes, doc polish |
 | v2.0 Analyzer Core | ✅ Full Parser → Analyzer → Renderer separation, unified beaming |
 | v2.1 Tuplets & Collision Management | ✅ Complete tuplet implementation (triplets, quintuplets, customizable ratios), complex time signatures (12+), intelligent collision avoidance system |
-| v2.2 Grace Notes & Ornaments | Extend duration model for grace notes and musical ornaments |
-| v2.3 Dynamics & Articulation | Symbol layer, extensible rendering decorators |
-| v2.4 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
+| v2.2 Stem Direction & Responsive SVG | ✅ Musical notation standards (stems-up/stems-down), responsive SVG rendering |
+| v2.3 Grace Notes & Ornaments | Extend duration model for grace notes and musical ornaments |
+| v2.4 Dynamics & Articulation | Symbol layer, extensible rendering decorators |
+| v2.5 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
 | v3.0 Interactive Editing | In-note editing handles, real-time validation |
 
-## Architecture (v2.1 – ✅ Complete with Collision Management)
+## Architecture (v2.2 – ✅ Complete with Stem Direction Control)
 
-The rendering pipeline uses a clean 3-stage architecture with intelligent collision detection:
+The rendering pipeline uses a clean 3-stage architecture with intelligent collision detection and proper musical notation standards:
 
 1. **Parser** (`ChordGridParser`) – Performs syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness, tuplets).
 2. **Analyzer** (`MusicAnalyzer`) – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.

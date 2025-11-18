@@ -4,9 +4,9 @@
 
 > Affiche des grilles d'accords avec une notation rythmique précise, rendue en SVG net et scalable dans vos notes Obsidian.
 
-**Version :** 2.1.0 · **Licence :** GPL-3.0 · **Statut :** Stable
+**Version :** 2.2.0 · **Licence :** GPL-3.0 · **Statut :** Stable
 
-**Dernière version :** [v2.1.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.1.0) - **NOUVEAU : Système de gestion des collisions pour une mise en page professionnelle**
+**Dernière version :** [v2.2.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.2.0) - **NOUVEAU : Contrôle de la direction des hampes & rendu SVG responsive**
 
 Ce plugin analyse une syntaxe textuelle légère et la transforme en mesures musicales structurées (accords, groupes rythmiques, liaisons, silences), puis les rend avec une logique de ligature automatique via une architecture propre en 3 étapes : **Parser → Analyseur → Rendu**.
 
@@ -33,6 +33,24 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 ### Syntaxe
 
 **Indication de mesure :** `4/4`, `3/4`, `6/8`, `12/8`, etc.
+
+**Direction des hampes (v2.2+) :** Contrôle la direction des hampes selon les standards de notation musicale
+- `stems-up` (par défaut) - Hampes vers le haut (à droite de la tête de note, ligatures au-dessus, liaisons en-dessous) - standard pour clé de sol/notation solo
+- `stems-down` - Hampes vers le bas (à gauche de la tête de note, ligatures en-dessous, liaisons au-dessus) - standard pour clé de fa/voix inférieure
+- Placement du mot-clé :
+  - Ligne séparée avant l'indication de mesure : `stems-down\n4/4`
+  - Même ligne que l'indication de mesure : `stems-down 4/4`
+- Exemples :
+  ```chordgrid
+  stems-down
+  4/4 | C[88 4 4] | G[4 4 2] |
+  ```
+  ou
+  ```chordgrid
+  stems-down 4/4 | C[88 4 4] | G[4 4 2] |
+  ```
+
+**SVG responsive (v2.2+) :** Toutes les grilles d'accords sont maintenant rendues avec un SVG responsive qui s'adapte automatiquement à la largeur du conteneur tout en préservant le ratio d'aspect.
 
 **Modes de groupement (v2.1+) :** Contrôle le comportement automatique de ligature des croches
 - `4/4 binary` - Force le groupement par 2 croches (tous les 1.0 temps de noire)
@@ -227,6 +245,8 @@ L'espace avant `G` casse la ligature.
 
 - ✅ Rendu SVG vectoriel
 - ✅ Grilles d'accords avec notation rythmique
+- ✅ **Contrôle de la direction des hampes** (v2.2.0) – mots-clés stems-up/stems-down respectant les standards de notation musicale
+- ✅ **Rendu SVG responsive** (v2.2.0) – adaptation automatique à la largeur du conteneur avec ratio d'aspect préservé
 - ✅ **Système CollisionManager** (v2.1.0) – placement intelligent des éléments évitant les chevauchements
 - ✅ **Espacement dynamique des signatures rythmiques** (v2.1.0) – calcul automatique de largeur et padding adaptatif
 - ✅ **Évitement de collision pour notes pointées** (v2.1.0) – courbes de liaison relevées automatiquement
@@ -253,12 +273,15 @@ L'espace avant `G` casse la ligature.
 | v1.x Maintenance | Stabilité, corrections, polissage de la doc |
 | v2.0 Analyseur | ✅ Séparation Parser → Analyzer → Renderer, beaming unifié |
 | v2.1 Tuplets & gestion des collisions | ✅ Implémentation complète des tuplets (triolets, quintolets, ratios personnalisables), signatures temporelles complexes (12+), système intelligent d'évitement de collisions |
-| v2.2 Appoggiatures & ornements | Extension du modèle pour les notes d'agrément |
-| v2.3 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
-| v2.4 Export | Export PNG / SVG propre + POC MIDI |
+| v2.2 Direction des hampes & SVG responsive | ✅ Standards de notation musicale (stems-up/stems-down), rendu SVG responsive |
+| v2.3 Appoggiatures & ornements | Extension du modèle pour les notes d'agrément |
+| v2.4 Dynamiques & articulations | Calque de symboles, décorateurs de rendu |
+| v2.5 Export | Export PNG / SVG propre + POC MIDI |
 | v3.0 Édition | Édition interactive dans la note |
 
-## Architecture (v2.1 – ✅ Terminée avec gestion des collisions)
+## Architecture (v2.2 – ✅ Terminée avec contrôle de la direction des hampes)
+
+Le pipeline de rendu utilise une architecture propre en 3 étapes avec détection intelligente des collisions et respect des standards de notation musicale :
 
 Pipeline de rendu en 3 couches avec détection intelligente des collisions :
 

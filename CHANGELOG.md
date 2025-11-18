@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2025-01-XX
+
+### Added
+- **Stem direction control** following musical notation standards
+  - `stems-up` keyword (default behavior) - stems point upward, positioned right of notehead, beams above, ties below
+  - `stems-down` keyword - stems point downward, positioned left of notehead, beams below, ties above
+  - Keyword can be placed on separate line before time signature or on same line as time signature
+  - Proper musical notation conventions respected for all stem directions
+- **Responsive SVG rendering**
+  - SVG now renders with `width="100%"` and `height="auto"` for automatic container adaptation
+  - Dynamic viewBox calculation maintains proper aspect ratio
+  - Chord grids scale seamlessly across different screen sizes and container widths
+- **Complete refactoring of stem and beam rendering logic**
+  - `MeasureRenderer.drawStemWithDirection()` completely rewritten with correct musical logic
+  - Stems-up: start from top of notehead (y - slashLength/2), positioned right (x + slashLength/2)
+  - Stems-down: start from bottom of notehead (y + slashLength/2), positioned left (x - slashLength/2)
+  - Returns accurate `stemTopY` and `stemBottomY` for precise beam placement
+- **Updated tie positioning system**
+  - Ties positioned below notes when stems point up (standard treble/solo notation)
+  - Ties positioned above notes when stems point down (standard bass/lower voice notation)
+  - `TieManager.drawCurve()` updated to respect stem direction
+- **Comprehensive test suite for new features**
+  - `test/renderer_stems_direction.spec.ts` - validates stem direction rendering and positioning
+  - `test/renderer_responsive_svg.spec.ts` - validates responsive SVG attributes
+  - All 178 existing tests continue to pass (full backward compatibility)
+
+### Changed
+- **Parser enhancement** (`ChordGridParser.ts`)
+  - Now parses `stems-up` and `stems-down` keywords from first line(s)
+  - Returns `stemsDirection` in `ParseResult` interface
+  - Handles both single-line (`stems-down 4/4`) and multi-line (`stems-down\n4/4`) formats
+- **Renderer architecture updated**
+  - `main.ts` now passes `result.stemsDirection` to `renderer.render()`
+  - `SVGRenderer` propagates stem direction to all sub-renderers
+  - `MeasureRenderer` uses stem direction for correct stem, beam, and note positioning
+  - `AnalyzerBeamOverlay` uses `stemTopY` for stems-up or `stemBottomY` for stems-down
+- **Musical notation standards enforcement**
+  - All rendering components now follow proper musical notation conventions
+  - Stem position, beam position, and tie position all depend on stem direction
+  - Default behavior matches standard treble clef/solo notation (stems up)
+
+### Fixed
+- Corrected stem positioning logic that was causing stems to render in wrong direction
+- Fixed beam attachment points to use correct end of stem based on direction
+- Fixed tie curve positioning to respect stem direction
+
 ## [2.1.0] - 2025-11-17
 
 ### Added
