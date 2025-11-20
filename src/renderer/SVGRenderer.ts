@@ -35,6 +35,16 @@ import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
 import { CollisionManager } from './CollisionManager';
 
 /**
+ * Options de rendu pour le SVGRenderer.
+ */
+export interface RenderOptions {
+  /** Direction des hampes ('up' ou 'down'). Par défaut 'up'. */
+  stemsDirection?: 'up' | 'down';
+  /** Afficher le symbole % pour les mesures répétées au lieu du rythme complet. Par défaut false. */
+  displayRepeatSymbol?: boolean;
+}
+
+/**
  * Classe principale pour le rendu SVG des grilles d'accords.
  */
 export class SVGRenderer {
@@ -47,15 +57,22 @@ export class SVGRenderer {
   /**
    * Rend une grille d'accords en élément SVG.
    * @param grid - Structure ChordGrid contenant les mesures à rendre
-   * @param stemsDirection - Optionnel, direction des hampes ('up' | 'down'), par défaut 'up'
+   * @param optionsOrStemsDirection - Options de rendu ou direction des hampes (rétro-compatibilité)
    */
-  render(grid: ChordGrid, stemsDirection?: 'up' | 'down'): SVGElement {
-  // Par défaut, hampes vers le haut si non précisé
-  const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
-  return this.createSVG(grid, stemsDir);
+  render(grid: ChordGrid, optionsOrStemsDirection?: RenderOptions | 'up' | 'down'): SVGElement {
+    // Rétro-compatibilité : si c'est une string, c'est stemsDirection
+    let options: RenderOptions;
+    if (typeof optionsOrStemsDirection === 'string') {
+      options = { stemsDirection: optionsOrStemsDirection };
+    } else {
+      options = optionsOrStemsDirection || {};
+    }
+    
+    const stemsDir = options.stemsDirection === 'down' ? 'down' : 'up';
+    return this.createSVG(grid, stemsDir, options);
   }
 
-  private createSVG(grid: ChordGrid, stemsDirection?: 'up' | 'down'): SVGElement {
+  private createSVG(grid: ChordGrid, stemsDirection: 'up' | 'down', options: RenderOptions): SVGElement {
   const measuresPerLine = 4;
   const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
   const measureHeight = 120;
@@ -273,7 +290,7 @@ export class SVGRenderer {
       }
   // Toujours forcer 'up' par défaut si non précisé
   const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
-  const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir ?? 'up');
+  const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir ?? 'up', options.displayRepeatSymbol ?? false);
   mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
       // Draw analyzer beams overlay

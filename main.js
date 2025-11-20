@@ -150,15 +150,21 @@ var _ChordGridParser = class _ChordGridParser {
   parse(input) {
     const lines = input.trim().split("\n");
     let stemsDirection = "up";
+    let displayRepeatSymbol = false;
     let timeSignatureLine = lines[0];
-    if (/^\s*stems-down/i.test(timeSignatureLine)) {
+    if (/stems-down/i.test(timeSignatureLine)) {
       stemsDirection = "down";
-      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-down\s*/i, "");
-    } else if (/^\s*stems-up/i.test(timeSignatureLine)) {
+      timeSignatureLine = timeSignatureLine.replace(/stems-down\s*/i, "");
+    } else if (/stems-up/i.test(timeSignatureLine)) {
       stemsDirection = "up";
-      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-up\s*/i, "");
+      timeSignatureLine = timeSignatureLine.replace(/stems-up\s*/i, "");
     }
-    if (timeSignatureLine.trim() === "" && lines.length > 1) {
+    if (/show%/i.test(timeSignatureLine)) {
+      displayRepeatSymbol = true;
+      timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, "");
+    }
+    timeSignatureLine = timeSignatureLine.trim();
+    if (timeSignatureLine === "" && lines.length > 1) {
       timeSignatureLine = lines[1];
       lines.splice(0, 2, timeSignatureLine);
     } else {
@@ -248,7 +254,7 @@ var _ChordGridParser = class _ChordGridParser {
         });
       }
     }
-    return { grid, errors, measures: allMeasures, stemsDirection };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol };
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -1062,7 +1068,7 @@ var RestRenderer = class {
 
 // src/renderer/MeasureRenderer.ts
 var MeasureRenderer = class {
-  constructor(measure, x, y, width, beamedAtLevel1, collisionManager, stemsDirection) {
+  constructor(measure, x, y, width, beamedAtLevel1, collisionManager, stemsDirection, displayRepeatSymbol) {
     this.measure = measure;
     this.x = x;
     this.y = y;
@@ -1078,10 +1084,14 @@ var MeasureRenderer = class {
      * @param width - Largeur allouée à la mesure
      * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
      * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
+     * @param stemsDirection - Direction des hampes ('up' ou 'down')
+     * @param displayRepeatSymbol - Afficher le symbole % pour les mesures répétées
      */
     __publicField(this, "restRenderer");
     __publicField(this, "stemsDirection");
+    __publicField(this, "displayRepeatSymbol");
     this.stemsDirection = stemsDirection === "down" ? "down" : "up";
+    this.displayRepeatSymbol = displayRepeatSymbol != null ? displayRepeatSymbol : false;
     this.restRenderer = new RestRenderer(this.collisionManager);
   }
   /**
@@ -1116,6 +1126,12 @@ var MeasureRenderer = class {
     staffLine.setAttribute("stroke", "#000");
     staffLine.setAttribute("stroke-width", "1");
     svg.appendChild(staffLine);
+    if (this.displayRepeatSymbol && this.measure.isRepeat) {
+      this.drawRepeatSymbol(svg);
+      this.drawChordName(svg, this.measure.chord, this.x + 30);
+      this.drawRightBarline(svg, rightBarX, this.y, 120);
+      return;
+    }
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
     const segmentNoteCursor = new Array(segments.length).fill(0);
     const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
@@ -1618,6 +1634,53 @@ var MeasureRenderer = class {
     bar2.setAttribute("stroke", "#000");
     bar2.setAttribute("stroke-width", "1.5");
     svg.appendChild(bar2);
+  }
+  /**
+   * Draw the repeat symbol (%) in the center of the measure.
+   * Uses the official SVG path for a classical measure repeat symbol.
+   */
+  drawRepeatSymbol(svg) {
+    const centerX = this.x + this.width / 2;
+    const centerY = this.y + 80;
+    const targetHeight = 30;
+    const originalHeight = 178;
+    const originalWidth = 188;
+    const scale = targetHeight / originalHeight;
+    const symbolWidth = originalWidth * scale;
+    const symbolHeight = targetHeight;
+    const translateX = centerX - symbolWidth / 2;
+    const translateY = centerY - symbolHeight / 2 - 2;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("data-repeat-symbol", "true");
+    group.setAttribute("transform", `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M 0.29640036,177.3364 35.741505,135.44902 71.186609,93.561637 82.730763,80.33404 116.29431,40.651251 149.85784,0.96846227 h 37.46642 L 153.76072,40.651251 120.19718,80.33404 108.65303,93.561637 73.207926,135.44902 37.762822,177.3364 Z M 131.5485,152.77085 c -3.23819,-3.81078 -5.88759,-10.61356 -5.88759,-15.11723 0,-4.50368 2.6494,-11.30646 5.88759,-15.11724 3.23814,-3.81083 9.01868,-6.92875 12.84561,-6.92875 3.82693,0 9.60748,3.11792 12.84563,6.92875 3.23818,3.81078 5.88758,10.61356 5.88758,15.11724 0,4.50367 -2.6494,11.30645 -5.88758,15.11723 -3.23815,3.81083 -9.0187,6.92875 -12.84563,6.92875 -3.82693,0 -9.60747,-3.11792 -12.84561,-6.92875 z M 34.135803,51.359299 C 30.897632,47.548517 28.24822,40.74574 28.24822,36.242052 c 0,-4.503687 2.649412,-11.306465 5.887583,-15.117246 11.362479,-13.3718214 31.57884,-3.693983 31.57884,15.117246 0,4.503688 -2.649413,11.306465 -5.887583,15.117247 -3.238167,3.810826 -9.018699,6.928747 -12.845629,6.928747 -3.826929,0 -9.607461,-3.117921 -12.845628,-6.928747 z");
+    path.setAttribute("fill", "#444");
+    group.appendChild(path);
+    svg.appendChild(group);
+  }
+  /**
+   * Draw chord name above the measure.
+   */
+  drawChordName(svg, chord, xPosition) {
+    if (!chord) return;
+    const chordX = xPosition !== void 0 ? xPosition : this.x + this.width / 2;
+    const chordY = this.y + 40;
+    const fontSize = 22;
+    const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, "bold");
+    chordText.setAttribute("text-anchor", "middle");
+    chordText.setAttribute("font-family", "Arial, sans-serif");
+    svg.appendChild(chordText);
+  }
+  /**
+   * Draw the right barline of the measure.
+   */
+  drawRightBarline(svg, x, y, height) {
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, x, y, height, false);
+    } else {
+      this.drawBar(svg, x, y, height);
+    }
   }
   createText(text, x, y, size, weight = "normal") {
     const textEl = document.createElementNS(SVG_NS, "text");
@@ -2374,13 +2437,19 @@ var SVGRenderer = class {
   /**
    * Rend une grille d'accords en élément SVG.
    * @param grid - Structure ChordGrid contenant les mesures à rendre
-   * @param stemsDirection - Optionnel, direction des hampes ('up' | 'down'), par défaut 'up'
+   * @param optionsOrStemsDirection - Options de rendu ou direction des hampes (rétro-compatibilité)
    */
-  render(grid, stemsDirection) {
-    const stemsDir = stemsDirection === "down" ? "down" : "up";
-    return this.createSVG(grid, stemsDir);
+  render(grid, optionsOrStemsDirection) {
+    let options;
+    if (typeof optionsOrStemsDirection === "string") {
+      options = { stemsDirection: optionsOrStemsDirection };
+    } else {
+      options = optionsOrStemsDirection || {};
+    }
+    const stemsDir = options.stemsDirection === "down" ? "down" : "up";
+    return this.createSVG(grid, stemsDir, options);
   }
-  createSVG(grid, stemsDirection) {
+  createSVG(grid, stemsDirection, options) {
     const measuresPerLine = 4;
     const baseMeasureWidth = 240;
     const measureHeight = 120;
@@ -2538,7 +2607,7 @@ var SVGRenderer = class {
     }
     const lineAccumulated = new Array(lines).fill(dynamicLineStartPadding);
     measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2, width: mWidth }) => {
-      var _a, _b;
+      var _a, _b, _c;
       const x = lineAccumulated[lineIndex];
       const y = lineIndex * (measureHeight + 20) + 20;
       let perMeasureBeamSet;
@@ -2554,7 +2623,7 @@ var SVGRenderer = class {
         });
       }
       const stemsDir = stemsDirection === "down" ? "down" : "up";
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir != null ? stemsDir : "up");
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir != null ? stemsDir : "up", (_c = options.displayRepeatSymbol) != null ? _c : false);
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
       if (analyzedMeasures[globalIndex2]) {
         drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
@@ -2868,7 +2937,10 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
           }
           const renderer = new SVGRenderer();
-          const svg = renderer.render(grid, result.stemsDirection);
+          const svg = renderer.render(grid, {
+            stemsDirection: result.stemsDirection,
+            displayRepeatSymbol: result.displayRepeatSymbol
+          });
           el.appendChild(svg);
         } catch (err) {
           const error = err;

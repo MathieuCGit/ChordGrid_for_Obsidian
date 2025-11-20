@@ -90,20 +90,31 @@ export class ChordGridParser {
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
     
-    // Détection du mot-clé stems-up ou stems-down sur la première ligne
+    // Détection des mots-clés stems-up/down et show% sur la première ligne (dans n'importe quel ordre)
     let stemsDirection: 'up' | 'down' = 'up';
+    let displayRepeatSymbol = false;
     let timeSignatureLine = lines[0];
     
-    if (/^\s*stems-down/i.test(timeSignatureLine)) {
+    // Check for stems keywords (anywhere in the line)
+    if (/stems-down/i.test(timeSignatureLine)) {
       stemsDirection = 'down';
-      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-down\s*/i, '');
-    } else if (/^\s*stems-up/i.test(timeSignatureLine)) {
+      timeSignatureLine = timeSignatureLine.replace(/stems-down\s*/i, '');
+    } else if (/stems-up/i.test(timeSignatureLine)) {
       stemsDirection = 'up';
-      timeSignatureLine = timeSignatureLine.replace(/^\s*stems-up\s*/i, '');
+      timeSignatureLine = timeSignatureLine.replace(/stems-up\s*/i, '');
     }
     
-    // Si après avoir retiré stems-up/down la ligne est vide, utiliser la ligne suivante pour la signature
-    if (timeSignatureLine.trim() === '' && lines.length > 1) {
+    // Check for show% keyword (anywhere in the line)
+    if (/show%/i.test(timeSignatureLine)) {
+      displayRepeatSymbol = true;
+      timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, '');
+    }
+    
+    // Remove leading whitespace after removing directives
+    timeSignatureLine = timeSignatureLine.trim();
+    
+    // Si après avoir retiré les directives la ligne est vide, utiliser la ligne suivante pour la signature
+    if (timeSignatureLine === '' && lines.length > 1) {
       timeSignatureLine = lines[1];
       // Reconstruire lines en supprimant la première ligne vide et en utilisant la deuxième
       lines.splice(0, 2, timeSignatureLine);
@@ -254,7 +265,7 @@ export class ChordGridParser {
       }
     }
 
-  return { grid, errors, measures: allMeasures, stemsDirection };
+  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol };
   }
 
   /**

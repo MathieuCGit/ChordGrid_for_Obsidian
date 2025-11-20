@@ -233,4 +233,5 @@ export interface ParseResult {
   errors: ValidationError[];
   measures: Measure[];
   stemsDirection?: 'up' | 'down';
+  displayRepeatSymbol?: boolean;
 }
