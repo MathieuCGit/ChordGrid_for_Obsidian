@@ -371,29 +371,32 @@ export class SVGRenderer {
         if (!curMeasurePos) continue;
         
         // Search for the matching tieEnd or tieFromVoid
+        // Improved search: prefer a tieEnd on the SAME line first. Only if none exists
+        // and a cross-line target is found do we convert to tieToVoid.
+        let sameLineTarget: typeof notePositions[0] | null = null;
+        let crossLineTarget: typeof notePositions[0] | null = null;
         for (let j = i + 1; j < notePositions.length; j++) {
           const target = notePositions[j];
-          
-          // Match either tieEnd (normal) or tieFromVoid (explicit cross-line)
-          if (target.tieEnd || target.tieFromVoid) {
-            // Found the matching target - check if it's on a different line
-            const targetMeasurePos = measurePositions.find(mp => mp.globalIndex === target.measureIndex);
-            
-            if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
-              // This tie crosses a line boundary!
-              // DebugLogger supprimé
-              
-              // Mark the start note as tieToVoid
-              cur.tieToVoid = true;
-              // If target already has tieFromVoid, keep it; otherwise set it
-              if (!target.tieFromVoid) {
-                target.tieFromVoid = true;
-              }
-              // Clear the normal tieStart flag to avoid double drawing
-              cur.tieStart = false;
-            }
-            break; // Found the matching target, stop searching
+          if (!(target.tieEnd || target.tieFromVoid)) continue;
+          const targetMeasurePos = measurePositions.find(mp => mp.globalIndex === target.measureIndex);
+          if (!targetMeasurePos) continue;
+          // BUGFIX: Check both measureIndex AND lineIndex to distinguish same-measure vs cross-line
+          // If same measure, definitely keep as normal tie (not tieToVoid)
+          if (target.measureIndex === cur.measureIndex) {
+            sameLineTarget = target;
+            break; // found intra-measure target, stop
+          } else if (targetMeasurePos.lineIndex === curMeasurePos.lineIndex) {
+            // Different measure but same line: also normal tie
+            sameLineTarget = target;
+            break;
+          } else if (!crossLineTarget) {
+            crossLineTarget = target; // keep first cross-line candidate while we continue searching for same-line
           }
+        }
+        if (!sameLineTarget && crossLineTarget) {
+          cur.tieToVoid = true;
+          if (!crossLineTarget.tieFromVoid) crossLineTarget.tieFromVoid = true;
+          cur.tieStart = false; // avoid normal tie rendering pass
         }
       }
     }
@@ -449,7 +452,8 @@ export class SVGRenderer {
       endX: number,
       endY: number,
       isCross: boolean,
-      orientation: 'up' | 'down'
+      orientation: 'up' | 'down',
+      meta?: { start?: { measureIndex:number; chordIndex:number; beatIndex:number; noteIndex:number }; end?: { measureIndex:number; chordIndex:number; beatIndex:number; noteIndex:number }; half?: boolean }
     ) => {
     // Nettoyage : suppression du log debug
       
@@ -492,6 +496,17 @@ export class SVGRenderer {
       path.setAttribute('stroke', '#000');
       path.setAttribute('stroke-width', '1.5');
       path.setAttribute('fill', 'none');
+      if (meta?.half) {
+        path.setAttribute('data-half-tie', '1');
+      }
+      if (meta?.start) {
+        const s = meta.start;
+        path.setAttribute('data-start', `${s.measureIndex}:${s.chordIndex}:${s.beatIndex}:${s.noteIndex}`);
+      }
+      if (meta?.end) {
+        const e = meta.end;
+        path.setAttribute('data-end', `${e.measureIndex}:${e.chordIndex}:${e.beatIndex}:${e.noteIndex}`);
+      }
       svg.appendChild(path);
       // Register tie bounding box approximation
       if (collisionManager) {
@@ -503,20 +518,18 @@ export class SVGRenderer {
       }
     };
 
-    const drawHalfToMeasureRight = (measureIdx: number, startX: number, startY: number, orientation: 'up' | 'down') => {
+    const drawHalfToMeasureRight = (measureIdx: number, startX: number, startY: number, orientation: 'up' | 'down', startMeta?: { measureIndex:number; chordIndex:number; beatIndex:number; noteIndex:number }) => {
       const bounds = measureXB[measureIdx];
       const marginX = bounds ? bounds.xEnd - 8 : (svgWidth - 16);
-    // Nettoyage : suppression du log debug
-      drawCurve(startX, startY, marginX, startY, true, orientation);
+      drawCurve(startX, startY, marginX, startY, true, orientation, { start: startMeta, half: true });
       return { x: marginX, y: startY };
     };
 
-    const drawHalfFromMeasureLeft = (measureIdx: number, endX: number, endY: number, orientation: 'up' | 'down') => {
+    const drawHalfFromMeasureLeft = (measureIdx: number, endX: number, endY: number, orientation: 'up' | 'down', endMeta?: { measureIndex:number; chordIndex:number; beatIndex:number; noteIndex:number }) => {
       const bounds = measureXB[measureIdx];
       // Slightly reduce the inset to start closer to the left barline
       const startX = bounds ? bounds.xStart + 4 : 16;
-    // Nettoyage : suppression du log debug
-      drawCurve(startX, endY, endX, endY, true, orientation);
+      drawCurve(startX, endY, endX, endY, true, orientation, { end: endMeta, half: true });
     };
 
     // Primary pass: match each tieStart to the next available tieEnd (temporal order)
@@ -561,10 +574,20 @@ export class SVGRenderer {
         
         // search for a direct tieEnd after i
         let found = -1;
+        // Prioritaire : chercher un tieEnd dans la MÊME mesure avant d'élargir
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
           const cand = notePositions[j];
-          if (cand.tieEnd) { found = j; break; }
+          if (!cand.tieEnd) continue;
+          if (cand.measureIndex === cur.measureIndex) { found = j; break; }
+        }
+        // Si pas trouvé dans la même mesure, chercher globalement ensuite
+        if (found < 0) {
+          for (let j = i + 1; j < notePositions.length; j++) {
+            if (matched.has(j)) continue;
+            const cand = notePositions[j];
+            if (cand.tieEnd) { found = j; break; }
+          }
         }
 
         if (found >= 0) {
@@ -589,7 +612,10 @@ export class SVGRenderer {
               : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
           }
           const endY = resolveAnchorY(tgt, targetOrientation === 'up' ? 'left' : 'right', targetOrientation);
-          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation, {
+            start: { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex },
+            end: { measureIndex: tgt.measureIndex, chordIndex: tgt.chordIndex, beatIndex: tgt.beatIndex, noteIndex: tgt.noteIndex }
+          });
           matched.add(i);
           matched.add(found);
           continue;
@@ -639,7 +665,10 @@ export class SVGRenderer {
                 : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
             }
             const endY = resolveAnchorY(tgt, targetOrientation === 'up' ? 'left' : 'right', targetOrientation);
-            drawCurve(startX, startY, endX, endY, false, targetOrientation);
+            drawCurve(startX, startY, endX, endY, false, targetOrientation, {
+              start: { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex },
+              end: { measureIndex: tgt.measureIndex, chordIndex: tgt.chordIndex, beatIndex: tgt.beatIndex, noteIndex: tgt.noteIndex }
+            });
             matched.add(i);
             matched.add(foundFromVoid);
           }
@@ -659,7 +688,7 @@ export class SVGRenderer {
         let endY = resolveAnchorY(cur, 'left', orientation);
 
         // Always draw the start-of-line half from measure left edge into the note.
-        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation);
+  drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation, { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex });
         matched.add(i);
       }
     }

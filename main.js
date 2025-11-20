@@ -352,6 +352,18 @@ var _ChordGridParser = class _ChordGridParser {
       const FORCED_BEAM_PLACEHOLDER = "";
       const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
       if (processedText.includes("[")) {
+        const allSegments = [];
+        let tempMatch;
+        const tempRe = new RegExp(segmentRe.source, segmentRe.flags);
+        while ((tempMatch = tempRe.exec(processedText)) !== null) {
+          const leadingSpaceCapture = tempMatch[1] || "";
+          const chord = (tempMatch[2] || "").trim();
+          let rhythm = (tempMatch[3] || "").trim();
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, "g"), "[_]");
+          allSegments.push({ leadingSpace: leadingSpaceCapture, chord, rhythm, source: tempMatch[0] });
+        }
+        const lastSegmentWithRhythmIndex = allSegments.reduce((lastIdx, seg, idx) => seg.rhythm.length > 0 ? idx : lastIdx, -1);
+        let segmentIndex = 0;
         while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || "";
           const chord = (m2[2] || "").trim();
@@ -362,7 +374,8 @@ var _ChordGridParser = class _ChordGridParser {
           anySource += (anySource ? " " : "") + sourceText;
           if (rhythm.length > 0) {
             const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+            const isLastSegment = segmentIndex === lastSegmentWithRhythmIndex;
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment);
             chordSegments.push({
               chord,
               // utiliser l'accord actuel
@@ -371,12 +384,13 @@ var _ChordGridParser = class _ChordGridParser {
             });
             beats.push(...parsedBeats);
           }
+          segmentIndex++;
         }
       } else {
         const rhythm = text.trim();
         anySource = text;
         if (rhythm.length > 0) {
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true);
           chordSegments.push({
             chord: "",
             beats: parsedBeats,
@@ -385,9 +399,6 @@ var _ChordGridParser = class _ChordGridParser {
           beats.push(...parsedBeats);
         }
       }
-      console.log("Parsed chords:", chordSegments.map((s) => s.chord));
-      console.log("First chord for measure:", firstChord);
-      console.log("Beats count:", beats.length);
       measures.push({
         beats,
         chord: firstChord,
@@ -521,8 +532,8 @@ var BeamAndTieAnalyzer = class {
       lastBeamableNotes: []
     };
   }
-  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
-    var _a, _b, _c, _d, _e, _f;
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true) {
+    var _a, _b, _c, _d, _e, _f, _g;
     const beats = [];
     let currentBeat = [];
     let lastBeatLastNoteRef = null;
@@ -623,11 +634,18 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "_") {
-        if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
-          this.markTieToVoid(currentBeat);
+        if (i === rhythmStr.length - 1) {
+          if (isLastSegment && isLastMeasureOfLine) {
+            this.markTieToVoid(currentBeat);
+          } else {
+            this.markTieStart(currentBeat);
+          }
         } else if (i === 0 && isFirstMeasureOfLine) {
-          pendingTieFromVoid = true;
-          this.tieContext.pendingTieToVoid = false;
+          if ((_d = this.tieContext.lastNote) == null ? void 0 : _d.tieStart) {
+          } else {
+            pendingTieFromVoid = true;
+            this.tieContext.pendingTieToVoid = false;
+          }
         } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
           lastBeatLastNoteRef.tieStart = true;
           this.tieContext.lastNote = lastBeatLastNoteRef;
@@ -652,7 +670,7 @@ var BeamAndTieAnalyzer = class {
         const note2 = this.parseNote(rhythmStr, i);
         note2.isRest = true;
         currentBeat.push(note2);
-        i += (_d = note2.length) != null ? _d : 0;
+        i += (_e = note2.length) != null ? _e : 0;
         continue;
       }
       const note = this.parseNote(rhythmStr, i);
@@ -660,12 +678,12 @@ var BeamAndTieAnalyzer = class {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      if ((_e = this.tieContext.lastNote) == null ? void 0 : _e.tieStart) {
+      if ((_f = this.tieContext.lastNote) == null ? void 0 : _f.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
       currentBeat.push(note);
-      i += (_f = note.length) != null ? _f : 0;
+      i += (_g = note.length) != null ? _g : 0;
     }
     if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));
@@ -2485,19 +2503,27 @@ var SVGRenderer = class {
       if (cur.tieStart && !cur.tieToVoid) {
         const curMeasurePos = measurePositions.find((mp) => mp.globalIndex === cur.measureIndex);
         if (!curMeasurePos) continue;
+        let sameLineTarget = null;
+        let crossLineTarget = null;
         for (let j = i + 1; j < notePositions.length; j++) {
           const target = notePositions[j];
-          if (target.tieEnd || target.tieFromVoid) {
-            const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
-            if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
-              cur.tieToVoid = true;
-              if (!target.tieFromVoid) {
-                target.tieFromVoid = true;
-              }
-              cur.tieStart = false;
-            }
+          if (!(target.tieEnd || target.tieFromVoid)) continue;
+          const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
+          if (!targetMeasurePos) continue;
+          if (target.measureIndex === cur.measureIndex) {
+            sameLineTarget = target;
             break;
+          } else if (targetMeasurePos.lineIndex === curMeasurePos.lineIndex) {
+            sameLineTarget = target;
+            break;
+          } else if (!crossLineTarget) {
+            crossLineTarget = target;
           }
+        }
+        if (!sameLineTarget && crossLineTarget) {
+          cur.tieToVoid = true;
+          if (!crossLineTarget.tieFromVoid) crossLineTarget.tieFromVoid = true;
+          cur.tieStart = false;
         }
       }
     }
@@ -2527,7 +2553,7 @@ var SVGRenderer = class {
       }
       return anchor + (orientation === "up" ? clearance : -clearance);
     };
-    const drawCurve = (startX, startY, endX, endY, isCross, orientation) => {
+    const drawCurve = (startX, startY, endX, endY, isCross, orientation, meta) => {
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
@@ -2559,6 +2585,17 @@ var SVGRenderer = class {
       path.setAttribute("stroke", "#000");
       path.setAttribute("stroke-width", "1.5");
       path.setAttribute("fill", "none");
+      if (meta == null ? void 0 : meta.half) {
+        path.setAttribute("data-half-tie", "1");
+      }
+      if (meta == null ? void 0 : meta.start) {
+        const s = meta.start;
+        path.setAttribute("data-start", `${s.measureIndex}:${s.chordIndex}:${s.beatIndex}:${s.noteIndex}`);
+      }
+      if (meta == null ? void 0 : meta.end) {
+        const e = meta.end;
+        path.setAttribute("data-end", `${e.measureIndex}:${e.chordIndex}:${e.beatIndex}:${e.noteIndex}`);
+      }
       svg.appendChild(path);
       if (collisionManager) {
         const minX = Math.min(startX, endX);
@@ -2568,16 +2605,16 @@ var SVGRenderer = class {
         collisionManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
       }
     };
-    const drawHalfToMeasureRight = (measureIdx, startX, startY, orientation) => {
+    const drawHalfToMeasureRight = (measureIdx, startX, startY, orientation, startMeta) => {
       const bounds = measureXB[measureIdx];
       const marginX = bounds ? bounds.xEnd - 8 : svgWidth - 16;
-      drawCurve(startX, startY, marginX, startY, true, orientation);
+      drawCurve(startX, startY, marginX, startY, true, orientation, { start: startMeta, half: true });
       return { x: marginX, y: startY };
     };
-    const drawHalfFromMeasureLeft = (measureIdx, endX, endY, orientation) => {
+    const drawHalfFromMeasureLeft = (measureIdx, endX, endY, orientation, endMeta) => {
       const bounds = measureXB[measureIdx];
       const startX = bounds ? bounds.xStart + 4 : 16;
-      drawCurve(startX, endY, endX, endY, true, orientation);
+      drawCurve(startX, endY, endX, endY, true, orientation, { end: endMeta, half: true });
     };
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
@@ -2602,9 +2639,20 @@ var SVGRenderer = class {
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
           const cand = notePositions[j];
-          if (cand.tieEnd) {
+          if (!cand.tieEnd) continue;
+          if (cand.measureIndex === cur.measureIndex) {
             found = j;
             break;
+          }
+        }
+        if (found < 0) {
+          for (let j = i + 1; j < notePositions.length; j++) {
+            if (matched.has(j)) continue;
+            const cand = notePositions[j];
+            if (cand.tieEnd) {
+              found = j;
+              break;
+            }
           }
         }
         if (found >= 0) {
@@ -2618,7 +2666,10 @@ var SVGRenderer = class {
             endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
           }
           const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
-          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation, {
+            start: { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex },
+            end: { measureIndex: tgt.measureIndex, chordIndex: tgt.chordIndex, beatIndex: tgt.beatIndex, noteIndex: tgt.noteIndex }
+          });
           matched.add(i);
           matched.add(found);
           continue;
@@ -2651,7 +2702,10 @@ var SVGRenderer = class {
               endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
             }
             const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
-            drawCurve(startX, startY, endX, endY, false, targetOrientation);
+            drawCurve(startX, startY, endX, endY, false, targetOrientation, {
+              start: { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex },
+              end: { measureIndex: tgt.measureIndex, chordIndex: tgt.chordIndex, beatIndex: tgt.beatIndex, noteIndex: tgt.noteIndex }
+            });
             matched.add(i);
             matched.add(foundFromVoid);
           }
@@ -2662,7 +2716,7 @@ var SVGRenderer = class {
         let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
         const orientation2 = inferStemsOrientation(cur);
         let endY = resolveAnchorY(cur, "left", orientation2);
-        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation2);
+        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation2, { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex });
         matched.add(i);
       }
     }

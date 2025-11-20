@@ -399,7 +399,24 @@ export class ChordGridParser {
       
       // Check if text contains brackets (chord[rhythm] syntax)
       if (processedText.includes('[')) {
+        // Pre-scan all segments to find the last one with rhythm
+        const allSegments: { leadingSpace: string; chord: string; rhythm: string; source: string }[] = [];
+        let tempMatch: RegExpExecArray | null;
+        const tempRe = new RegExp(segmentRe.source, segmentRe.flags); // Create new regex to avoid state
+        while ((tempMatch = tempRe.exec(processedText)) !== null) {
+          const leadingSpaceCapture = tempMatch[1] || '';
+          const chord = (tempMatch[2] || '').trim();
+          let rhythm = (tempMatch[3] || '').trim();
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, 'g'), '[_]');
+          allSegments.push({ leadingSpace: leadingSpaceCapture, chord, rhythm, source: tempMatch[0] });
+        }
+        
+        // Find index of last segment with non-empty rhythm
+        const lastSegmentWithRhythmIndex = allSegments.reduce((lastIdx, seg, idx) => 
+          seg.rhythm.length > 0 ? idx : lastIdx, -1);
+        
         // Use bracket-based parsing
+        let segmentIndex = 0;
         while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || '';
           const chord = (m2[2] || '').trim();
@@ -416,8 +433,9 @@ export class ChordGridParser {
             // Determine whether there was explicit whitespace before THIS segment
             // Use the capture group from the segment regex which preserves leading spaces
             const hasSignificantSpace = (leadingSpaceCapture || '').length > 0;
+            const isLastSegment = (segmentIndex === lastSegmentWithRhythmIndex);
 
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment);
             
             // Créer un segment pour chaque groupe accord/rythme
             chordSegments.push({
@@ -428,6 +446,7 @@ export class ChordGridParser {
             
             beats.push(...parsedBeats); // garder la compatibilité avec le reste du code
           }
+          segmentIndex++;
         }
       } else {
         // No brackets: treat entire content as rhythm group without chord
@@ -435,7 +454,7 @@ export class ChordGridParser {
         anySource = text;
         
         if (rhythm.length > 0) {
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true);
           
           chordSegments.push({
             chord: '',
@@ -446,10 +465,6 @@ export class ChordGridParser {
           beats.push(...parsedBeats);
         }
       }
-
-          console.log("Parsed chords:", chordSegments.map(s => s.chord));
-          console.log("First chord for measure:", firstChord);
-          console.log("Beats count:", beats.length);
 
       measures.push({
         beats,
@@ -580,7 +595,8 @@ class BeamAndTieAnalyzer {
     chord: string,
     isFirstMeasureOfLine: boolean,
     isLastMeasureOfLine: boolean,
-    hasSignificantSpace: boolean = false
+    hasSignificantSpace: boolean = false,
+    isLastSegment: boolean = true
   ): Beat[] {
     // NOTE: we should NOT overwrite lastGroupHasSpace here because the
     // continuity decision in createBeat must use the *previous* group's
@@ -721,13 +737,27 @@ class BeamAndTieAnalyzer {
       
       // Gestion des underscores (liaisons)
       if (rhythmStr[i] === '_') {
-        if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
-          // Underscore at end of group and end of line → tie to void from the LAST note of current beat
-          this.markTieToVoid(currentBeat);
+        if (i === rhythmStr.length - 1) {
+          // Underscore at end of rhythmStr segment.
+          // If this is the last segment of the measure AND it's the last measure of the line,
+          // mark as tieToVoid (cross-line tie). Otherwise, use normal tieStart (intra-measure tie).
+          if (isLastSegment && isLastMeasureOfLine) {
+            this.markTieToVoid(currentBeat);
+          } else {
+            this.markTieStart(currentBeat);
+          }
         } else if (i === 0 && isFirstMeasureOfLine) {
-          // Underscore at very start of measure (line) → tie from void to the next note
-          pendingTieFromVoid = true;
-          this.tieContext.pendingTieToVoid = false;
+          // Underscore at very start of the *line* normally means tieFromVoid.
+          // But if we already have a tieStart pending from a previous chord segment
+          // within the same measure (e.g. A[8_] [_4]) we should treat this as a
+          // continuation and NOT as a tie from void. In that case, we simply keep
+          // tieContext.lastNote so the next parsed note becomes tieEnd.
+          if (this.tieContext.lastNote?.tieStart) {
+            // Continuation: do nothing, allow next note to receive tieEnd
+          } else {
+            pendingTieFromVoid = true;
+            this.tieContext.pendingTieToVoid = false;
+          }
         } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
           // Underscore immediately after a space: tie should start from the cloned last note of the PREVIOUS beat
           lastBeatLastNoteRef.tieStart = true;
