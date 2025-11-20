@@ -171,7 +171,7 @@ var _ChordGridParser = class _ChordGridParser {
       lines[0] = timeSignatureLine;
     }
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
-    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, "");
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*/, "");
     lines[0] = timeSignatureLine;
     const allMeasures = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -342,8 +342,13 @@ var _ChordGridParser = class _ChordGridParser {
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
     let lastExplicitMeasure = null;
+    let pendingStartBarline = null;
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
+      if (t.content.trim().length === 0 && t.bar === "||:") {
+        pendingStartBarline = "||:";
+        continue;
+      }
       if (t.content.trim().length === 0) {
         continue;
       }
@@ -355,6 +360,10 @@ var _ChordGridParser = class _ChordGridParser {
           continue;
         }
         const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar);
+        if (pendingStartBarline === "||:") {
+          clonedMeasure.isRepeatStart = true;
+          pendingStartBarline = null;
+        }
         measures.push(clonedMeasure);
         lastExplicitMeasure = clonedMeasure;
         continue;
@@ -367,6 +376,10 @@ var _ChordGridParser = class _ChordGridParser {
         }
         const newChord = repeatMatch[1].trim();
         const clonedMeasure = this.cloneMeasureWithNewChord(lastExplicitMeasure, newChord, bar);
+        if (pendingStartBarline === "||:") {
+          clonedMeasure.isRepeatStart = true;
+          pendingStartBarline = null;
+        }
         measures.push(clonedMeasure);
         lastExplicitMeasure = clonedMeasure;
         continue;
@@ -438,6 +451,15 @@ var _ChordGridParser = class _ChordGridParser {
         isLineBreak: false,
         source: anySource || text
       };
+      if (pendingStartBarline === "||:") {
+        newMeasure.isRepeatStart = true;
+        pendingStartBarline = null;
+      } else if (bar === "||:") {
+        newMeasure.isRepeatStart = true;
+      }
+      if (bar === ":||") {
+        newMeasure.isRepeatEnd = true;
+      }
       measures.push(newMeasure);
       lastExplicitMeasure = newMeasure;
     }
@@ -504,7 +526,7 @@ var _ChordGridParser = class _ChordGridParser {
       }))
     }));
     this.clearMeasureBoundaryTies(clonedBeats, clonedSegments);
-    return {
+    const cloned = {
       beats: clonedBeats,
       chord: source.chord,
       chordSegments: clonedSegments,
@@ -513,6 +535,12 @@ var _ChordGridParser = class _ChordGridParser {
       source: source.source,
       isRepeat: true
     };
+    if (barline === "||:") {
+      cloned.isRepeatStart = true;
+    } else if (barline === ":||") {
+      cloned.isRepeatEnd = true;
+    }
+    return cloned;
   }
   /**
    * Clone a measure with a new chord (used for 'G[%]' notation).

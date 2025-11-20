@@ -128,8 +128,8 @@ export class ChordGridParser {
 
     // Retirer le motif "N/M" ou "N/M binary/ternary/noauto" de la première ligne
     // pour éviter qu'il soit parsé comme mesure
-    // Consomme aussi l'éventuel | qui suit immédiatement
-    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, '');
+    // Ne consomme PAS les barlines pour permettre leur parsing correct
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*/, '');
     lines[0] = timeSignatureLine;
     
   // Parser toutes les mesures
@@ -331,8 +331,9 @@ export class ChordGridParser {
 
     // Tokenize by barlines while keeping the barline token
     // Accept barlines: ||:, :||, ||, |
+    // IMPORTANT: Order matters! Test longest patterns first to avoid partial matches
     const tokens: Array<{bar: string; content: string}> = [];
-    // Regex to split while capturing barlines
+    // Regex to split while capturing barlines (ordered by length: longest first)
     const re = /(\|\|:|:?\|\||\|)/g;
     let lastIndex = 0;
     let m: RegExpExecArray | null;
@@ -382,11 +383,24 @@ export class ChordGridParser {
 
     // Track the last explicit measure (non-%) for repeat notation
     let lastExplicitMeasure: Measure | null = null;
+    
+    // Track pending start repeat barline (||:) that should apply to next measure
+    let pendingStartBarline: string | null = null;
 
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       
-      // Skip empty tokens but don't add them as measures
+      // Debug: log token processing
+      // console.log(`Token ${ti}:`, { bar: t.bar, content: t.content.substring(0, 20), pendingStartBarline });
+      
+      // Check if this is a start repeat marker (||:) with no content
+      if (t.content.trim().length === 0 && t.bar === '||:') {
+        // Store it to apply to the next measure
+        pendingStartBarline = '||:';
+        continue;
+      }
+      
+      // Skip other empty tokens but don't add them as measures
       if (t.content.trim().length === 0) {
         continue;
       }
@@ -402,6 +416,13 @@ export class ChordGridParser {
           continue;
         }
         const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar);
+        
+        // Apply pending start barline if any
+        if (pendingStartBarline === '||:') {
+          (clonedMeasure as any).isRepeatStart = true;
+          pendingStartBarline = null;
+        }
+        
         measures.push(clonedMeasure);
         // Update reference: % becomes new reference for next %
         lastExplicitMeasure = clonedMeasure;
@@ -417,6 +438,13 @@ export class ChordGridParser {
         }
         const newChord = repeatMatch[1].trim();
         const clonedMeasure = this.cloneMeasureWithNewChord(lastExplicitMeasure, newChord, bar);
+        
+        // Apply pending start barline if any
+        if (pendingStartBarline === '||:') {
+          (clonedMeasure as any).isRepeatStart = true;
+          pendingStartBarline = null;
+        }
+        
         measures.push(clonedMeasure);
         // Update reference: Chord[%] becomes new reference for next %
         lastExplicitMeasure = clonedMeasure;
@@ -518,6 +546,19 @@ export class ChordGridParser {
         source: anySource || text
       };
 
+      // Add repeat bar properties based on barline type
+      // Check if there's a pending start barline from previous token
+      if (pendingStartBarline === '||:') {
+        (newMeasure as any).isRepeatStart = true;
+        pendingStartBarline = null; // Clear after applying
+      } else if (bar === '||:') {
+        (newMeasure as any).isRepeatStart = true;
+      }
+      
+      if (bar === ':||') {
+        (newMeasure as any).isRepeatEnd = true;
+      }
+
       measures.push(newMeasure);
       
       // Update reference to last explicit measure (for % notation)
@@ -598,7 +639,7 @@ export class ChordGridParser {
     // Remove tie flags at measure boundaries
     this.clearMeasureBoundaryTies(clonedBeats, clonedSegments);
 
-    return {
+    const cloned: Measure = {
       beats: clonedBeats,
       chord: source.chord,
       chordSegments: clonedSegments,
@@ -607,6 +648,15 @@ export class ChordGridParser {
       source: source.source,
       isRepeat: true
     };
+
+    // Add repeat bar properties based on barline type
+    if (barline === '||:') {
+      (cloned as any).isRepeatStart = true;
+    } else if (barline === ':||') {
+      (cloned as any).isRepeatEnd = true;
+    }
+
+    return cloned;
   }
 
   /**
