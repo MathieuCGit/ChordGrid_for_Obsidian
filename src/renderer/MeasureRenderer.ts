@@ -23,60 +23,12 @@ import { RestRenderer } from './RestRenderer';
 import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { CollisionManager } from './CollisionManager';
 import { SVG_NS } from './constants';
+
 /**
  * @file MeasureRenderer.ts
  * @description Rendu SVG d'une mesure musicale individuelle.
- * 
- * Cette classe est responsable du rendu graphique d'une mesure complète,
-        if (nv.isRest) {
-            this.restRenderer.drawRest(svg, nv, x, staffLineY);
-            return;
-        }
-        if (nv.value === 1) {
-            this.drawDiamondNoteHead(svg, x, staffLineY, true);
-        } else if (nv.value === 2) {
-            this.drawDiamondNoteHead(svg, x, staffLineY, true);
-            this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
-        } else {
-            // For beamable notes (>=8), draw slash + stem but no flag (analyzer overlay draws beams)
-            this.drawSlash(svg, x, staffLineY);
-            this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
-            // If not part of a primary beam group, render flags directly here
-            if (drawFlagsForIsolated) {
-                const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-                if (level > 0) {
-                    this.drawFlag(svg, x, staffLineY, level);
-                }
-            }
-        }
-        // Correction : bloc 'if (nv.dotted)' replacé à l'intérieur de la méthode
-        if (nv.dotted) {
-            const dot = document.createElementNS(SVG_NS, 'circle');
-            dot.setAttribute('cx', (x + 10).toString());
-            dot.setAttribute('cy', (staffLineY - 4).toString());
-            dot.setAttribute('r', '1.5');
-            dot.setAttribute('fill', '#000');
-            dot.setAttribute('data-cg-dot', '1');
-            svg.appendChild(dot);
-            if (this.collisionManager) {
-                const cx = x + 10;
-                const cy = staffLineY - 4;
-                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
-            }
-        }
-    }
-    tieEnd?: boolean;
-        globalTimeIndex?: number; // Updated to match Note_Element interface
-    tieToVoid?: boolean;
-    tieFromVoid?: boolean;
-    stemTopY?: number;
-    stemBottomY?: number;
-}
-
-/**
- * Classe de rendu d'une mesure musicale.
- * 
- * Gère le positionnement et le rendu de tous les éléments d'une mesure :
+ *
+ * Cette classe est responsable du rendu graphique d'une mesure complète :
  * barres, portée, accords, notes et ligatures.
  */
 export class MeasureRenderer {
@@ -551,18 +503,19 @@ export class MeasureRenderer {
             return x;
         }
         const centerX = x;
+        let stemInfo: { x: number; topY: number; bottomY: number; } | undefined;
         if (nv.value === 1) {
             this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
         } else if (nv.value === 2) {
             this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-            this.drawStem(svg, centerX, staffLineY, 25);
+            stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
         } else {
             this.drawSlash(svg, centerX, staffLineY);
-            this.drawStem(svg, centerX, staffLineY, 25);
-            if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
-            else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
-            else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
-            else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
+            stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
+            const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+            if (level > 0 && stemInfo) {
+                this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+            }
         }
 
         if (nv.dotted) {
@@ -594,7 +547,7 @@ export class MeasureRenderer {
             this.restRenderer.drawRest(svg, nv, x, staffLineY);
             return {};
         }
-        let stemInfo: { topY: number; bottomY: number; } | undefined;
+    let stemInfo: { x: number; topY: number; bottomY: number; } | undefined;
         if (nv.value === 1) {
             this.drawDiamondNoteHead(svg, x, staffLineY, true);
         } else if (nv.value === 2) {
@@ -607,8 +560,8 @@ export class MeasureRenderer {
             // If not part of a primary beam group, render flags directly here
             if (drawFlagsForIsolated) {
                 const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-                if (level > 0) {
-                    this.drawFlag(svg, x, staffLineY, level);
+                if (level > 0 && stemInfo) {
+                    this.drawFlag(svg, stemInfo, level, this.stemsDirection);
                 }
             }
         }
@@ -626,7 +579,7 @@ export class MeasureRenderer {
                 this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
             }
         }
-        return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
+    return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
     }
 
     /**
@@ -704,14 +657,22 @@ export class MeasureRenderer {
         return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
     }
 
-    private drawFlag(svg: SVGElement, x: number, staffLineY: number, count: number): void {
-        const slashLength = 10;
-        const stemStartX = x - slashLength/2 + 2;
-        const stemBottomY = staffLineY + slashLength/2 + 25;
+    private drawFlag(
+        svg: SVGElement,
+        stem: { x: number; topY: number; bottomY: number; },
+        count: number,
+        direction: 'up' | 'down'
+    ): void {
+        const flagSpacing = 10;
         for (let i = 0; i < count; i++) {
             const flag = document.createElementNS(SVG_NS, 'path');
-            const flagY = stemBottomY - i * 10;
-            flag.setAttribute('d', `M ${stemStartX} ${flagY} Q ${stemStartX - 10} ${flagY - 5} ${stemStartX - 8} ${flagY - 12}`);
+            if (direction === 'up') {
+                const attachY = stem.topY + i * flagSpacing;
+                flag.setAttribute('d', `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
+            } else {
+                const attachY = stem.bottomY - i * flagSpacing;
+                flag.setAttribute('d', `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
+            }
             flag.setAttribute('stroke', '#000');
             flag.setAttribute('stroke-width', '2');
             flag.setAttribute('fill', 'none');

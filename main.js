@@ -1289,18 +1289,19 @@ var MeasureRenderer = class {
       return x;
     }
     const centerX = x;
+    let stemInfo;
     if (nv.value === 1) {
       this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
     } else if (nv.value === 2) {
       this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-      this.drawStem(svg, centerX, staffLineY, 25);
+      stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
     } else {
       this.drawSlash(svg, centerX, staffLineY);
-      this.drawStem(svg, centerX, staffLineY, 25);
-      if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
-      else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
-      else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
-      else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
+      stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
+      const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+      if (level > 0 && stemInfo) {
+        this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+      }
     }
     if (nv.dotted) {
       const dot = document.createElementNS(SVG_NS, "circle");
@@ -1339,8 +1340,8 @@ var MeasureRenderer = class {
       stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
       if (drawFlagsForIsolated) {
         const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-        if (level > 0) {
-          this.drawFlag(svg, x, staffLineY, level);
+        if (level > 0 && stemInfo) {
+          this.drawFlag(svg, stemInfo, level, this.stemsDirection);
         }
       }
     }
@@ -1424,14 +1425,17 @@ var MeasureRenderer = class {
     svg.appendChild(stem);
     return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
   }
-  drawFlag(svg, x, staffLineY, count) {
-    const slashLength = 10;
-    const stemStartX = x - slashLength / 2 + 2;
-    const stemBottomY = staffLineY + slashLength / 2 + 25;
+  drawFlag(svg, stem, count, direction) {
+    const flagSpacing = 10;
     for (let i = 0; i < count; i++) {
       const flag = document.createElementNS(SVG_NS, "path");
-      const flagY = stemBottomY - i * 10;
-      flag.setAttribute("d", `M ${stemStartX} ${flagY} Q ${stemStartX - 10} ${flagY - 5} ${stemStartX - 8} ${flagY - 12}`);
+      if (direction === "up") {
+        const attachY = stem.topY + i * flagSpacing;
+        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
+      } else {
+        const attachY = stem.bottomY - i * flagSpacing;
+        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
+      }
       flag.setAttribute("stroke", "#000");
       flag.setAttribute("stroke-width", "2");
       flag.setAttribute("fill", "none");
@@ -2498,12 +2502,30 @@ var SVGRenderer = class {
     }
     const matched = /* @__PURE__ */ new Set();
     const dotsForCollisions = collisionManager ? collisionManager.getElements().filter((e) => e.type === "dot") : [];
-    const drawCurve = (startX, startY, endX, endY, isCross) => {
+    const fallbackStemsOrientation = stemsDirection != null ? stemsDirection : "down";
+    const inferStemsOrientation = (note) => {
+      if (note.stemTopY !== void 0 && note.stemBottomY !== void 0) {
+        return note.stemTopY <= note.y ? "up" : "down";
+      }
+      return fallbackStemsOrientation;
+    };
+    const resolveAnchorY = (note, edge, orientation) => {
+      const stemCandidate = orientation === "up" ? note.stemBottomY : note.stemTopY;
+      const headEdge = edge === "right" ? note.headRightX : note.headLeftX;
+      const horizontalHalf = headEdge !== void 0 ? Math.abs(headEdge - note.x) : 0;
+      const baselineOffset = Math.max(5, horizontalHalf || 0);
+      let anchor = stemCandidate;
+      if (anchor === void 0 || (orientation === "up" ? anchor <= note.y : anchor >= note.y)) {
+        anchor = note.y + (orientation === "up" ? baselineOffset : -baselineOffset);
+      }
+      return anchor + (orientation === "up" ? 4 : 0);
+    };
+    const drawCurve = (startX, startY, endX, endY, isCross, orientation) => {
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
       let controlY;
-      if (stemsDirection === "up") {
+      if (orientation === "up") {
         controlY = Math.max(startY, endY) + (isCross ? baseAmp + 10 : baseAmp);
       } else {
         controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
@@ -2511,8 +2533,8 @@ var SVGRenderer = class {
       if (collisionManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const preliminaryTopY = stemsDirection === "up" ? Math.min(startY, endY) : controlY;
-        const preliminaryBottomY = stemsDirection === "up" ? controlY : Math.max(startY, endY);
+        const preliminaryTopY = orientation === "up" ? Math.min(startY, endY) : controlY;
+        const preliminaryBottomY = orientation === "up" ? controlY : Math.max(startY, endY);
         const overlappingDot = dotsForCollisions.find((d2) => {
           const db = d2.bbox;
           const horiz = db.x < maxX && db.x + db.width > minX;
@@ -2521,7 +2543,7 @@ var SVGRenderer = class {
         });
         if (overlappingDot) {
           const adjust = Math.max(6, baseAmp * 0.6);
-          controlY += stemsDirection === "up" ? adjust : -adjust;
+          controlY += orientation === "up" ? adjust : -adjust;
         }
       }
       const midX = (startX + endX) / 2;
@@ -2539,31 +2561,26 @@ var SVGRenderer = class {
         collisionManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
       }
     };
-    const drawHalfToMeasureRight = (measureIdx, startX, startY) => {
+    const drawHalfToMeasureRight = (measureIdx, startX, startY, orientation) => {
       const bounds = measureXB[measureIdx];
       const marginX = bounds ? bounds.xEnd - 8 : svgWidth - 16;
-      drawCurve(startX, startY, marginX, startY, true);
+      drawCurve(startX, startY, marginX, startY, true, orientation);
       return { x: marginX, y: startY };
     };
-    const drawHalfFromMeasureLeft = (measureIdx, endX, endY) => {
+    const drawHalfFromMeasureLeft = (measureIdx, endX, endY, orientation) => {
       const bounds = measureXB[measureIdx];
       const startX = bounds ? bounds.xStart + 4 : 16;
-      drawCurve(startX, endY, endX, endY, true);
+      drawCurve(startX, endY, endX, endY, true, orientation);
     };
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
       const startX = cur.headRightX !== void 0 ? cur.headRightX : cur.x;
-      let startY;
-      if (cur.headRightX !== void 0) {
-        const half = Math.abs(cur.headRightX - cur.x);
-        startY = half >= 6 ? cur.y : cur.y - half;
-      } else {
-        startY = cur.y - 8;
-      }
+      const orientation = inferStemsOrientation(cur);
+      const startY = resolveAnchorY(cur, "right", orientation);
       if (cur.tieStart || cur.tieToVoid) {
         if (cur.tieToVoid) {
-          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY, orientation);
           tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
           continue;
@@ -2580,14 +2597,8 @@ var SVGRenderer = class {
         if (found >= 0) {
           const tgt = notePositions[found];
           const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
-          let endY;
-          if (tgt.headLeftX !== void 0) {
-            const halfT = Math.abs(tgt.headLeftX - tgt.x);
-            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
-          } else {
-            endY = tgt.y - 8;
-          }
-          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex);
+          const endY = resolveAnchorY(tgt, "left", orientation);
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, orientation);
           matched.add(i);
           matched.add(found);
           continue;
@@ -2607,19 +2618,13 @@ var SVGRenderer = class {
           const tgtMP = measurePositions.find((mp) => mp.globalIndex === tgt.measureIndex);
           const crossesLine = !!(curMP && tgtMP && curMP.lineIndex !== tgtMP.lineIndex);
           if (crossesLine) {
-            const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+            const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY, orientation);
             tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
             matched.add(i);
           } else {
             const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
-            let endY;
-            if (tgt.headLeftX !== void 0) {
-              const halfT = Math.abs(tgt.headLeftX - tgt.x);
-              endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
-            } else {
-              endY = tgt.y - 8;
-            }
-            drawCurve(startX, startY, endX, endY, false);
+            const endY = resolveAnchorY(tgt, "left", orientation);
+            drawCurve(startX, startY, endX, endY, false, orientation);
             matched.add(i);
             matched.add(foundFromVoid);
           }
@@ -2628,14 +2633,9 @@ var SVGRenderer = class {
       }
       if (cur.tieFromVoid && !matched.has(i)) {
         let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
-        let endY;
-        if (cur.headLeftX !== void 0) {
-          const half = Math.abs(cur.headLeftX - cur.x);
-          endY = half >= 6 ? cur.y : cur.y + half;
-        } else {
-          endY = cur.y - 8;
-        }
-        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY);
+        const orientation2 = inferStemsOrientation(cur);
+        let endY = resolveAnchorY(cur, "left", orientation2);
+        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation2);
         matched.add(i);
       }
     }
