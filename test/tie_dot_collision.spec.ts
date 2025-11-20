@@ -114,8 +114,12 @@ describe('Tie rendering with dotted notes', () => {
 
     const controlY = parseFloat(parts[5]);
 
-    // Baseline control point without dot avoidance would be min(75, 85) - 8 = 67.
-    const expectedRaisedControlY = 61;
+    // With stems down and new edge logic: both start/end use edge='right'
+    // Start: anchor=77 (80-3), clearance=3.5 → startY = 77 - 3.5 = 73.5
+    // End: anchor=77 (80-3), clearance=-1 → endY = 77 - (-1) = 78
+    // Baseline control point: min(73.5, 78) - 8 = 65.5
+    // With dot avoidance adjustment: no adjustment needed as tie is already clear
+    const expectedRaisedControlY = 65.5;
     expect(controlY).toBeCloseTo(expectedRaisedControlY, 5);
   });
 });

@@ -2518,7 +2518,12 @@ var SVGRenderer = class {
       if (anchor === void 0 || (orientation === "up" ? anchor <= note.y : anchor >= note.y)) {
         anchor = note.y + (orientation === "up" ? baselineOffset : -baselineOffset);
       }
-      const clearance = Math.max(2, Math.min(3.5, horizontalHalf > 0 ? horizontalHalf * 0.4 : 2.5));
+      let clearance;
+      if (orientation === "up") {
+        clearance = edge === "right" ? -1 : 3.5;
+      } else {
+        clearance = edge === "right" ? 3.5 : -1;
+      }
       return anchor + (orientation === "up" ? clearance : -clearance);
     };
     const drawCurve = (startX, startY, endX, endY, isCross, orientation) => {
@@ -2576,9 +2581,9 @@ var SVGRenderer = class {
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
-      const startX = cur.headRightX !== void 0 ? cur.headRightX : cur.x;
       const orientation = inferStemsOrientation(cur);
-      const startY = resolveAnchorY(cur, "right", orientation);
+      const startX = orientation === "up" ? cur.headLeftX !== void 0 ? cur.headLeftX : cur.x : cur.headRightX !== void 0 ? cur.headRightX : cur.x;
+      const startY = resolveAnchorY(cur, orientation === "up" ? "left" : "right", orientation);
       if (cur.tieStart || cur.tieToVoid) {
         if (cur.tieToVoid) {
           const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY, orientation);
@@ -2597,9 +2602,9 @@ var SVGRenderer = class {
         }
         if (found >= 0) {
           const tgt = notePositions[found];
-          const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
           const targetOrientation = inferStemsOrientation(tgt);
-          const endY = resolveAnchorY(tgt, "left", targetOrientation);
+          const endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
+          const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
           drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
           matched.add(i);
           matched.add(found);
@@ -2624,9 +2629,9 @@ var SVGRenderer = class {
             tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
             matched.add(i);
           } else {
-            const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
             const targetOrientation = inferStemsOrientation(tgt);
-            const endY = resolveAnchorY(tgt, "left", targetOrientation);
+            const endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
+            const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
             drawCurve(startX, startY, endX, endY, false, targetOrientation);
             matched.add(i);
             matched.add(foundFromVoid);

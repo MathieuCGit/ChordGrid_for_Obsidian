@@ -425,7 +425,21 @@ export class SVGRenderer {
       if (anchor === undefined || (orientation === 'up' ? anchor <= note.y : anchor >= note.y)) {
         anchor = note.y + (orientation === 'up' ? baselineOffset : -baselineOffset);
       }
-      const clearance = Math.max(2, Math.min(3.5, horizontalHalf > 0 ? horizontalHalf * 0.4 : 2.5));
+      
+      // Clearance adapté selon l'orientation et le point (départ/arrivée)
+      let clearance: number;
+      if (orientation === 'up') {
+        // Stems up: liaisons en dessous
+        // Start (right): rapprocher BEAUCOUP plus → clearance négative pour coller à la tête
+        // End (left): décoller → clearance plus forte (OK)
+        clearance = edge === 'right' ? -1 : 3.5;
+      } else {
+        // Stems down: liaisons au-dessus
+        // Start (right): décoller → clearance plus forte (OK)
+        // End (left): rapprocher BEAUCOUP plus → clearance négative pour coller à la tête
+        clearance = edge === 'right' ? 3.5 : -1;
+      }
+      
       return anchor + (orientation === 'up' ? clearance : -clearance);
     };
 
@@ -512,9 +526,13 @@ export class SVGRenderer {
       const cur = notePositions[i];
 
       // compute visual anchor points (prefer head bounds when available)
-      const startX = (cur.headRightX !== undefined) ? cur.headRightX : cur.x;
       const orientation = inferStemsOrientation(cur);
-      const startY = resolveAnchorY(cur, 'right', orientation);
+      // Stems up: start from left edge of note head
+      // Stems down: start from right edge of note head
+      const startX = orientation === 'up' 
+        ? ((cur.headLeftX !== undefined) ? cur.headLeftX : cur.x)
+        : ((cur.headRightX !== undefined) ? cur.headRightX : cur.x);
+      const startY = resolveAnchorY(cur, orientation === 'up' ? 'left' : 'right', orientation);
 
       if (cur.tieStart || cur.tieToVoid) {
   // Nettoyage : suppression du log debug
@@ -542,9 +560,13 @@ export class SVGRenderer {
           // Nettoyage : suppression du log debug
   // Nettoyage : suppression du log debug
           const tgt = notePositions[found];
-          const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
           const targetOrientation = inferStemsOrientation(tgt);
-          const endY = resolveAnchorY(tgt, 'left', targetOrientation);
+          // Stems up: end at left edge of note head
+          // Stems down: end at right edge of note head
+          const endX = targetOrientation === 'up'
+            ? ((tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x)
+            : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
+          const endY = resolveAnchorY(tgt, targetOrientation === 'up' ? 'left' : 'right', targetOrientation);
           drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
           matched.add(i);
           matched.add(found);
@@ -577,9 +599,13 @@ export class SVGRenderer {
           } else {
             // Nettoyage : suppression du log debug
   // Nettoyage : suppression du log debug
-            const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
             const targetOrientation = inferStemsOrientation(tgt);
-            const endY = resolveAnchorY(tgt, 'left', targetOrientation);
+            // Stems up: end at left edge of note head
+            // Stems down: end at right edge of note head
+            const endX = targetOrientation === 'up'
+              ? ((tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x)
+              : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
+            const endY = resolveAnchorY(tgt, targetOrientation === 'up' ? 'left' : 'right', targetOrientation);
             drawCurve(startX, startY, endX, endY, false, targetOrientation);
             matched.add(i);
             matched.add(foundFromVoid);
