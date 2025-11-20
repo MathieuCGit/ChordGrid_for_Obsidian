@@ -163,6 +163,7 @@ export interface Measure {
   isLineBreak: boolean;
   chordSegments: ChordSegment[];
   source?: string;
+  isRepeat?: boolean;  // true if this measure was created from % notation
 }
 
 /**

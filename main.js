@@ -335,6 +335,7 @@ var _ChordGridParser = class _ChordGridParser {
     const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
+    let lastExplicitMeasure = null;
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       if (t.content.trim().length === 0) {
@@ -342,6 +343,28 @@ var _ChordGridParser = class _ChordGridParser {
       }
       const text = t.content;
       const bar = t.bar;
+      if (text.trim() === "%") {
+        if (!lastExplicitMeasure) {
+          console.warn("Cannot use '%' repeat notation on first measure");
+          continue;
+        }
+        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar);
+        measures.push(clonedMeasure);
+        lastExplicitMeasure = clonedMeasure;
+        continue;
+      }
+      const repeatMatch = /^\s*([^\[\]\s]+)\s*\[%\]\s*$/.exec(text);
+      if (repeatMatch) {
+        if (!lastExplicitMeasure) {
+          console.warn("Cannot use '[%]' repeat notation on first measure");
+          continue;
+        }
+        const newChord = repeatMatch[1].trim();
+        const clonedMeasure = this.cloneMeasureWithNewChord(lastExplicitMeasure, newChord, bar);
+        measures.push(clonedMeasure);
+        lastExplicitMeasure = clonedMeasure;
+        continue;
+      }
       const beats = [];
       let firstChord = "";
       let anySource = "";
@@ -399,7 +422,7 @@ var _ChordGridParser = class _ChordGridParser {
           beats.push(...parsedBeats);
         }
       }
-      measures.push({
+      const newMeasure = {
         beats,
         chord: firstChord,
         // garder pour compatibilité
@@ -408,7 +431,9 @@ var _ChordGridParser = class _ChordGridParser {
         barline: bar,
         isLineBreak: false,
         source: anySource || text
-      });
+      };
+      measures.push(newMeasure);
+      lastExplicitMeasure = newMeasure;
     }
     return measures;
   }
@@ -448,6 +473,97 @@ var _ChordGridParser = class _ChordGridParser {
       beatUnit: 4,
       groupingMode: "auto"
     };
+  }
+  /**
+   * Clone a measure completely (used for '%' notation).
+   * Removes tie flags at measure boundaries to prevent cross-measure ties.
+   * 
+   * @param source - The measure to clone
+   * @param barline - The barline type for the new measure
+   * @returns A deep clone of the measure with cleared boundary ties
+   */
+  cloneMeasure(source, barline) {
+    const clonedBeats = source.beats.map((beat) => ({
+      ...beat,
+      notes: beat.notes.map((note) => ({ ...note })),
+      beamGroups: beat.beamGroups ? beat.beamGroups.map((bg) => ({ ...bg })) : []
+    }));
+    const clonedSegments = source.chordSegments.map((segment) => ({
+      chord: segment.chord,
+      leadingSpace: segment.leadingSpace,
+      beats: segment.beats.map((beat) => ({
+        ...beat,
+        notes: beat.notes.map((note) => ({ ...note })),
+        beamGroups: beat.beamGroups ? beat.beamGroups.map((bg) => ({ ...bg })) : []
+      }))
+    }));
+    this.clearMeasureBoundaryTies(clonedBeats, clonedSegments);
+    return {
+      beats: clonedBeats,
+      chord: source.chord,
+      chordSegments: clonedSegments,
+      barline,
+      isLineBreak: false,
+      source: source.source,
+      isRepeat: true
+    };
+  }
+  /**
+   * Clone a measure with a new chord (used for 'G[%]' notation).
+   * Keeps the rhythm but replaces the chord.
+   * 
+   * @param source - The measure to clone
+   * @param newChord - The new chord to apply
+   * @param barline - The barline type for the new measure
+   * @returns A deep clone of the measure with new chord and cleared boundary ties
+   */
+  cloneMeasureWithNewChord(source, newChord, barline) {
+    const cloned = this.cloneMeasure(source, barline);
+    cloned.chord = newChord;
+    cloned.chordSegments = cloned.chordSegments.map((segment) => ({
+      ...segment,
+      chord: newChord
+    }));
+    cloned.source = `${newChord}[%]`;
+    return cloned;
+  }
+  /**
+   * Clear tie flags at the start and end of a measure to prevent
+   * ties from crossing measure boundaries in repeated measures.
+   * 
+   * @param beats - The beats array to modify
+   * @param segments - The chord segments array to modify
+   */
+  clearMeasureBoundaryTies(beats, segments) {
+    if (beats.length === 0) return;
+    const lastBeat = beats[beats.length - 1];
+    if (lastBeat.notes.length > 0) {
+      const lastNote = lastBeat.notes[lastBeat.notes.length - 1];
+      lastNote.tieStart = false;
+      lastNote.tieToVoid = false;
+    }
+    const firstBeat = beats[0];
+    if (firstBeat.notes.length > 0) {
+      const firstNote = firstBeat.notes[0];
+      firstNote.tieEnd = false;
+      firstNote.tieFromVoid = false;
+    }
+    if (segments.length > 0) {
+      const firstSegment = segments[0];
+      if (firstSegment.beats.length > 0 && firstSegment.beats[0].notes.length > 0) {
+        firstSegment.beats[0].notes[0].tieEnd = false;
+        firstSegment.beats[0].notes[0].tieFromVoid = false;
+      }
+      const lastSegment = segments[segments.length - 1];
+      if (lastSegment.beats.length > 0) {
+        const lastBeat2 = lastSegment.beats[lastSegment.beats.length - 1];
+        if (lastBeat2.notes.length > 0) {
+          const lastNote = lastBeat2.notes[lastBeat2.notes.length - 1];
+          lastNote.tieStart = false;
+          lastNote.tieToVoid = false;
+        }
+      }
+    }
   }
   /**
    * Regroupe les mesures en lignes pour le rendu.

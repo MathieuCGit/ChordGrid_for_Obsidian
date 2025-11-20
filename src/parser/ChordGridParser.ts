@@ -369,6 +369,9 @@ export class ChordGridParser {
     // Don't filter out empty tokens yet - we need to know if they're at the start
     // to correctly determine isFirstMeasureOfLine for tie logic
 
+    // Track the last explicit measure (non-%) for repeat notation
+    let lastExplicitMeasure: Measure | null = null;
+
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       
@@ -379,6 +382,35 @@ export class ChordGridParser {
       
       const text = t.content;
       const bar = t.bar as BarlineType;
+
+      // REPEAT NOTATION DETECTION
+      // Check for '%' (repeat entire previous measure)
+      if (text.trim() === '%') {
+        if (!lastExplicitMeasure) {
+          console.warn("Cannot use '%' repeat notation on first measure");
+          continue;
+        }
+        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar);
+        measures.push(clonedMeasure);
+        // Update reference: % becomes new reference for next %
+        lastExplicitMeasure = clonedMeasure;
+        continue;
+      }
+
+      // Check for 'Chord[%]' (repeat rhythm with new chord)
+      const repeatMatch = /^\s*([^\[\]\s]+)\s*\[%\]\s*$/.exec(text);
+      if (repeatMatch) {
+        if (!lastExplicitMeasure) {
+          console.warn("Cannot use '[%]' repeat notation on first measure");
+          continue;
+        }
+        const newChord = repeatMatch[1].trim();
+        const clonedMeasure = this.cloneMeasureWithNewChord(lastExplicitMeasure, newChord, bar);
+        measures.push(clonedMeasure);
+        // Update reference: Chord[%] becomes new reference for next %
+        lastExplicitMeasure = clonedMeasure;
+        continue;
+      }
 
       const beats: Beat[] = [];
       let firstChord = '';
@@ -466,14 +498,19 @@ export class ChordGridParser {
         }
       }
 
-      measures.push({
+      const newMeasure: Measure = {
         beats,
         chord: firstChord,  // garder pour compatibilité
         chordSegments,     // nouvelle propriété pour tous les accords
         barline: bar,
         isLineBreak: false,
         source: anySource || text
-      });
+      };
+
+      measures.push(newMeasure);
+      
+      // Update reference to last explicit measure (for % notation)
+      lastExplicitMeasure = newMeasure;
     }
 
     return measures;
@@ -518,6 +555,117 @@ export class ChordGridParser {
       beatUnit: 4,
       groupingMode: 'auto'
     };
+  }
+
+  /**
+   * Clone a measure completely (used for '%' notation).
+   * Removes tie flags at measure boundaries to prevent cross-measure ties.
+   * 
+   * @param source - The measure to clone
+   * @param barline - The barline type for the new measure
+   * @returns A deep clone of the measure with cleared boundary ties
+   */
+  private cloneMeasure(source: Measure, barline: BarlineType): Measure {
+    // Deep clone beats and notes
+    const clonedBeats: Beat[] = source.beats.map(beat => ({
+      ...beat,
+      notes: beat.notes.map(note => ({ ...note })),
+      beamGroups: beat.beamGroups ? beat.beamGroups.map(bg => ({ ...bg })) : []
+    }));
+
+    // Deep clone chord segments
+    const clonedSegments: ChordSegment[] = source.chordSegments.map(segment => ({
+      chord: segment.chord,
+      leadingSpace: segment.leadingSpace,
+      beats: segment.beats.map(beat => ({
+        ...beat,
+        notes: beat.notes.map(note => ({ ...note })),
+        beamGroups: beat.beamGroups ? beat.beamGroups.map(bg => ({ ...bg })) : []
+      }))
+    }));
+
+    // Remove tie flags at measure boundaries
+    this.clearMeasureBoundaryTies(clonedBeats, clonedSegments);
+
+    return {
+      beats: clonedBeats,
+      chord: source.chord,
+      chordSegments: clonedSegments,
+      barline: barline,
+      isLineBreak: false,
+      source: source.source,
+      isRepeat: true
+    };
+  }
+
+  /**
+   * Clone a measure with a new chord (used for 'G[%]' notation).
+   * Keeps the rhythm but replaces the chord.
+   * 
+   * @param source - The measure to clone
+   * @param newChord - The new chord to apply
+   * @param barline - The barline type for the new measure
+   * @returns A deep clone of the measure with new chord and cleared boundary ties
+   */
+  private cloneMeasureWithNewChord(source: Measure, newChord: string, barline: BarlineType): Measure {
+    const cloned = this.cloneMeasure(source, barline);
+    
+    // Replace chord in all segments
+    cloned.chord = newChord;
+    cloned.chordSegments = cloned.chordSegments.map(segment => ({
+      ...segment,
+      chord: newChord
+    }));
+    
+    cloned.source = `${newChord}[%]`;
+    
+    return cloned;
+  }
+
+  /**
+   * Clear tie flags at the start and end of a measure to prevent
+   * ties from crossing measure boundaries in repeated measures.
+   * 
+   * @param beats - The beats array to modify
+   * @param segments - The chord segments array to modify
+   */
+  private clearMeasureBoundaryTies(beats: Beat[], segments: ChordSegment[]): void {
+    if (beats.length === 0) return;
+
+    // Clear tieStart flags on last notes of measure
+    const lastBeat = beats[beats.length - 1];
+    if (lastBeat.notes.length > 0) {
+      const lastNote = lastBeat.notes[lastBeat.notes.length - 1];
+      lastNote.tieStart = false;
+      lastNote.tieToVoid = false;
+    }
+
+    // Clear tieEnd flags on first notes of measure
+    const firstBeat = beats[0];
+    if (firstBeat.notes.length > 0) {
+      const firstNote = firstBeat.notes[0];
+      firstNote.tieEnd = false;
+      firstNote.tieFromVoid = false;
+    }
+
+    // Also clear in segments
+    if (segments.length > 0) {
+      const firstSegment = segments[0];
+      if (firstSegment.beats.length > 0 && firstSegment.beats[0].notes.length > 0) {
+        firstSegment.beats[0].notes[0].tieEnd = false;
+        firstSegment.beats[0].notes[0].tieFromVoid = false;
+      }
+
+      const lastSegment = segments[segments.length - 1];
+      if (lastSegment.beats.length > 0) {
+        const lastBeat = lastSegment.beats[lastSegment.beats.length - 1];
+        if (lastBeat.notes.length > 0) {
+          const lastNote = lastBeat.notes[lastBeat.notes.length - 1];
+          lastNote.tieStart = false;
+          lastNote.tieToVoid = false;
+        }
+      }
+    }
   }
 
   /**
