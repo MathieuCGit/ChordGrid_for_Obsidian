@@ -420,12 +420,13 @@ export class SVGRenderer {
       const stemCandidate = orientation === 'up' ? note.stemBottomY : note.stemTopY;
       const headEdge = edge === 'right' ? note.headRightX : note.headLeftX;
       const horizontalHalf = headEdge !== undefined ? Math.abs(headEdge - note.x) : 0;
-      const baselineOffset = Math.max(5, horizontalHalf || 0);
+      const baselineOffset = Math.max(3, Math.min(5, horizontalHalf > 0 ? horizontalHalf * 0.6 : 3));
       let anchor = stemCandidate;
       if (anchor === undefined || (orientation === 'up' ? anchor <= note.y : anchor >= note.y)) {
         anchor = note.y + (orientation === 'up' ? baselineOffset : -baselineOffset);
       }
-      return anchor + (orientation === 'up' ? 4 : 0);
+      const clearance = Math.max(2, Math.min(3.5, horizontalHalf > 0 ? horizontalHalf * 0.4 : 2.5));
+      return anchor + (orientation === 'up' ? clearance : -clearance);
     };
 
     const drawCurve = (
@@ -542,8 +543,9 @@ export class SVGRenderer {
   // Nettoyage : suppression du log debug
           const tgt = notePositions[found];
           const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
-          const endY = resolveAnchorY(tgt, 'left', orientation);
-          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, orientation);
+          const targetOrientation = inferStemsOrientation(tgt);
+          const endY = resolveAnchorY(tgt, 'left', targetOrientation);
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
           matched.add(i);
           matched.add(found);
           continue;
@@ -576,8 +578,9 @@ export class SVGRenderer {
             // Nettoyage : suppression du log debug
   // Nettoyage : suppression du log debug
             const endX = (tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x;
-            const endY = resolveAnchorY(tgt, 'left', orientation);
-            drawCurve(startX, startY, endX, endY, false, orientation);
+            const targetOrientation = inferStemsOrientation(tgt);
+            const endY = resolveAnchorY(tgt, 'left', targetOrientation);
+            drawCurve(startX, startY, endX, endY, false, targetOrientation);
             matched.add(i);
             matched.add(foundFromVoid);
           }
