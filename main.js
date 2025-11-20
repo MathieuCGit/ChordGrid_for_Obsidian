@@ -1157,7 +1157,13 @@ var MeasureRenderer = class {
     if (this.displayRepeatSymbol && this.measure.isRepeat) {
       this.drawRepeatSymbol(svg);
       this.drawChordName(svg, this.measure.chord, this.x + 30);
-      this.drawRightBarline(svg, rightBarX, this.y, 120);
+      if (this.measure.isRepeatEnd) {
+        this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+      } else if (this.measure.barline === "||") {
+        this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+      } else {
+        this.drawBar(svg, rightBarX, this.y, 120);
+      }
       return;
     }
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
@@ -1253,6 +1259,8 @@ var MeasureRenderer = class {
     }
     if (this.measure.isRepeatEnd) {
       this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
     } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
       this.drawBar(svg, rightBarX, this.y, 120);
     }
@@ -1632,7 +1640,41 @@ var MeasureRenderer = class {
     svg.appendChild(line);
   }
   drawBarWithRepeat(svg, x, y, height, isStart) {
-    this.drawDoubleBar(svg, x, y, height);
+    if (isStart) {
+      const thickBar = document.createElementNS(SVG_NS, "line");
+      thickBar.setAttribute("x1", x.toString());
+      thickBar.setAttribute("y1", y.toString());
+      thickBar.setAttribute("x2", x.toString());
+      thickBar.setAttribute("y2", (y + height).toString());
+      thickBar.setAttribute("stroke", "#000");
+      thickBar.setAttribute("stroke-width", "3");
+      svg.appendChild(thickBar);
+      const thinBar = document.createElementNS(SVG_NS, "line");
+      thinBar.setAttribute("x1", (x + 6).toString());
+      thinBar.setAttribute("y1", y.toString());
+      thinBar.setAttribute("x2", (x + 6).toString());
+      thinBar.setAttribute("y2", (y + height).toString());
+      thinBar.setAttribute("stroke", "#000");
+      thinBar.setAttribute("stroke-width", "1.5");
+      svg.appendChild(thinBar);
+    } else {
+      const thinBar = document.createElementNS(SVG_NS, "line");
+      thinBar.setAttribute("x1", x.toString());
+      thinBar.setAttribute("y1", y.toString());
+      thinBar.setAttribute("x2", x.toString());
+      thinBar.setAttribute("y2", (y + height).toString());
+      thinBar.setAttribute("stroke", "#000");
+      thinBar.setAttribute("stroke-width", "1.5");
+      svg.appendChild(thinBar);
+      const thickBar = document.createElementNS(SVG_NS, "line");
+      thickBar.setAttribute("x1", (x + 6).toString());
+      thickBar.setAttribute("y1", y.toString());
+      thickBar.setAttribute("x2", (x + 6).toString());
+      thickBar.setAttribute("y2", (y + height).toString());
+      thickBar.setAttribute("stroke", "#000");
+      thickBar.setAttribute("stroke-width", "3");
+      svg.appendChild(thickBar);
+    }
     const dotOffset = isStart ? 12 : -12;
     const staffLineY = y + 80;
     const dotSpacing = 12;
@@ -1657,7 +1699,7 @@ var MeasureRenderer = class {
       }
     });
   }
-  drawDoubleBar(svg, x, y, height) {
+  drawFinalDoubleBar(svg, x, y, height) {
     const bar1 = document.createElementNS(SVG_NS, "line");
     bar1.setAttribute("x1", x.toString());
     bar1.setAttribute("y1", y.toString());
@@ -1672,7 +1714,7 @@ var MeasureRenderer = class {
     bar2.setAttribute("x2", (x + 6).toString());
     bar2.setAttribute("y2", (y + height).toString());
     bar2.setAttribute("stroke", "#000");
-    bar2.setAttribute("stroke-width", "1.5");
+    bar2.setAttribute("stroke-width", "5");
     svg.appendChild(bar2);
   }
   /**

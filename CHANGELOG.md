@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Barline rendering for repeat measures**
+  - Fixed final double barline (`||`) not appearing on repeat measures with `show%` directive
+  - Repeat measures now correctly render all barline types (`:||`, `||:`, `||`)
+- **Repeat barline visual style**
+  - Repeat barlines (`||:` and `:||`) now use classical notation style with thin (1.5px) + thick (5px) lines
+  - Matches final double barline style for consistent professional appearance
+  - Both lines spaced 6px apart following standard music engraving conventions
+
 ## [2.2.0] - 2025-11-20
 
 ### Added

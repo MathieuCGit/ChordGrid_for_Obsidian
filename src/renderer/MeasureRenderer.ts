@@ -105,8 +105,14 @@ export class MeasureRenderer {
             this.drawRepeatSymbol(svg);
             // Draw chord name at the start of the measure (like normal measures)
             this.drawChordName(svg, this.measure.chord, this.x + 30); // Position at start like first note
-            // Draw right barline
-            this.drawRightBarline(svg, rightBarX, this.y, 120);
+            // Draw right barline with ALL barline types (repeat, double bar, simple)
+            if ((this.measure as any).isRepeatEnd) {
+                this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+            } else if (this.measure.barline === '||') {
+                this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+            } else {
+                this.drawBar(svg, rightBarX, this.y, 120);
+            }
             return;
         }
 
@@ -233,7 +239,9 @@ export class MeasureRenderer {
 
         if ((this.measure as any).isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
-        } else if ((this.measure as any).barline || measureIndex === (grid.measures.length - 1)) {
+        } else if (this.measure.barline === '||') {
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+        } else if (this.measure.barline || measureIndex === (grid.measures.length - 1)) {
             this.drawBar(svg, rightBarX, this.y, 120);
         }
     }
@@ -710,7 +718,51 @@ export class MeasureRenderer {
     }
 
     private drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean): void {
-        this.drawDoubleBar(svg, x, y, height);
+        // For ||: (start repeat): thick line on left (inside), thin on right
+        // For :|| (end repeat): thin line on left, thick on right (inside)
+        // Repeat barlines use 3px thick line (vs 5px for final double bar)
+        
+        if (isStart) {
+            // ||: - Thick line first (left), then thin line (right)
+            const thickBar = document.createElementNS(SVG_NS, 'line');
+            thickBar.setAttribute('x1', x.toString());
+            thickBar.setAttribute('y1', y.toString());
+            thickBar.setAttribute('x2', x.toString());
+            thickBar.setAttribute('y2', (y + height).toString());
+            thickBar.setAttribute('stroke', '#000');
+            thickBar.setAttribute('stroke-width', '3');
+            svg.appendChild(thickBar);
+
+            const thinBar = document.createElementNS(SVG_NS, 'line');
+            thinBar.setAttribute('x1', (x + 6).toString());
+            thinBar.setAttribute('y1', y.toString());
+            thinBar.setAttribute('x2', (x + 6).toString());
+            thinBar.setAttribute('y2', (y + height).toString());
+            thinBar.setAttribute('stroke', '#000');
+            thinBar.setAttribute('stroke-width', '1.5');
+            svg.appendChild(thinBar);
+        } else {
+            // :|| - Thin line first (left), then thick line (right)
+            const thinBar = document.createElementNS(SVG_NS, 'line');
+            thinBar.setAttribute('x1', x.toString());
+            thinBar.setAttribute('y1', y.toString());
+            thinBar.setAttribute('x2', x.toString());
+            thinBar.setAttribute('y2', (y + height).toString());
+            thinBar.setAttribute('stroke', '#000');
+            thinBar.setAttribute('stroke-width', '1.5');
+            svg.appendChild(thinBar);
+
+            const thickBar = document.createElementNS(SVG_NS, 'line');
+            thickBar.setAttribute('x1', (x + 6).toString());
+            thickBar.setAttribute('y1', y.toString());
+            thickBar.setAttribute('x2', (x + 6).toString());
+            thickBar.setAttribute('y2', (y + height).toString());
+            thickBar.setAttribute('stroke', '#000');
+            thickBar.setAttribute('stroke-width', '3');
+            svg.appendChild(thickBar);
+        }
+
+        // Position dots based on start/end repeat
         const dotOffset = isStart ? 12 : -12;
         
         // Position dots centered on the staff line (y + 80)
@@ -740,7 +792,8 @@ export class MeasureRenderer {
         });
     }
 
-    private drawDoubleBar(svg: SVGElement, x: number, y: number, height: number): void {
+    private drawFinalDoubleBar(svg: SVGElement, x: number, y: number, height: number): void {
+        // Thin line (first bar)
         const bar1 = document.createElementNS(SVG_NS, 'line');
         bar1.setAttribute('x1', x.toString());
         bar1.setAttribute('y1', y.toString());
@@ -750,13 +803,14 @@ export class MeasureRenderer {
         bar1.setAttribute('stroke-width', '1.5');
         svg.appendChild(bar1);
 
+        // Thick line (final bar) - as per classical notation, spaced 6px from thin line
         const bar2 = document.createElementNS(SVG_NS, 'line');
         bar2.setAttribute('x1', (x + 6).toString());
         bar2.setAttribute('y1', y.toString());
         bar2.setAttribute('x2', (x + 6).toString());
         bar2.setAttribute('y2', (y + height).toString());
         bar2.setAttribute('stroke', '#000');
-        bar2.setAttribute('stroke-width', '1.5');
+        bar2.setAttribute('stroke-width', '5');
         svg.appendChild(bar2);
     }
 

@@ -272,6 +272,7 @@ export class SVGRenderer {
 
   // Use dynamic padding instead of fixed 40 to prevent overlap with multi-digit time signatures
   const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
+    
     measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex, width: mWidth}) => {
       const x = lineAccumulated[lineIndex];
       const y = lineIndex * (measureHeight + 20) + 20;
