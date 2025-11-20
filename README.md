@@ -60,6 +60,24 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 
 **Responsive SVG (v2.2+):** All chord grids now render with responsive SVG that automatically adapts to container width while maintaining proper aspect ratio.
 
+**Repeat measures (v2.2+):** Display repeated measures using notation shortcuts
+- `%` - Shorthand to repeat the previous measure's rhythm
+- `Chord[%]` - Repeat previous rhythm with a new chord
+- `show%` directive - Display a visual repeat symbol (%) instead of rendering full rhythm
+  - Placement: separate line before time signature or same line
+  - Default behavior (no `show%`): rhythm is fully rendered even for repeat measures
+  - With `show%`: displays classical measure repeat symbol centered in the measure
+- Examples:
+  ```chordgrid
+  show% 4/4 | C[4 4 4 4] | % | G[%] |
+  ```
+  or
+  ```chordgrid
+  show%
+  4/4 | Am[88 4 4] | % | Dm[%] |
+  ```
+  Visual: chord name appears at the start of measure, repeat symbol centered on staff
+
 **Grouping modes (v2.1+):** Control automatic beam grouping behavior
 - `4/4 binary` - Force grouping by 2 eighth notes (every 1.0 quarter note)
 - `6/8 ternary` - Force grouping by 3 eighth notes (every 1.5 quarter notes)
@@ -172,6 +190,9 @@ Notes on syntax:
 | `4_88_ | [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
+| `%` | Repeat previous measure's rhythm |
+| `Chord[%]` | Repeat rhythm with new chord |
+| `show%` | Display visual repeat symbol instead of full rhythm |
 | `{888}3` | Eighth note triplet (fully beamed) |
 | `{8 8 8}3` | Eighth note triplet (separate flags) |
 | `{161616 161616}6` | Sextuplet with multi-level beaming (2×3) |
@@ -190,6 +211,11 @@ Notes on syntax:
 **Chart with repeats:**
 ```chordgrid
 4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||
+```
+
+**Repeat measures with visual symbol (v2.2+):**
+```chordgrid
+show% 4/4 | C[4 4 4 4] | % | G[%] | Am[88 88] |
 ```
 
 **Mixed rhythms:**

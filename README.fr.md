@@ -52,6 +52,24 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 
 **SVG responsive (v2.2+) :** Toutes les grilles d'accords sont maintenant rendues avec un SVG responsive qui s'adapte automatiquement à la largeur du conteneur tout en préservant le ratio d'aspect.
 
+**Mesures répétées (v2.2+) :** Affichage des mesures répétées avec des raccourcis de notation
+- `%` - Raccourci pour répéter le rythme de la mesure précédente
+- `Accord[%]` - Répéter le rythme précédent avec un nouvel accord
+- Directive `show%` - Afficher un symbole de répétition visuel (%) au lieu du rythme complet
+  - Placement : ligne séparée avant l'indication de mesure ou même ligne
+  - Comportement par défaut (sans `show%`) : le rythme est entièrement rendu même pour les mesures répétées
+  - Avec `show%` : affiche le symbole classique de répétition de mesure centré dans la mesure
+- Exemples :
+  ```chordgrid
+  show% 4/4 | C[4 4 4 4] | % | G[%] |
+  ```
+  ou
+  ```chordgrid
+  show%
+  4/4 | Am[88 4 4] | % | Dm[%] |
+  ```
+  Visuel : le nom d'accord apparaît au début de la mesure, symbole de répétition centré sur la portée
+
 **Modes de groupement (v2.1+) :** Contrôle le comportement automatique de ligature des croches
 - `4/4 binary` - Force le groupement par 2 croches (tous les 1.0 temps de noire)
 - `6/8 ternary` - Force le groupement par 3 croches (tous les 1.5 temps de noire)
@@ -162,6 +180,9 @@ Rappel :
 | `4_88_ | [_8]` | Liaison à travers la barre de mesure |
 | `C[8]G[8]` | Ligature inter-segments si aucun espace (analyseur) |
 | `C[8] G[8]` | Espace = ligature cassée |
+| `%` | Répéter le rythme de la mesure précédente |
+| `Accord[%]` | Répéter le rythme avec un nouvel accord |
+| `show%` | Afficher le symbole de répétition visuel au lieu du rythme complet |
 | `{888}3` | Triolet de croches (ligature complète) |
 | `{8 8 8}3` | Triolet de croches (crochets séparés) |
 | `{161616 161616}6` | Sextolet avec ligatures multi-niveaux (2×3) |
@@ -180,6 +201,11 @@ Rappel :
 **Grille avec reprises :**
 ```chordgrid
 4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||
+```
+
+**Mesures répétées avec symbole visuel (v2.2+) :**
+```chordgrid
+show% 4/4 | C[4 4 4 4] | % | G[%] | Am[88 88] |
 ```
 
 **Rythmes variés :**

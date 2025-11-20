@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.0] - 2025-11-20
 
 ### Added
+- **Repeat measure notation with visual symbol**
+  - `%` syntax to repeat previous measure's rhythm
+  - `Chord[%]` syntax to repeat rhythm with new chord
+  - `show%` directive to display classical measure repeat symbol (%) instead of full rhythm
+  - Official SVG path-based repeat symbol scaled and centered on staff
+  - `data-repeat-symbol` attribute for test detection
+  - Chord names positioned at measure start (left-aligned) when repeat symbol is shown
+  - Full test coverage in `test/repeat_symbol_display.spec.ts`
 - **Stem direction control** following musical notation standards
   - `stems-up` keyword (default behavior) - stems point upward, positioned right of notehead, beams above, ties below
   - `stems-down` keyword - stems point downward, positioned left of notehead, beams below, ties above
