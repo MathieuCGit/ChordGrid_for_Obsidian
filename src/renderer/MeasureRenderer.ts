@@ -83,10 +83,11 @@ export class MeasureRenderer {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - 2;
 
-        if (measureIndex === 0 || (this.measure as any).__isLineStart) {
-            this.drawBar(svg, leftBarX, this.y, 120);
-        } else if ((this.measure as any).isRepeatStart) {
+        // Draw left barline - check for repeat start first
+        if ((this.measure as any).isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);
+        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+            this.drawBar(svg, leftBarX, this.y, 120);
         }
 
         const staffLineY = this.y + 80;
@@ -711,15 +712,31 @@ export class MeasureRenderer {
     private drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean): void {
         this.drawDoubleBar(svg, x, y, height);
         const dotOffset = isStart ? 12 : -12;
-        const dot1Y = y + height * 0.35;
-        const dot2Y = y + height * 0.65;
+        
+        // Position dots centered on the staff line (y + 80)
+        const staffLineY = y + 80;
+        const dotSpacing = 12; // Spacing above and below staff line
+        const dot1Y = staffLineY - dotSpacing;  // Above staff line
+        const dot2Y = staffLineY + dotSpacing;  // Below staff line
+        
         [dot1Y, dot2Y].forEach(dotY => {
             const circle = document.createElementNS(SVG_NS, 'circle');
-            circle.setAttribute('cx', (x + dotOffset).toString());
+            const dotX = x + dotOffset;
+            circle.setAttribute('cx', dotX.toString());
             circle.setAttribute('cy', dotY.toString());
             circle.setAttribute('r', '2');
             circle.setAttribute('fill', '#000');
             svg.appendChild(circle);
+            
+            // Register repeat dots for collision detection
+            if (this.collisionManager) {
+                this.collisionManager.registerElement('dot', {
+                    x: dotX - 3,  // Extend collision box a bit
+                    y: dotY - 3,
+                    width: 6,
+                    height: 6
+                }, 8, { type: 'repeat-barline' });
+            }
         });
     }
 
