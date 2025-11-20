@@ -1189,7 +1189,8 @@ var MeasureRenderer = class {
         tieFromVoid: !!nv.tieFromVoid,
         globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
         stemTopY,
-        stemBottomY
+        stemBottomY,
+        value: nv.value
       });
       if (this.collisionManager) {
         const noteHeadBBox = {
@@ -2582,7 +2583,13 @@ var SVGRenderer = class {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
       const orientation = inferStemsOrientation(cur);
-      const startX = orientation === "up" ? cur.headLeftX !== void 0 ? cur.headLeftX : cur.x : cur.headRightX !== void 0 ? cur.headRightX : cur.x;
+      const isDiamond = cur.value === 1 || cur.value === 2;
+      let startX;
+      if (isDiamond) {
+        startX = cur.x;
+      } else {
+        startX = orientation === "up" ? cur.headLeftX !== void 0 ? cur.headLeftX : cur.x : cur.headRightX !== void 0 ? cur.headRightX : cur.x;
+      }
       const startY = resolveAnchorY(cur, orientation === "up" ? "left" : "right", orientation);
       if (cur.tieStart || cur.tieToVoid) {
         if (cur.tieToVoid) {
@@ -2603,7 +2610,13 @@ var SVGRenderer = class {
         if (found >= 0) {
           const tgt = notePositions[found];
           const targetOrientation = inferStemsOrientation(tgt);
-          const endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
+          const isTargetDiamond = tgt.value === 1 || tgt.value === 2;
+          let endX;
+          if (isTargetDiamond) {
+            endX = tgt.x;
+          } else {
+            endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
+          }
           const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
           drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
           matched.add(i);
@@ -2630,7 +2643,13 @@ var SVGRenderer = class {
             matched.add(i);
           } else {
             const targetOrientation = inferStemsOrientation(tgt);
-            const endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
+            const isTargetDiamond = tgt.value === 1 || tgt.value === 2;
+            let endX;
+            if (isTargetDiamond) {
+              endX = tgt.x;
+            } else {
+              endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
+            }
             const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
             drawCurve(startX, startY, endX, endY, false, targetOrientation);
             matched.add(i);

@@ -169,7 +169,7 @@ export class SVGRenderer {
     // Initialize managers
     const collisionManager = new CollisionManager();
     const tieManager = new TieManager();
-    const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[] = [];
+    const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[] = [];
 
   // white background
   const bg = document.createElementNS(SVG_NS, 'rect');
@@ -331,7 +331,7 @@ export class SVGRenderer {
    */
   private detectAndDrawTies(
     svg: SVGElement,
-    notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number}[],
+    notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[],
     svgWidth: number,
     tieManager: TieManager,
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
@@ -413,7 +413,7 @@ export class SVGRenderer {
       return fallbackStemsOrientation;
     };
     const resolveAnchorY = (
-      note: { y: number; stemTopY?: number; stemBottomY?: number; headLeftX?: number; headRightX?: number; x: number; },
+      note: { y: number; stemTopY?: number; stemBottomY?: number; headLeftX?: number; headRightX?: number; x: number; value?: number; },
       edge: 'left' | 'right',
       orientation: 'up' | 'down'
     ): number => {
@@ -527,11 +527,22 @@ export class SVGRenderer {
 
       // compute visual anchor points (prefer head bounds when available)
       const orientation = inferStemsOrientation(cur);
-      // Stems up: start from left edge of note head
-      // Stems down: start from right edge of note head
-      const startX = orientation === 'up' 
-        ? ((cur.headLeftX !== undefined) ? cur.headLeftX : cur.x)
-        : ((cur.headRightX !== undefined) ? cur.headRightX : cur.x);
+      
+      // Check if this is a diamond-shaped note head (whole or half note)
+      const isDiamond = cur.value === 1 || cur.value === 2;
+      
+      let startX: number;
+      if (isDiamond) {
+        // Diamond notes: tie anchors at center X (on the diamond's tip)
+        startX = cur.x;
+      } else {
+        // Slash notes: tie anchors at edge depending on stem direction
+        // Stems up: start from left edge of note head
+        // Stems down: start from right edge of note head
+        startX = orientation === 'up' 
+          ? ((cur.headLeftX !== undefined) ? cur.headLeftX : cur.x)
+          : ((cur.headRightX !== undefined) ? cur.headRightX : cur.x);
+      }
       const startY = resolveAnchorY(cur, orientation === 'up' ? 'left' : 'right', orientation);
 
       if (cur.tieStart || cur.tieToVoid) {
@@ -561,11 +572,22 @@ export class SVGRenderer {
   // Nettoyage : suppression du log debug
           const tgt = notePositions[found];
           const targetOrientation = inferStemsOrientation(tgt);
-          // Stems up: end at left edge of note head
-          // Stems down: end at right edge of note head
-          const endX = targetOrientation === 'up'
-            ? ((tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x)
-            : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
+          
+          // Check if this is a diamond-shaped note head (whole or half note)
+          const isTargetDiamond = tgt.value === 1 || tgt.value === 2;
+          
+          let endX: number;
+          if (isTargetDiamond) {
+            // Diamond notes: tie anchors at center X (on the diamond's tip)
+            endX = tgt.x;
+          } else {
+            // Slash notes: tie anchors at edge depending on stem direction
+            // Stems up: end at left edge of note head
+            // Stems down: end at right edge of note head
+            endX = targetOrientation === 'up'
+              ? ((tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x)
+              : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
+          }
           const endY = resolveAnchorY(tgt, targetOrientation === 'up' ? 'left' : 'right', targetOrientation);
           drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation);
           matched.add(i);
@@ -600,11 +622,22 @@ export class SVGRenderer {
             // Nettoyage : suppression du log debug
   // Nettoyage : suppression du log debug
             const targetOrientation = inferStemsOrientation(tgt);
-            // Stems up: end at left edge of note head
-            // Stems down: end at right edge of note head
-            const endX = targetOrientation === 'up'
-              ? ((tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x)
-              : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
+            
+            // Check if this is a diamond-shaped note head (whole or half note)
+            const isTargetDiamond = tgt.value === 1 || tgt.value === 2;
+            
+            let endX: number;
+            if (isTargetDiamond) {
+              // Diamond notes: tie anchors at center X (on the diamond's tip)
+              endX = tgt.x;
+            } else {
+              // Slash notes: tie anchors at edge depending on stem direction
+              // Stems up: end at left edge of note head
+              // Stems down: end at right edge of note head
+              endX = targetOrientation === 'up'
+                ? ((tgt.headLeftX !== undefined) ? tgt.headLeftX : tgt.x)
+                : ((tgt.headRightX !== undefined) ? tgt.headRightX : tgt.x);
+            }
             const endY = resolveAnchorY(tgt, targetOrientation === 'up' ? 'left' : 'right', targetOrientation);
             drawCurve(startX, startY, endX, endY, false, targetOrientation);
             matched.add(i);

@@ -18,6 +18,7 @@ interface NotePosition {
     tieFromVoid?: boolean;
     stemTopY?: number;
     stemBottomY?: number;
+    value?: number; // Note value: 1=whole, 2=half, 4=quarter, 8=eighth, etc.
 }
 import { RestRenderer } from './RestRenderer';
 import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
@@ -384,7 +385,8 @@ export class MeasureRenderer {
                 tieFromVoid: !!nv.tieFromVoid,
                 globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
                 stemTopY,
-                stemBottomY
+                stemBottomY,
+                value: nv.value
             });
 
             // Register note head & stem for collision management
