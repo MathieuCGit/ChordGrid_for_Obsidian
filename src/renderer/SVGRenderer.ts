@@ -42,7 +42,7 @@ export interface RenderOptions {
   stemsDirection?: 'up' | 'down';
   /** Afficher le symbole % pour les mesures répétées au lieu du rythme complet. Par défaut false. */
   displayRepeatSymbol?: boolean;
-  /** Indications de médiator: off | auto | 8 | 16 (proposition). Non utilisé tant que rendu non implémenté. */
+  /** Mode des coups de médiator ('off', 'auto', '8', '16'). Par défaut 'off'. */
   pickStrokes?: 'off' | 'auto' | '8' | '16';
 }
 
@@ -1040,12 +1040,49 @@ export class SVGRenderer {
     const TARGET_H = 12; // ajustable
     const MARGIN = 3;    // écart par rapport à la tête
 
-    // Aide: dessiner un path à une position ancrée (x,y) avec bascule up/down
+    // 5) Placement selon hampes
+    const above = stemsDirection === 'down';
+
+    // 6) PASSE 1: Calculer le décalage vertical maximal nécessaire (offset depuis chaque note)
+    // Scanner tous les symboles et trouver le décalage qui évite toutes les collisions
+    let maxOffset = 0;
+
+    attacksWithPicks.forEach(attackInfo => {
+      const notePos = notePositions.find(np =>
+        np.measureIndex === attackInfo.measureIndex &&
+        np.chordIndex === attackInfo.chordIndex &&
+        np.beatIndex === attackInfo.beatIndex &&
+        np.noteIndex === attackInfo.noteIndex
+      );
+      
+      if (!notePos) return;
+
+      const isDown = attackInfo.pickDirection === 'down';
+      const ow = isDown ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown ? DOWNBOW_H : UPBOW_H;
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+
+      // Position désirée depuis la note
+      const desiredY = above ? (notePos.y - MARGIN - th) : (notePos.y + MARGIN);
+      const desiredX = notePos.x - tw / 2;
+
+      // Tester collision à cette position
+      const bbox = { x: desiredX, y: desiredY, width: tw, height: th };
+      const adjusted = placeAndSizeManager.findFreePosition(bbox, 'vertical', [], 20) || bbox;
+
+      // Calculer le décalage réel par rapport à la position désirée
+      const offset = Math.abs(adjusted.y - desiredY);
+      maxOffset = Math.max(maxOffset, offset);
+    });
+
+    // PASSE 2: Dessiner tous les symboles avec le même offset depuis leur note respective
     const drawSymbol = (
       isDown: boolean,
       anchorX: number,
       anchorY: number,
-      above: boolean
+      verticalOffset: number
     ) => {
       const d = isDown ? DOWNBOW_PATH : UPBOW_PATH;
       const ow = isDown ? DOWNBOW_W : UPBOW_W;
@@ -1057,20 +1094,13 @@ export class SVGRenderer {
       const tw = ow * scale;
       const th = oh * scale;
 
-      // Positionner le path centré horizontalement sur anchorX
-      // et en dehors de la tête: au-dessus ou en-dessous selon orientation
-      const desiredY = above ? (anchorY - MARGIN - th) : (anchorY + MARGIN);
-      const desiredX = anchorX - tw / 2;
+      // Appliquer le décalage uniforme depuis la position de la note
+      const baseY = above ? (anchorY - MARGIN - th) : (anchorY + MARGIN);
+      const finalY = above ? (baseY - verticalOffset) : (baseY + verticalOffset);
+      const finalX = anchorX - tw / 2;
 
-      // Collision bbox estimée à partir des dimensions scalées
-      let bbox = { x: desiredX, y: desiredY, width: tw, height: th };
-      const adjusted = placeAndSizeManager.findFreePosition(bbox, 'vertical', [], 20) || bbox;
-
-      // Calculer la translation nécessaire pour ramener l'origine du path à la position ajustée
-      // On translate pour placer le coin supérieur gauche du bbox original scalé à adjusted.x/y
-      // puis on scale
-      const translateX = adjusted.x - origX * scale;
-      const translateY = adjusted.y - origY * scale;
+      const translateX = finalX - origX * scale;
+      const translateY = finalY - origY * scale;
 
       const g = document.createElementNS(SVG_NS, 'g');
       g.setAttribute('transform', `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
@@ -1082,19 +1112,16 @@ export class SVGRenderer {
       svg.appendChild(g);
 
       // Enregistrer pour collisions
-      placeAndSizeManager.registerElement('pick-stroke', adjusted, 7, {
+      const bbox = { x: finalX, y: finalY, width: tw, height: th };
+      placeAndSizeManager.registerElement('pick-stroke', bbox, 7, {
         direction: isDown ? 'down' : 'up',
         exactX: anchorX,
-        exactY: above ? (adjusted.y + th) : adjusted.y,
+        exactY: above ? (finalY + th) : finalY,
       });
     };
 
-    // 5) Placement selon hampes
-    const isAboveForStemsDown = stemsDirection === 'down';
-
-    // 6) Rendu: pour chaque attaque avec coup de médiator, trouver sa position graphique et dessiner
+    // 7) Rendu final avec offset uniforme depuis chaque note
     attacksWithPicks.forEach(attackInfo => {
-      // Retrouver la position graphique de cette note dans notePositions
       const notePos = notePositions.find(np =>
         np.measureIndex === attackInfo.measureIndex &&
         np.chordIndex === attackInfo.chordIndex &&
@@ -1104,8 +1131,7 @@ export class SVGRenderer {
       
       if (notePos) {
         const isDown = attackInfo.pickDirection === 'down';
-        const above = isAboveForStemsDown; // stems-down => au-dessus; stems-up => en-dessous
-        drawSymbol(isDown, notePos.x, notePos.y, above);
+        drawSymbol(isDown, notePos.x, notePos.y, maxOffset);
       }
     });
   }

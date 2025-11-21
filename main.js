@@ -3617,7 +3617,27 @@ var SVGRenderer = class {
     const DOWNBOW_H = 33;
     const TARGET_H = 12;
     const MARGIN = 3;
-    const drawSymbol = (isDown2, anchorX, anchorY, above) => {
+    const above = stemsDirection === "down";
+    let maxOffset = 0;
+    attacksWithPicks.forEach((attackInfo) => {
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === attackInfo.measureIndex && np.chordIndex === attackInfo.chordIndex && np.beatIndex === attackInfo.beatIndex && np.noteIndex === attackInfo.noteIndex
+      );
+      if (!notePos) return;
+      const isDown2 = attackInfo.pickDirection === "down";
+      const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown2 ? DOWNBOW_H : UPBOW_H;
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+      const desiredY = above ? notePos.y - MARGIN - th : notePos.y + MARGIN;
+      const desiredX = notePos.x - tw / 2;
+      const bbox = { x: desiredX, y: desiredY, width: tw, height: th };
+      const adjusted = placeAndSizeManager.findFreePosition(bbox, "vertical", [], 20) || bbox;
+      const offset = Math.abs(adjusted.y - desiredY);
+      maxOffset = Math.max(maxOffset, offset);
+    });
+    const drawSymbol = (isDown2, anchorX, anchorY, verticalOffset) => {
       const d = isDown2 ? DOWNBOW_PATH : UPBOW_PATH;
       const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
       const oh = isDown2 ? DOWNBOW_H : UPBOW_H;
@@ -3626,12 +3646,11 @@ var SVGRenderer = class {
       const scale = TARGET_H / oh;
       const tw = ow * scale;
       const th = oh * scale;
-      const desiredY = above ? anchorY - MARGIN - th : anchorY + MARGIN;
-      const desiredX = anchorX - tw / 2;
-      let bbox = { x: desiredX, y: desiredY, width: tw, height: th };
-      const adjusted = placeAndSizeManager.findFreePosition(bbox, "vertical", [], 20) || bbox;
-      const translateX = adjusted.x - origX * scale;
-      const translateY = adjusted.y - origY * scale;
+      const baseY = above ? anchorY - MARGIN - th : anchorY + MARGIN;
+      const finalY = above ? baseY - verticalOffset : baseY + verticalOffset;
+      const finalX = anchorX - tw / 2;
+      const translateX = finalX - origX * scale;
+      const translateY = finalY - origY * scale;
       const g = document.createElementNS(SVG_NS, "g");
       g.setAttribute("transform", `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
       const path = document.createElementNS(SVG_NS, "path");
@@ -3640,21 +3659,20 @@ var SVGRenderer = class {
       path.setAttribute("stroke", "none");
       g.appendChild(path);
       svg.appendChild(g);
-      placeAndSizeManager.registerElement("pick-stroke", adjusted, 7, {
+      const bbox = { x: finalX, y: finalY, width: tw, height: th };
+      placeAndSizeManager.registerElement("pick-stroke", bbox, 7, {
         direction: isDown2 ? "down" : "up",
         exactX: anchorX,
-        exactY: above ? adjusted.y + th : adjusted.y
+        exactY: above ? finalY + th : finalY
       });
     };
-    const isAboveForStemsDown = stemsDirection === "down";
     attacksWithPicks.forEach((attackInfo) => {
       const notePos = notePositions.find(
         (np) => np.measureIndex === attackInfo.measureIndex && np.chordIndex === attackInfo.chordIndex && np.beatIndex === attackInfo.beatIndex && np.noteIndex === attackInfo.noteIndex
       );
       if (notePos) {
         const isDown2 = attackInfo.pickDirection === "down";
-        const above = isAboveForStemsDown;
-        drawSymbol(isDown2, notePos.x, notePos.y, above);
+        drawSymbol(isDown2, notePos.x, notePos.y, maxOffset);
       }
     });
   }
