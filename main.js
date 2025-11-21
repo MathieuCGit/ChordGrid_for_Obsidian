@@ -1103,7 +1103,12 @@ var RestRenderer = class {
   registerRestBBox(x, y, width, height, note) {
     if (!this.PlaceAndSizeManager) return;
     const bbox = { x: x - width / 2, y, width, height };
-    this.PlaceAndSizeManager.registerElement("rest", bbox, 6, { value: note.value, dotted: note.dotted });
+    this.PlaceAndSizeManager.registerElement("rest", bbox, 6, {
+      value: note.value,
+      dotted: note.dotted,
+      exactX: x,
+      exactY: y + height / 2
+    });
   }
   drawWholeRest(svg, x, y, dotted) {
     const width = 10;
@@ -1278,6 +1283,19 @@ var MeasureRenderer = class {
     staffLine.setAttribute("stroke", "#000");
     staffLine.setAttribute("stroke-width", "1");
     svg.appendChild(staffLine);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("staff-line", {
+        x: this.x + 10,
+        y: staffLineY - 1,
+        width: this.width - 20,
+        height: 2
+      }, 0, {
+        exactX: this.x + this.width / 2,
+        // Center X of the staff line
+        exactY: staffLineY,
+        measureIndex
+      });
+    }
     if (this.displayRepeatSymbol && this.measure.isRepeat) {
       this.drawRepeatSymbol(svg);
       this.drawChordName(svg, this.measure.chord, this.x + 30);
@@ -1386,7 +1404,13 @@ var MeasureRenderer = class {
               y: finalY - fontSize,
               width: chordWidth,
               height: fontSize + 4
-            }, 5, { chord: segment.chord, measureIndex, segmentIndex });
+            }, 5, {
+              chord: segment.chord,
+              measureIndex,
+              segmentIndex,
+              exactX: finalX,
+              exactY: finalY
+            });
           }
           const chordText = this.createText(segment.chord, finalX, finalY, "22px", "bold");
           chordText.setAttribute("text-anchor", "middle");
@@ -1528,7 +1552,16 @@ var MeasureRenderer = class {
           width: headRightX - headLeftX,
           height: 24
         };
-        this.placeAndSizeManager.registerElement("note", noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
+        this.placeAndSizeManager.registerElement("note", noteHeadBBox, 6, {
+          value: nv.value,
+          dotted: nv.dotted,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          noteIndex,
+          exactX: noteX,
+          exactY: staffLineY
+        });
         if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0) {
           const stemBBox = {
             x: noteX - 3,
@@ -1537,7 +1570,14 @@ var MeasureRenderer = class {
             width: 3,
             height: stemBottomY - stemTopY
           };
-          this.placeAndSizeManager.registerElement("stem", stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+          this.placeAndSizeManager.registerElement("stem", stemBBox, 5, {
+            measureIndex,
+            chordIndex,
+            beatIndex,
+            noteIndex,
+            exactX: noteX,
+            exactY: (stemTopY + stemBottomY) / 2
+          });
         }
       }
     });
@@ -1576,7 +1616,13 @@ var MeasureRenderer = class {
           width: tupletEndX - tupletStartX,
           height: 12
         };
-        this.placeAndSizeManager.registerElement("tuplet-bracket", bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
+        this.placeAndSizeManager.registerElement("tuplet-bracket", bracketBBox, 4, {
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          exactX: (tupletStartX + tupletEndX) / 2,
+          exactY: bracketY
+        });
       }
       const centerX = (tupletStartX + tupletEndX) / 2;
       let tupletTextY = bracketY - 3;
@@ -1607,7 +1653,14 @@ var MeasureRenderer = class {
             numberBBox = { ...numberBBox, y: adjusted.y };
           }
         }
-        this.placeAndSizeManager.registerElement("tuplet-number", numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
+        this.placeAndSizeManager.registerElement("tuplet-number", numberBBox, 7, {
+          text: text.textContent,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          exactX: centerX,
+          exactY: tupletTextY
+        });
       }
       svg.appendChild(text);
     });
@@ -1644,7 +1697,17 @@ var MeasureRenderer = class {
       if (this.placeAndSizeManager) {
         const cx = centerX + 10;
         const cy = staffLineY - 4;
-        this.placeAndSizeManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+        this.placeAndSizeManager.registerElement("dot", {
+          x: cx - 2,
+          y: cy - 2,
+          width: 4,
+          height: 4
+        }, 9, {
+          value: nv.value,
+          dotted: true,
+          exactX: cx,
+          exactY: cy
+        });
       }
     }
     return centerX;
@@ -1686,7 +1749,17 @@ var MeasureRenderer = class {
       if (this.placeAndSizeManager) {
         const cx = x + 10;
         const cy = staffLineY - 4;
-        this.placeAndSizeManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+        this.placeAndSizeManager.registerElement("dot", {
+          x: cx - 2,
+          y: cy - 2,
+          width: 4,
+          height: 4
+        }, 9, {
+          value: nv.value,
+          dotted: true,
+          exactX: cx,
+          exactY: cy
+        });
       }
     }
     return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
@@ -1848,7 +1921,11 @@ var MeasureRenderer = class {
           y: dotY - 4,
           width: 8,
           height: 8
-        }, 0, { type: "repeat-barline" });
+        }, 0, {
+          type: "repeat-barline",
+          exactX: dotX,
+          exactY: dotY
+        });
       }
     });
     if (this.placeAndSizeManager) {
@@ -1893,7 +1970,11 @@ var MeasureRenderer = class {
         width: 12,
         // 6px spacing + 5px thick stroke + margins
         height
-      }, 0, { type: "final-double" });
+      }, 0, {
+        type: "final-double",
+        exactX: x,
+        exactY: y + height / 2
+      });
     }
   }
   /**
@@ -1923,7 +2004,11 @@ var MeasureRenderer = class {
         // Text baseline is at textY, so top is textY - fontSize
         width: textWidth,
         height: fontSize
-      }, 5, { count });
+      }, 5, {
+        count,
+        exactX: textX + textWidth / 2,
+        exactY: textY
+      });
     }
   }
   /**
@@ -2004,6 +2089,19 @@ var MeasureRenderer = class {
     path.setAttribute("fill", "#444");
     group.appendChild(path);
     svg.appendChild(group);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("repeat-symbol", {
+        x: translateX,
+        y: translateY,
+        width: symbolWidth,
+        height: symbolHeight
+      }, 5, {
+        exactX: centerX,
+        exactY: centerY,
+        measureIndex: -1
+        // Will be set by caller if needed
+      });
+    }
   }
   /**
    * Draw chord name above the measure.
@@ -2916,7 +3014,12 @@ var SVGRenderer = class {
       y: timeSigBaselineY - timeSigFontSize,
       width: timeSigWidthEstimate,
       height: timeSigFontSize + 4
-    }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
+    }, 0, {
+      text: timeSignatureString,
+      widthEstimate: timeSigWidthEstimate,
+      exactX: baseLeftPadding + timeSigWidthEstimate / 2,
+      exactY: timeSigBaselineY
+    });
     let analyzedMeasures = [];
     let level1BeamSet;
     try {
@@ -3176,7 +3279,16 @@ var SVGRenderer = class {
         const maxX = Math.max(startX, endX);
         const topY = Math.min(controlY, startY, endY);
         const bottomY = Math.max(controlY, startY, endY);
-        placeAndSizeManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+        placeAndSizeManager.registerElement("tie", {
+          x: minX,
+          y: topY,
+          width: maxX - minX,
+          height: bottomY - topY
+        }, 3, {
+          cross: isCross,
+          exactX: (startX + endX) / 2,
+          exactY: controlY
+        });
       }
     };
     const drawHalfToMeasureRight = (measureIdx, startX, startY, orientation, startMeta) => {
@@ -3398,7 +3510,12 @@ var SVGRenderer = class {
             width: endX - startX,
             height: hookHeight + estimatedTextHeight
             // hooks + text below
-          }, 1, { text: voltaInfo.text, isClosed: voltaInfo.isClosed });
+          }, 1, {
+            text: voltaInfo.text,
+            isClosed: voltaInfo.isClosed,
+            exactX: (startX + endX) / 2,
+            exactY: y + hookHeight / 2
+          });
         }
       }
     }

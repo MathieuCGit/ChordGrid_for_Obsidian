@@ -70,7 +70,12 @@ export class RestRenderer {
   private registerRestBBox(x: number, y: number, width: number, height: number, note: NoteElement) {
     if (!this.PlaceAndSizeManager) return;
     const bbox = { x: x - width / 2, y, width, height };
-    this.PlaceAndSizeManager.registerElement('rest', bbox, 6, { value: note.value, dotted: note.dotted });
+    this.PlaceAndSizeManager.registerElement('rest', bbox, 6, { 
+      value: note.value, 
+      dotted: note.dotted,
+      exactX: x,
+      exactY: y + height / 2
+    });
   }
   
   private drawWholeRest(svg: SVGElement, x: number, y: number, dotted: boolean) {

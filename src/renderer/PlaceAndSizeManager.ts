@@ -61,7 +61,12 @@ export type ElementType =
     | 'barline'         // Barres de mesure
     | 'staff-line'      // Ligne de portée
     | 'repeat-count'    // Compteur de reprises (x3, x2, etc.)
+    | 'repeat-symbol'   // Symbole % pour mesure répétée
     | 'volta-bracket'   // Crochets de volta/endings
+    | 'flag'            // Crochets de notes (8e, 16e sans ligature)
+    | 'diamond'         // Tête de note en losange
+    | 'slash'           // Barre de slash
+    | 'double-bar'      // Double barre finale (||)
     | 'dot';            // Points des notes pointées
 
 /**

@@ -207,7 +207,12 @@ export class SVGRenderer {
       y: timeSigBaselineY - timeSigFontSize,
       width: timeSigWidthEstimate,
       height: timeSigFontSize + 4
-    }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
+    }, 0, { 
+      text: timeSignatureString, 
+      widthEstimate: timeSigWidthEstimate,
+      exactX: baseLeftPadding + timeSigWidthEstimate / 2,
+      exactY: timeSigBaselineY
+    });
 
   // DebugLogger.log('🎼 Rendering measures');
     // Prepare analyzed measures for beam rendering
@@ -562,7 +567,16 @@ export class SVGRenderer {
         const maxX = Math.max(startX, endX);
         const topY = Math.min(controlY, startY, endY);
         const bottomY = Math.max(controlY, startY, endY);
-        placeAndSizeManager.registerElement('tie', { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+        placeAndSizeManager.registerElement('tie', { 
+          x: minX, 
+          y: topY, 
+          width: maxX - minX, 
+          height: bottomY - topY 
+        }, 3, { 
+          cross: isCross,
+          exactX: (startX + endX) / 2,
+          exactY: controlY
+        });
       }
     };
 
@@ -878,7 +892,12 @@ export class SVGRenderer {
             y: y, // Top is the horizontal line
             width: endX - startX,
             height: hookHeight + estimatedTextHeight // hooks + text below
-          }, 1, { text: voltaInfo.text, isClosed: voltaInfo.isClosed });
+          }, 1, { 
+            text: voltaInfo.text, 
+            isClosed: voltaInfo.isClosed,
+            exactX: (startX + endX) / 2,
+            exactY: y + hookHeight / 2
+          });
         }
       }
     }
