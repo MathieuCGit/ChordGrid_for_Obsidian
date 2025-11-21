@@ -139,6 +139,33 @@ var import_obsidian = require("obsidian");
 // src/parser/ChordGridParser.ts
 var _ChordGridParser = class _ChordGridParser {
   /**
+   * Parse volta numbers from different syntaxes.
+   * Supports:
+   * - Single: "1" -> [1]
+   * - Range: "1-3" -> [1, 2, 3]
+   * - List: "1,2,3" -> [1, 2, 3]
+   * 
+   * @param voltaText - Text after the dot (e.g., "1", "1-3", "1,2,3")
+   * @returns Array of volta numbers
+   */
+  parseVoltaNumbers(voltaText) {
+    const rangeMatch = /^(\d+)-(\d+)$/.exec(voltaText);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      const numbers = [];
+      for (let i = start; i <= end; i++) {
+        numbers.push(i);
+      }
+      return numbers;
+    }
+    if (voltaText.includes(",")) {
+      return voltaText.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+    }
+    const num = parseInt(voltaText, 10);
+    return isNaN(num) ? [] : [num];
+  }
+  /**
    * Parse une grille d'accords en notation textuelle.
    * 
    * @param input - Chaîne contenant la grille d'accords en notation textuelle
@@ -313,7 +340,7 @@ var _ChordGridParser = class _ChordGridParser {
     }
     const measures = [];
     const tokens = [];
-    const re = /(\|\|:|:?\|\|(?:x\d+)?|\|)/g;
+    const re = /(\|\|:(?:\.[\d,-]+)?|:?\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|(?:\.[\d,-]+)?)/g;
     let lastIndex = 0;
     let m;
     const parts = [];
@@ -333,12 +360,18 @@ var _ChordGridParser = class _ChordGridParser {
       } else {
         let barline = p.sep;
         let repeatCount;
-        const repeatMatch = /^(:?\|\|)x(\d+)$/.exec(barline);
+        let volta;
+        const repeatMatch = /^(:?\|\|)x(\d+)/.exec(barline);
         if (repeatMatch) {
-          barline = repeatMatch[1];
+          barline = barline.replace(/x\d+/, "");
           repeatCount = parseInt(repeatMatch[2], 10);
         }
-        tokens.push({ bar: barline, content: currentText, repeatCount });
+        const voltaMatch = /^(.+?)\.(\d+(?:-\d+)?(?:,\d+)*)$/.exec(barline);
+        if (voltaMatch) {
+          barline = voltaMatch[1];
+          volta = voltaMatch[2];
+        }
+        tokens.push({ bar: barline, content: currentText, repeatCount, volta });
         currentText = "";
       }
     }
@@ -350,13 +383,21 @@ var _ChordGridParser = class _ChordGridParser {
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
     let lastExplicitMeasure = null;
     let pendingStartBarline = null;
+    let pendingVolta = void 0;
+    let pendingVoltaIsAfterRepeatEnd = false;
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       if (t.content.trim().length === 0 && t.bar === "||:") {
         pendingStartBarline = "||:";
+        if (t.volta) {
+          pendingVolta = t.volta;
+        }
         continue;
       }
       if (t.content.trim().length === 0) {
+        if (t.volta) {
+          pendingVolta = t.volta;
+        }
         continue;
       }
       const text = t.content;
@@ -371,7 +412,23 @@ var _ChordGridParser = class _ChordGridParser {
           clonedMeasure.isRepeatStart = true;
           pendingStartBarline = null;
         }
+        if (pendingVolta) {
+          const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+          const voltaText = pendingVolta;
+          const isClosed = !pendingVoltaIsAfterRepeatEnd;
+          clonedMeasure.voltaStart = {
+            numbers: voltaNumbers,
+            text: voltaText,
+            isClosed
+          };
+          pendingVolta = void 0;
+          pendingVoltaIsAfterRepeatEnd = false;
+        }
         measures.push(clonedMeasure);
+        if (t.volta) {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+        }
         lastExplicitMeasure = clonedMeasure;
         continue;
       }
@@ -387,7 +444,23 @@ var _ChordGridParser = class _ChordGridParser {
           clonedMeasure.isRepeatStart = true;
           pendingStartBarline = null;
         }
+        if (pendingVolta) {
+          const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+          const voltaText = pendingVolta;
+          const isClosed = !pendingVoltaIsAfterRepeatEnd;
+          clonedMeasure.voltaStart = {
+            numbers: voltaNumbers,
+            text: voltaText,
+            isClosed
+          };
+          pendingVolta = void 0;
+          pendingVoltaIsAfterRepeatEnd = false;
+        }
         measures.push(clonedMeasure);
+        if (t.volta) {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+        }
         lastExplicitMeasure = clonedMeasure;
         continue;
       }
@@ -470,8 +543,46 @@ var _ChordGridParser = class _ChordGridParser {
       if (t.repeatCount !== void 0) {
         newMeasure.repeatCount = t.repeatCount;
       }
+      if (pendingVolta) {
+        const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+        const voltaText = pendingVolta;
+        const isClosed = !pendingVoltaIsAfterRepeatEnd;
+        const voltaInfo = {
+          numbers: voltaNumbers,
+          text: voltaText,
+          isClosed
+        };
+        newMeasure.voltaStart = voltaInfo;
+        pendingVolta = void 0;
+        pendingVoltaIsAfterRepeatEnd = false;
+      }
       measures.push(newMeasure);
+      if (t.volta) {
+        pendingVolta = t.volta;
+        pendingVoltaIsAfterRepeatEnd = bar === ":||";
+      }
       lastExplicitMeasure = newMeasure;
+    }
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
+      if (measure.voltaStart) {
+        let endIndex = i;
+        for (let j = i + 1; j < measures.length; j++) {
+          const nextMeasure = measures[j];
+          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
+            break;
+          }
+          endIndex = j;
+          if (nextMeasure.isRepeatEnd) {
+            break;
+          }
+        }
+        if (endIndex > i) {
+          measures[endIndex].voltaEnd = measure.voltaStart;
+        } else {
+          measures[i].voltaEnd = measure.voltaStart;
+        }
+      }
     }
     return measures;
   }
@@ -1154,9 +1265,9 @@ var MeasureRenderer = class {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - 2;
     if (this.measure.isRepeatStart) {
-      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);
+      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
-      this.drawBar(svg, leftBarX, this.y, 120);
+      this.drawBar(svg, leftBarX, this.y, 120, measureIndex, "left");
     }
     const staffLineY = this.y + 80;
     const staffLine = document.createElementNS(SVG_NS, "line");
@@ -1171,14 +1282,14 @@ var MeasureRenderer = class {
       this.drawRepeatSymbol(svg);
       this.drawChordName(svg, this.measure.chord, this.x + 30);
       if (this.measure.isRepeatEnd) {
-        this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+        this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
         if (this.measure.repeatCount !== void 0) {
           this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
         }
       } else if (this.measure.barline === "||") {
         this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
       } else {
-        this.drawBar(svg, rightBarX, this.y, 120);
+        this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
       }
       return;
     }
@@ -1287,14 +1398,14 @@ var MeasureRenderer = class {
       currentX += segmentWidth;
     }
     if (this.measure.isRepeatEnd) {
-      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
     } else if (this.measure.barline === "||") {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
     } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
-      this.drawBar(svg, rightBarX, this.y, 120);
+      this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
     }
   }
   drawRhythm(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
@@ -1661,7 +1772,7 @@ var MeasureRenderer = class {
       svg.appendChild(flag);
     }
   }
-  drawBar(svg, x, y, height) {
+  drawBar(svg, x, y, height, measureIndex, side) {
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("x1", x.toString());
     line.setAttribute("y1", y.toString());
@@ -1678,10 +1789,10 @@ var MeasureRenderer = class {
         width: 6,
         // Wider bbox to ensure no overlap
         height
-      }, 0);
+      }, 0, { exactX: x, measureIndex, side });
     }
   }
-  drawBarWithRepeat(svg, x, y, height, isStart) {
+  drawBarWithRepeat(svg, x, y, height, isStart, measureIndex) {
     if (isStart) {
       const thickBar = document.createElementNS(SVG_NS, "line");
       thickBar.setAttribute("x1", x.toString());
@@ -1748,7 +1859,13 @@ var MeasureRenderer = class {
         y,
         width: bboxWidth,
         height
-      }, 0, { type: isStart ? "repeat-start" : "repeat-end" });
+      }, 0, {
+        type: isStart ? "repeat-start" : "repeat-end",
+        exactX: x,
+        // The exact X position of the first line of the barline
+        measureIndex,
+        side: isStart ? "left" : "right"
+      });
     }
   }
   drawFinalDoubleBar(svg, x, y, height) {
@@ -1807,6 +1924,61 @@ var MeasureRenderer = class {
         width: textWidth,
         height: fontSize
       }, 5, { count });
+    }
+  }
+  /**
+   * Draw a volta bracket above the staff.
+   * 
+   * Volta brackets indicate different endings for repeats:
+   * - isClosed=true: bracket with right hook ┌─1,2,3────┐ (before :||, loop back)
+   * - isClosed=false: bracket without right hook ┌─4───── (after :||, continue)
+   * 
+   * @param svg - SVG parent element
+   * @param startX - Left X position of the bracket
+   * @param endX - Right X position of the bracket
+   * @param text - Text to display (e.g., "1-3", "4", "1,2,3")
+   * @param isClosed - Whether to draw the right hook (closed bracket)
+   */
+  drawVoltaBracket(svg, startX, endX, text, isClosed) {
+    const y = this.y + 10;
+    const hookHeight = 10;
+    const horizontalLine = document.createElementNS(SVG_NS, "line");
+    horizontalLine.setAttribute("x1", startX.toString());
+    horizontalLine.setAttribute("y1", y.toString());
+    horizontalLine.setAttribute("x2", endX.toString());
+    horizontalLine.setAttribute("y2", y.toString());
+    horizontalLine.setAttribute("stroke", "#000");
+    horizontalLine.setAttribute("stroke-width", "1.5");
+    svg.appendChild(horizontalLine);
+    const leftHook = document.createElementNS(SVG_NS, "line");
+    leftHook.setAttribute("x1", startX.toString());
+    leftHook.setAttribute("y1", y.toString());
+    leftHook.setAttribute("x2", startX.toString());
+    leftHook.setAttribute("y2", (y + hookHeight).toString());
+    leftHook.setAttribute("stroke", "#000");
+    leftHook.setAttribute("stroke-width", "1.5");
+    svg.appendChild(leftHook);
+    if (isClosed) {
+      const rightHook = document.createElementNS(SVG_NS, "line");
+      rightHook.setAttribute("x1", endX.toString());
+      rightHook.setAttribute("y1", y.toString());
+      rightHook.setAttribute("x2", endX.toString());
+      rightHook.setAttribute("y2", (y + hookHeight).toString());
+      rightHook.setAttribute("stroke", "#000");
+      rightHook.setAttribute("stroke-width", "1.5");
+      svg.appendChild(rightHook);
+    }
+    const voltaText = this.createText(text, startX + 5, y - 2, "14px", "normal");
+    voltaText.setAttribute("text-anchor", "start");
+    svg.appendChild(voltaText);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("volta-bracket", {
+        x: startX,
+        y: y - 20,
+        // Include text height
+        width: endX - startX,
+        height: hookHeight + 20
+      }, 1, { text, isClosed });
     }
   }
   /**
@@ -2803,10 +2975,13 @@ var SVGRenderer = class {
       analyzedMeasures = [];
     }
     const lineAccumulated = new Array(lines).fill(dynamicLineStartPadding);
-    measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2, width: mWidth }) => {
+    measurePositions.forEach((mp) => {
       var _a, _b, _c;
-      const x = lineAccumulated[lineIndex];
-      const y = lineIndex * (measureHeight + 20) + 20;
+      const x = lineAccumulated[mp.lineIndex];
+      const y = mp.lineIndex * (measureHeight + 20) + 20;
+      mp.x = x;
+      mp.y = y;
+      const { measure, lineIndex, width: mWidth, globalIndex: globalIndex2 } = mp;
       let perMeasureBeamSet;
       if (level1BeamSet) {
         perMeasureBeamSet = /* @__PURE__ */ new Set();
@@ -2827,6 +3002,7 @@ var SVGRenderer = class {
       }
       lineAccumulated[lineIndex] += mWidth;
     });
+    this.drawVoltaBrackets(svg, measurePositions, placeAndSizeManager);
     this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
     const bounds = placeAndSizeManager.getGlobalBounds();
     if (bounds) {
@@ -3116,6 +3292,114 @@ var SVGRenderer = class {
         let endY = resolveAnchorY(cur, "left", orientation2);
         drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation2, { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex });
         matched.add(i);
+      }
+    }
+  }
+  /**
+   * Draw volta brackets above measures.
+   * 
+   * Scans all measures for voltaStart/voltaEnd properties and draws brackets
+   * spanning the appropriate measures.
+   * 
+   * @param svg - SVG parent element
+   * @param measurePositions - Array of measure positions with coordinates
+   * @param placeAndSizeManager - Manager for registering collision boxes
+   */
+  drawVoltaBrackets(svg, measurePositions, placeAndSizeManager) {
+    var _a, _b, _c, _d;
+    const allBarlines = placeAndSizeManager.getElements().filter((el) => {
+      var _a2;
+      return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.exactX) !== void 0;
+    }).map((el) => ({
+      exactX: el.metadata.exactX,
+      y: el.bbox.y,
+      measureIndex: el.metadata.measureIndex,
+      side: el.metadata.side,
+      type: el.metadata.type
+    }));
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure;
+      if (measure.voltaStart) {
+        let endMeasureIndex = i;
+        for (let j = i; j < measurePositions.length; j++) {
+          const endMeasure = measurePositions[j].measure;
+          if (endMeasure.voltaEnd && endMeasure.voltaEnd === measure.voltaStart) {
+            endMeasureIndex = j;
+            break;
+          }
+        }
+        const startMP = measurePositions[i];
+        const endMP = measurePositions[endMeasureIndex];
+        if (startMP.lineIndex === endMP.lineIndex && startMP.x !== void 0 && endMP.x !== void 0 && startMP.y !== void 0) {
+          let startX;
+          let startBarline;
+          if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+            const prevMeasureIndex = measurePositions[i - 1].globalIndex;
+            startBarline = allBarlines.find(
+              (bl) => bl.measureIndex === prevMeasureIndex && bl.side === "right"
+            );
+            startX = (_a = startBarline == null ? void 0 : startBarline.exactX) != null ? _a : startMP.x + startMP.width - 2;
+          } else {
+            startBarline = allBarlines.find(
+              (bl) => bl.measureIndex === startMP.globalIndex && bl.side === "left"
+            );
+            startX = (_b = startBarline == null ? void 0 : startBarline.exactX) != null ? _b : startMP.x;
+          }
+          const endRightBarline = allBarlines.find(
+            (bl) => bl.measureIndex === endMP.globalIndex && bl.side === "right"
+          );
+          const endX = (_c = endRightBarline == null ? void 0 : endRightBarline.exactX) != null ? _c : endMP.x + endMP.width - 2;
+          const y = (_d = startBarline == null ? void 0 : startBarline.y) != null ? _d : startMP.y;
+          const hookHeight = 15;
+          const textSize = 14;
+          const estimatedTextHeight = textSize + 4;
+          const voltaInfo = measure.voltaStart;
+          const horizontalLine = document.createElementNS(SVG_NS, "line");
+          horizontalLine.setAttribute("x1", startX.toString());
+          horizontalLine.setAttribute("y1", y.toString());
+          horizontalLine.setAttribute("x2", endX.toString());
+          horizontalLine.setAttribute("y2", y.toString());
+          horizontalLine.setAttribute("stroke", "#000");
+          horizontalLine.setAttribute("stroke-width", "1.5");
+          svg.appendChild(horizontalLine);
+          const leftHook = document.createElementNS(SVG_NS, "line");
+          leftHook.setAttribute("x1", startX.toString());
+          leftHook.setAttribute("y1", y.toString());
+          leftHook.setAttribute("x2", startX.toString());
+          leftHook.setAttribute("y2", (y + hookHeight).toString());
+          leftHook.setAttribute("stroke", "#000");
+          leftHook.setAttribute("stroke-width", "1.5");
+          svg.appendChild(leftHook);
+          if (voltaInfo.isClosed) {
+            const rightHook = document.createElementNS(SVG_NS, "line");
+            rightHook.setAttribute("x1", endX.toString());
+            rightHook.setAttribute("y1", y.toString());
+            rightHook.setAttribute("x2", endX.toString());
+            rightHook.setAttribute("y2", (y + hookHeight).toString());
+            rightHook.setAttribute("stroke", "#000");
+            rightHook.setAttribute("stroke-width", "1.5");
+            svg.appendChild(rightHook);
+          }
+          const voltaText = document.createElementNS(SVG_NS, "text");
+          voltaText.setAttribute("x", (startX + 5).toString());
+          voltaText.setAttribute("y", (y + textSize + 2).toString());
+          voltaText.setAttribute("font-family", "Arial, sans-serif");
+          voltaText.setAttribute("font-size", `${textSize}px`);
+          voltaText.setAttribute("font-weight", "normal");
+          voltaText.setAttribute("fill", "#000");
+          voltaText.setAttribute("text-anchor", "start");
+          voltaText.textContent = voltaInfo.text;
+          svg.appendChild(voltaText);
+          placeAndSizeManager.registerElement("volta-bracket", {
+            x: startX,
+            y,
+            // Top is the horizontal line
+            width: endX - startX,
+            height: hookHeight + estimatedTextHeight
+            // hooks + text below
+          }, 1, { text: voltaInfo.text, isClosed: voltaInfo.isClosed });
+        }
       }
     }
   }

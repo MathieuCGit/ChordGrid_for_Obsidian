@@ -37,6 +37,28 @@ export interface TieInfo {
 }
 
 /**
+ * Informations de volta (endings pour les répétitions).
+ * Les voltas permettent de jouer différentes mesures selon le numéro de répétition.
+ * 
+ * Exemples :
+ * - |.1 : volta simple (première fois)
+ * - |.1-3 : volta range (fois 1, 2, 3)
+ * - |.1,2,3 : volta list (fois 1, 2, 3)
+ * 
+ * La propriété isClosed détermine le rendu visuel :
+ * - true : bracket fermé avec crochet droit ┌─1,2,3────┐ (avant :||, on reboucle)
+ * - false : bracket ouvert sans crochet droit ┌─4───── (après :||, on continue)
+ */
+export interface VoltaInfo {
+  /** Numéros des répétitions concernées (ex: [1, 2, 3] ou [4]) */
+  numbers: number[];
+  /** Texte affiché (ex: "1-3", "4", "1,2,3") */
+  text: string;
+  /** true si bracket fermé (avant :||), false si ouvert (après :||) */
+  isClosed: boolean;
+}
+
+/**
  * Élément note ou silence avec toutes ses propriétés rythmiques.
  * 
  * Propriétés de base :
@@ -155,6 +177,10 @@ export interface ChordSegment {
  * 
  * Contient tous les beats de la mesure, l'accord principal,
  * les segments d'accords multiples, et le type de barre de mesure.
+ * 
+ * Propriétés de volta :
+ * - voltaStart : Indique le début d'un volta (avec numéros, texte, type ouvert/fermé)
+ * - voltaEnd : Indique la fin d'un volta (associé au voltaStart d'une mesure précédente)
  */
 export interface Measure {
   beats: Beat[];
@@ -164,6 +190,8 @@ export interface Measure {
   chordSegments: ChordSegment[];
   source?: string;
   isRepeat?: boolean;  // true if this measure was created from % notation
+  voltaStart?: VoltaInfo;  // Debut d'un volta bracket
+  voltaEnd?: VoltaInfo;    // Fin d'un volta bracket (même volta que voltaStart)
 }
 
 /**

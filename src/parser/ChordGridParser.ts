@@ -79,6 +79,39 @@ export class ChordGridParser {
   };
 
   /**
+   * Parse volta numbers from different syntaxes.
+   * Supports:
+   * - Single: "1" -> [1]
+   * - Range: "1-3" -> [1, 2, 3]
+   * - List: "1,2,3" -> [1, 2, 3]
+   * 
+   * @param voltaText - Text after the dot (e.g., "1", "1-3", "1,2,3")
+   * @returns Array of volta numbers
+   */
+  private parseVoltaNumbers(voltaText: string): number[] {
+    // Check for range syntax (1-3)
+    const rangeMatch = /^(\d+)-(\d+)$/.exec(voltaText);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      const numbers: number[] = [];
+      for (let i = start; i <= end; i++) {
+        numbers.push(i);
+      }
+      return numbers;
+    }
+    
+    // Check for list syntax (1,2,3)
+    if (voltaText.includes(',')) {
+      return voltaText.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    }
+    
+    // Single number
+    const num = parseInt(voltaText, 10);
+    return isNaN(num) ? [] : [num];
+  }
+
+  /**
    * Parse une grille d'accords en notation textuelle.
    * 
    * @param input - Chaîne contenant la grille d'accords en notation textuelle
@@ -330,12 +363,13 @@ export class ChordGridParser {
     const measures: Measure[] = [];
 
     // Tokenize by barlines while keeping the barline token
-    // Accept barlines: ||:, :||, ||, | (with optional repeat count like :||x3)
+    // Accept barlines: ||:, :||, ||, | (with optional repeat count like :||x3 or volta like |.1-3)
     // IMPORTANT: Order matters! Test longest patterns first to avoid partial matches
-    const tokens: Array<{bar: string; content: string; repeatCount?: number}> = [];
+    const tokens: Array<{bar: string; content: string; repeatCount?: number; volta?: string}> = [];
     // Regex to split while capturing barlines (ordered by length: longest first)
     // Capture :||x\d+ as a single token to extract repeat count
-    const re = /(\|\|:|:?\|\|(?:x\d+)?|\|)/g;
+    // Capture volta notation: |.1 or :||.4 or |.1-3 or |.1,2,3
+    const re = /(\|\|:(?:\.[\d,-]+)?|:?\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|(?:\.[\d,-]+)?)/g;
     let lastIndex = 0;
     let m: RegExpExecArray | null;
     const parts: {sep: string | null, text: string}[] = [];
@@ -362,12 +396,23 @@ export class ChordGridParser {
         // Extract repeat count from :||x3 pattern
         let barline = p.sep;
         let repeatCount: number | undefined;
-        const repeatMatch = /^(:?\|\|)x(\d+)$/.exec(barline);
+        let volta: string | undefined;
+        
+        // Extract repeat count (e.g., :||x3)
+        const repeatMatch = /^(:?\|\|)x(\d+)/.exec(barline);
         if (repeatMatch) {
-          barline = repeatMatch[1]; // Extract :|| or ||
-          repeatCount = parseInt(repeatMatch[2], 10); // Extract the number
+          barline = barline.replace(/x\d+/, ''); // Remove x3 part
+          repeatCount = parseInt(repeatMatch[2], 10);
         }
-        tokens.push({bar: barline, content: currentText, repeatCount});
+        
+        // Extract volta notation (e.g., |.1-3 or :||.4)
+        const voltaMatch = /^(.+?)\.(\d+(?:-\d+)?(?:,\d+)*)$/.exec(barline);
+        if (voltaMatch) {
+          barline = voltaMatch[1]; // Extract || or :|| or |
+          volta = voltaMatch[2];   // Extract "1-3" or "4" or "1,2,3"
+        }
+        
+        tokens.push({bar: barline, content: currentText, repeatCount, volta});
         currentText = '';
       }
     }
@@ -395,6 +440,12 @@ export class ChordGridParser {
     
     // Track pending start repeat barline (||:) that should apply to next measure
     let pendingStartBarline: string | null = null;
+    
+    // Track pending volta that should apply to next measure
+    let pendingVolta: string | undefined = undefined;
+    
+    // Track if the pending volta comes AFTER a :|| (for determining open vs closed bracket)
+    let pendingVoltaIsAfterRepeatEnd = false;
 
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
@@ -403,11 +454,19 @@ export class ChordGridParser {
       if (t.content.trim().length === 0 && t.bar === '||:') {
         // Store it to apply to the next measure
         pendingStartBarline = '||:';
+        // Also check for volta on this barline
+        if (t.volta) {
+          pendingVolta = t.volta;
+        }
         continue;
       }
       
       // Skip other empty tokens but don't add them as measures
       if (t.content.trim().length === 0) {
+        // But check for volta that should apply to next measure
+        if (t.volta) {
+          pendingVolta = t.volta;
+        }
         continue;
       }
       
@@ -429,7 +488,28 @@ export class ChordGridParser {
           pendingStartBarline = null;
         }
         
+        // Apply pending volta from previous token
+        if (pendingVolta) {
+          const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+          const voltaText = pendingVolta;
+          const isClosed = !pendingVoltaIsAfterRepeatEnd;
+          (clonedMeasure as any).voltaStart = {
+            numbers: voltaNumbers,
+            text: voltaText,
+            isClosed: isClosed
+          };
+          pendingVolta = undefined;
+          pendingVoltaIsAfterRepeatEnd = false;
+        }
+        
         measures.push(clonedMeasure);
+        
+        // After creating the measure, check if this token's barline has a volta
+        if (t.volta) {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+        }
+        
         // Update reference: % becomes new reference for next %
         lastExplicitMeasure = clonedMeasure;
         continue;
@@ -451,8 +531,27 @@ export class ChordGridParser {
           pendingStartBarline = null;
         }
         
+        // Apply pending volta from previous token
+        if (pendingVolta) {
+          const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+          const voltaText = pendingVolta;
+          const isClosed = !pendingVoltaIsAfterRepeatEnd;
+          (clonedMeasure as any).voltaStart = {
+            numbers: voltaNumbers,
+            text: voltaText,
+            isClosed: isClosed
+          };
+          pendingVolta = undefined;
+          pendingVoltaIsAfterRepeatEnd = false;
+        }
+        
         measures.push(clonedMeasure);
-        // Update reference: Chord[%] becomes new reference for next %
+        
+        // After creating the measure, check if this token's barline has a volta
+        if (t.volta) {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+        }
         lastExplicitMeasure = clonedMeasure;
         continue;
       }
@@ -570,10 +669,76 @@ export class ChordGridParser {
         (newMeasure as any).repeatCount = t.repeatCount;
       }
 
+      // Apply pending volta from previous token (e.g., the barline before this measure had |.1-3)
+      if (pendingVolta) {
+        const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+        const voltaText = pendingVolta; // Keep original text (e.g., "1-3", "4", "1,2,3")
+        
+        // Determine if bracket should be closed or open
+        // isClosed = false if volta comes AFTER :|| (we continue, no loop back)
+        // isClosed = true if volta comes BEFORE :|| (we loop back)
+        const isClosed = !pendingVoltaIsAfterRepeatEnd;
+        
+        const voltaInfo: VoltaInfo = {
+          numbers: voltaNumbers,
+          text: voltaText,
+          isClosed: isClosed
+        };
+        
+        // Mark this measure as having a volta start
+        (newMeasure as any).voltaStart = voltaInfo;
+        
+        // Clear the pending volta
+        pendingVolta = undefined;
+        pendingVoltaIsAfterRepeatEnd = false;
+      }
+
       measures.push(newMeasure);
+      
+      // After creating the measure, check if this token's barline has a volta
+      // If so, store it for the NEXT measure
+      if (t.volta) {
+        pendingVolta = t.volta;
+        // Check if this volta comes after a :|| barline
+        pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+      }
       
       // Update reference to last explicit measure (for % notation)
       lastExplicitMeasure = newMeasure;
+    }
+
+    // POST-PROCESSING: Determine volta spanning (voltaEnd)
+    // A volta spans from where it starts until:
+    // - The next volta starts (different volta)  
+    // - A repeat start barline is encountered (||:)
+    // - End of measures
+    // Note: A volta CAN include the measure with :|| (repeat end)
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i] as any;
+      if (measure.voltaStart) {
+        // Find the end of this volta
+        let endIndex = i;
+        for (let j = i + 1; j < measures.length; j++) {
+          const nextMeasure = measures[j] as any;
+          // Stop BEFORE a new volta or repeat start
+          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
+            break;
+          }
+          endIndex = j;
+          // But stop AFTER a repeat end (include it in the volta)
+          if (nextMeasure.isRepeatEnd) {
+            break;
+          }
+        }
+        
+        // Mark the end measure with voltaEnd (same volta info)
+        if (endIndex > i) {
+          (measures[endIndex] as any).voltaEnd = measure.voltaStart;
+        } else {
+          // Single measure volta - both start and end on same measure
+          (measures[i] as any).voltaEnd = measure.voltaStart;
+        }
+      }
     }
 
     return measures;
@@ -1172,7 +1337,8 @@ import {
   ValidationError,
   ParseResult,
   BeamGroup,
-  ChordSegment
+  ChordSegment,
+  VoltaInfo
 } from './type';
 import {
   ParsedMeasure as AnalyzerParsedMeasure,

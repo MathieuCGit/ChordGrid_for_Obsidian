@@ -85,9 +85,9 @@ export class MeasureRenderer {
 
         // Draw left barline - check for repeat start first
         if ((this.measure as any).isRepeatStart) {
-            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);
+            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
-            this.drawBar(svg, leftBarX, this.y, 120);
+            this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
         }
 
         const staffLineY = this.y + 80;
@@ -107,7 +107,7 @@ export class MeasureRenderer {
             this.drawChordName(svg, this.measure.chord, this.x + 30); // Position at start like first note
             // Draw right barline with ALL barline types (repeat, double bar, simple)
             if ((this.measure as any).isRepeatEnd) {
-                this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+                this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
                 // Draw repeat count if present (e.g., x3)
                 if ((this.measure as any).repeatCount !== undefined) {
                     this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
@@ -115,7 +115,7 @@ export class MeasureRenderer {
             } else if (this.measure.barline === '||') {
                 this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
             } else {
-                this.drawBar(svg, rightBarX, this.y, 120);
+                this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
             }
             return;
         }
@@ -261,7 +261,7 @@ export class MeasureRenderer {
         }
 
         if ((this.measure as any).isRepeatEnd) {
-            this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+            this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
             // Draw repeat count if present (e.g., x3)
             if ((this.measure as any).repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
@@ -269,7 +269,7 @@ export class MeasureRenderer {
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
         } else if (this.measure.barline || measureIndex === (grid.measures.length - 1)) {
-            this.drawBar(svg, rightBarX, this.y, 120);
+            this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
         }
     }
 
@@ -733,7 +733,7 @@ export class MeasureRenderer {
         }
     }
 
-    private drawBar(svg: SVGElement, x: number, y: number, height: number): void {
+    private drawBar(svg: SVGElement, x: number, y: number, height: number, measureIndex?: number, side?: 'left' | 'right'): void {
         const line = document.createElementNS(SVG_NS, 'line');
         line.setAttribute('x1', x.toString());
         line.setAttribute('y1', y.toString());
@@ -750,11 +750,11 @@ export class MeasureRenderer {
                 y: y,
                 width: 6,  // Wider bbox to ensure no overlap
                 height: height
-            }, 0);  // Priority 0 - barlines are absolutely fixed and unmovable
+            }, 0, { exactX: x, measureIndex, side });  // Store exact X position for volta alignment
         }
     }
 
-    private drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean): void {
+    private drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean, measureIndex?: number): void {
         // For ||: (start repeat): thick line on left (inside), thin on right
         // For :|| (end repeat): thin line on left, thick on right (inside)
         // Repeat barlines use 3px thick line (vs 5px for final double bar)
@@ -839,7 +839,12 @@ export class MeasureRenderer {
                 y: y,
                 width: bboxWidth,
                 height: height
-            }, 0, { type: isStart ? 'repeat-start' : 'repeat-end' });  // Priority 0 - absolutely fixed
+            }, 0, { 
+                type: isStart ? 'repeat-start' : 'repeat-end',
+                exactX: x,  // The exact X position of the first line of the barline
+                measureIndex,
+                side: isStart ? 'left' : 'right'
+            });
         }
     }
 
@@ -906,6 +911,71 @@ export class MeasureRenderer {
                 width: textWidth,
                 height: fontSize
             }, 5, { count });
+        }
+    }
+
+    /**
+     * Draw a volta bracket above the staff.
+     * 
+     * Volta brackets indicate different endings for repeats:
+     * - isClosed=true: bracket with right hook ┌─1,2,3────┐ (before :||, loop back)
+     * - isClosed=false: bracket without right hook ┌─4───── (after :||, continue)
+     * 
+     * @param svg - SVG parent element
+     * @param startX - Left X position of the bracket
+     * @param endX - Right X position of the bracket
+     * @param text - Text to display (e.g., "1-3", "4", "1,2,3")
+     * @param isClosed - Whether to draw the right hook (closed bracket)
+     */
+    private drawVoltaBracket(svg: SVGElement, startX: number, endX: number, text: string, isClosed: boolean): void {
+        const y = this.y + 10; // Above the staff
+        const hookHeight = 10; // Height of descending hooks
+        
+        // Horizontal line
+        const horizontalLine = document.createElementNS(SVG_NS, 'line');
+        horizontalLine.setAttribute('x1', startX.toString());
+        horizontalLine.setAttribute('y1', y.toString());
+        horizontalLine.setAttribute('x2', endX.toString());
+        horizontalLine.setAttribute('y2', y.toString());
+        horizontalLine.setAttribute('stroke', '#000');
+        horizontalLine.setAttribute('stroke-width', '1.5');
+        svg.appendChild(horizontalLine);
+        
+        // Left descending hook (always present)
+        const leftHook = document.createElementNS(SVG_NS, 'line');
+        leftHook.setAttribute('x1', startX.toString());
+        leftHook.setAttribute('y1', y.toString());
+        leftHook.setAttribute('x2', startX.toString());
+        leftHook.setAttribute('y2', (y + hookHeight).toString());
+        leftHook.setAttribute('stroke', '#000');
+        leftHook.setAttribute('stroke-width', '1.5');
+        svg.appendChild(leftHook);
+        
+        // Right descending hook (only if closed)
+        if (isClosed) {
+            const rightHook = document.createElementNS(SVG_NS, 'line');
+            rightHook.setAttribute('x1', endX.toString());
+            rightHook.setAttribute('y1', y.toString());
+            rightHook.setAttribute('x2', endX.toString());
+            rightHook.setAttribute('y2', (y + hookHeight).toString());
+            rightHook.setAttribute('stroke', '#000');
+            rightHook.setAttribute('stroke-width', '1.5');
+            svg.appendChild(rightHook);
+        }
+        
+        // Text label (e.g., "1-3" or "4")
+        const voltaText = this.createText(text, startX + 5, y - 2, '14px', 'normal');
+        voltaText.setAttribute('text-anchor', 'start');
+        svg.appendChild(voltaText);
+        
+        // Register in collision manager
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement('volta-bracket', {
+                x: startX,
+                y: y - 20, // Include text height
+                width: endX - startX,
+                height: hookHeight + 20
+            }, 1, { text, isClosed }); // Priority 1 - high priority but not absolutely fixed
         }
     }
 

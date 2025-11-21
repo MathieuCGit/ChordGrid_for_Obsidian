@@ -61,6 +61,7 @@ export type ElementType =
     | 'barline'         // Barres de mesure
     | 'staff-line'      // Ligne de portée
     | 'repeat-count'    // Compteur de reprises (x3, x2, etc.)
+    | 'volta-bracket'   // Crochets de volta/endings
     | 'dot';            // Points des notes pointées
 
 /**

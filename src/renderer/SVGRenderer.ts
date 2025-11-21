@@ -24,7 +24,7 @@
  * @see {@link TieManager} pour la gestion des liaisons entre mesures
  */
 
-import { ChordGrid } from '../parser/type';
+import { ChordGrid, Measure } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
 import { SVG_NS } from './constants';
 import { TieManager } from '../utils/TieManager';
@@ -130,7 +130,7 @@ export class SVGRenderer {
     // Build linear positions honoring line breaks and available line width budget
     let currentLine = 0;
     let measuresInCurrentLine = 0;
-    const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[] = [];
+    const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number, x?: number, y?: number}[] = [];
     let globalIndex = 0;
     const maxLineWidth = measuresPerLine * baseMeasureWidth; // budget per line (before margins)
     let currentLineWidth = 0;
@@ -273,9 +273,13 @@ export class SVGRenderer {
   // Use dynamic padding instead of fixed 40 to prevent overlap with multi-digit time signatures
   const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
     
-    measurePositions.forEach(({measure, lineIndex, posInLine, globalIndex, width: mWidth}) => {
-      const x = lineAccumulated[lineIndex];
-      const y = lineIndex * (measureHeight + 20) + 20;
+    measurePositions.forEach((mp) => {
+      const x = lineAccumulated[mp.lineIndex];
+      const y = mp.lineIndex * (measureHeight + 20) + 20;
+      // Store actual x,y in measurePositions for later use (volta brackets, etc.)
+      mp.x = x;
+      mp.y = y;
+      const {measure, lineIndex, width: mWidth, globalIndex} = mp;
       // Build a per-measure subset for MeasureRenderer: only segmentIndex:noteIndex entries in this measure
       let perMeasureBeamSet: Set<string> | undefined;
       if (level1BeamSet) {
@@ -300,6 +304,9 @@ export class SVGRenderer {
       }
       lineAccumulated[lineIndex] += mWidth;
     });
+
+    // Draw volta brackets (after all measures are rendered)
+    this.drawVoltaBrackets(svg, measurePositions, placeAndSizeManager);
 
   // DebugLogger supprimé
   
@@ -738,5 +745,142 @@ export class SVGRenderer {
 
     // Tie curves already adjusted during drawing if collision with dots detected.
   }
-}
 
+  /**
+   * Draw volta brackets above measures.
+   * 
+   * Scans all measures for voltaStart/voltaEnd properties and draws brackets
+   * spanning the appropriate measures.
+   * 
+   * @param svg - SVG parent element
+   * @param measurePositions - Array of measure positions with coordinates
+   * @param placeAndSizeManager - Manager for registering collision boxes
+   */
+  private drawVoltaBrackets(
+    svg: SVGElement,
+    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager
+  ): void {
+    // Get all barlines from PlaceAndSizeManager instead of recalculating positions
+    const allBarlines = placeAndSizeManager.getElements()
+      .filter(el => el.type === 'barline' && el.metadata?.exactX !== undefined)
+      .map(el => ({
+        exactX: el.metadata.exactX,
+        y: el.bbox.y,
+        measureIndex: el.metadata.measureIndex,
+        side: el.metadata.side,
+        type: el.metadata.type
+      }));
+
+    // Find all volta starts
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure as any;
+      
+      if (measure.voltaStart) {
+        // Find the corresponding end measure
+        let endMeasureIndex = i;
+        for (let j = i; j < measurePositions.length; j++) {
+          const endMeasure = measurePositions[j].measure as any;
+          if (endMeasure.voltaEnd && endMeasure.voltaEnd === measure.voltaStart) {
+            endMeasureIndex = j;
+            break;
+          }
+        }
+        
+        const startMP = measurePositions[i];
+        const endMP = measurePositions[endMeasureIndex];
+        
+        // Only draw volta if start and end are on the same line
+        if (startMP.lineIndex === endMP.lineIndex && startMP.x !== undefined && endMP.x !== undefined && startMP.y !== undefined) {
+          // Find the barlines for exact positioning
+          // Volta left hook: right barline of previous measure (or left barline of first measure if no previous)
+          let startX: number;
+          let startBarline: any;
+          if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+            // Previous measure exists on same line - use its right barline
+            const prevMeasureIndex = measurePositions[i - 1].globalIndex;
+            startBarline = allBarlines.find(
+              bl => bl.measureIndex === prevMeasureIndex && bl.side === 'right'
+            );
+            startX = startBarline?.exactX ?? (startMP.x! + startMP.width - 2);
+          } else {
+            // First measure of line - use its left barline
+            startBarline = allBarlines.find(
+              bl => bl.measureIndex === startMP.globalIndex && bl.side === 'left'
+            );
+            startX = startBarline?.exactX ?? startMP.x!;
+          }
+          
+          // Volta right hook: right barline of last measure in volta
+          const endRightBarline = allBarlines.find(
+            bl => bl.measureIndex === endMP.globalIndex && bl.side === 'right'
+          );
+          const endX = endRightBarline?.exactX ?? (endMP.x! + endMP.width - 2);
+          
+          // Position volta horizontal line at the TOP of the barline
+          // The volta line forms a right angle with the top of the barline
+          const y = startBarline?.y ?? startMP.y;
+          const hookHeight = 15; // Height of descending hooks
+          const textSize = 14; // Font size for volta numbers
+          const estimatedTextHeight = textSize + 4; // Text height with some padding
+          
+          const voltaInfo = measure.voltaStart;
+          
+          // Draw horizontal line
+          const horizontalLine = document.createElementNS(SVG_NS, 'line');
+          horizontalLine.setAttribute('x1', startX.toString());
+          horizontalLine.setAttribute('y1', y.toString());
+          horizontalLine.setAttribute('x2', endX.toString());
+          horizontalLine.setAttribute('y2', y.toString());
+          horizontalLine.setAttribute('stroke', '#000');
+          horizontalLine.setAttribute('stroke-width', '1.5');
+          svg.appendChild(horizontalLine);
+          
+          // Draw left descending hook (always present) - aligned with barline
+          const leftHook = document.createElementNS(SVG_NS, 'line');
+          leftHook.setAttribute('x1', startX.toString());
+          leftHook.setAttribute('y1', y.toString());
+          leftHook.setAttribute('x2', startX.toString());
+          leftHook.setAttribute('y2', (y + hookHeight).toString());
+          leftHook.setAttribute('stroke', '#000');
+          leftHook.setAttribute('stroke-width', '1.5');
+          svg.appendChild(leftHook);
+          
+          // Draw right descending hook (only if closed)
+          if (voltaInfo.isClosed) {
+            const rightHook = document.createElementNS(SVG_NS, 'line');
+            rightHook.setAttribute('x1', endX.toString());
+            rightHook.setAttribute('y1', y.toString());
+            rightHook.setAttribute('x2', endX.toString());
+            rightHook.setAttribute('y2', (y + hookHeight).toString());
+            rightHook.setAttribute('stroke', '#000');
+            rightHook.setAttribute('stroke-width', '1.5');
+            svg.appendChild(rightHook);
+          }
+          
+          // Draw text label BELOW the bracket line (instead of above)
+          const voltaText = document.createElementNS(SVG_NS, 'text');
+          voltaText.setAttribute('x', (startX + 5).toString());
+          voltaText.setAttribute('y', (y + textSize + 2).toString()); // BELOW: y + textSize + gap
+          voltaText.setAttribute('font-family', 'Arial, sans-serif');
+          voltaText.setAttribute('font-size', `${textSize}px`);
+          voltaText.setAttribute('font-weight', 'normal');
+          voltaText.setAttribute('fill', '#000');
+          voltaText.setAttribute('text-anchor', 'start');
+          voltaText.textContent = voltaInfo.text;
+          svg.appendChild(voltaText);
+          
+          // Register in collision manager with proper dimensions
+          // Volta is above staff: line at y, hooks descend DOWN, text is BELOW the line
+          placeAndSizeManager.registerElement('volta-bracket', {
+            x: startX,
+            y: y, // Top is the horizontal line
+            width: endX - startX,
+            height: hookHeight + estimatedTextHeight // hooks + text below
+          }, 1, { text: voltaInfo.text, isClosed: voltaInfo.isClosed });
+        }
+      }
+    }
+  }
+}
