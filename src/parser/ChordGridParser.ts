@@ -368,8 +368,9 @@ export class ChordGridParser {
     const tokens: Array<{bar: string; content: string; repeatCount?: number; volta?: string}> = [];
     // Regex to split while capturing barlines (ordered by length: longest first)
     // Capture :||x\d+ as a single token to extract repeat count
-    // Capture volta notation: |.1 or :||.4 or |.1-3 or |.1,2,3
-    const re = /(\|\|:(?:\.[\d,-]+)?|:?\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|(?:\.[\d,-]+)?)/g;
+    // Capture volta notation: |.1 or :||.4 or |.1-3 or |.1,2,3 or |. (end marker)
+    // IMPORTANT: Order in regex: test :|| before || to avoid partial match
+    const re = /(\|\|:(?:\.[\d,-]+)?|:\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|(?:\.[\d,-]*)?)/g;
     let lastIndex = 0;
     let m: RegExpExecArray | null;
     const parts: {sep: string | null, text: string}[] = [];
@@ -405,11 +406,11 @@ export class ChordGridParser {
           repeatCount = parseInt(repeatMatch[2], 10);
         }
         
-        // Extract volta notation (e.g., |.1-3 or :||.4)
-        const voltaMatch = /^(.+?)\.(\d+(?:-\d+)?(?:,\d+)*)$/.exec(barline);
-        if (voltaMatch) {
+        // Extract volta notation (e.g., |.1-3 or :||.4 or |. to end volta)
+        const voltaMatch = /^(.+?)\.(\d+(?:-\d+)?(?:,\d+)*)?$/.exec(barline);
+        if (voltaMatch && voltaMatch[0].includes('.')) {
           barline = voltaMatch[1]; // Extract || or :|| or |
-          volta = voltaMatch[2];   // Extract "1-3" or "4" or "1,2,3"
+          volta = voltaMatch[2] || 'END';   // Extract "1-3" or "4" or "1,2,3" or "END" if just |.
         }
         
         tokens.push({bar: barline, content: currentText, repeatCount, volta});
@@ -446,6 +447,9 @@ export class ChordGridParser {
     
     // Track if the pending volta comes AFTER a :|| (for determining open vs closed bracket)
     let pendingVoltaIsAfterRepeatEnd = false;
+    
+    // Track if next measure should be marked as volta end (from |. marker)
+    let pendingVoltaEndMarker = false;
 
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
@@ -692,15 +696,27 @@ export class ChordGridParser {
         pendingVolta = undefined;
         pendingVoltaIsAfterRepeatEnd = false;
       }
+      
+      // Apply pending volta end marker from previous barline (|.)
+      if (pendingVoltaEndMarker) {
+        (newMeasure as any).voltaEndMarker = true;
+        pendingVoltaEndMarker = false;
+      }
 
       measures.push(newMeasure);
       
       // After creating the measure, check if this token's barline has a volta
       // If so, store it for the NEXT measure
       if (t.volta) {
-        pendingVolta = t.volta;
-        // Check if this volta comes after a :|| barline
-        pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+        // Special case: |. (volta = 'END') marks the end of the current volta
+        if (t.volta === 'END') {
+          // Mark that the NEXT measure should be marked as volta end
+          pendingVoltaEndMarker = true;
+        } else {
+          pendingVolta = t.volta;
+          // Check if this volta comes after a :|| barline
+          pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+        }
       }
       
       // Update reference to last explicit measure (for % notation)
@@ -709,6 +725,7 @@ export class ChordGridParser {
 
     // POST-PROCESSING: Determine volta spanning (voltaEnd)
     // A volta spans from where it starts until:
+    // - An explicit |. end marker is encountered
     // - The next volta starts (different volta)  
     // - A repeat start barline is encountered (||:)
     // - End of measures
@@ -716,28 +733,45 @@ export class ChordGridParser {
     for (let i = 0; i < measures.length; i++) {
       const measure = measures[i] as any;
       if (measure.voltaStart) {
+        const voltaInfo = measure.voltaStart;
+        
         // Find the end of this volta
         let endIndex = i;
+        let foundExplicitEnd = false;
+        
+        // Always search for explicit end marker, even for open voltas
         for (let j = i + 1; j < measures.length; j++) {
           const nextMeasure = measures[j] as any;
+          
+          // Check for explicit end marker (|.) - has highest priority
+          if (nextMeasure.voltaEndMarker) {
+            endIndex = j;
+            foundExplicitEnd = true;
+            delete nextMeasure.voltaEndMarker; // Clean up marker
+            break;
+          }
+          
+          // For open voltas (isClosed = false), only look for explicit markers
+          // Don't auto-extend to following measures
+          if (!voltaInfo.isClosed) {
+            continue; // Keep searching for |. marker
+          }
+          
+          // For closed voltas (isClosed = true), auto-extend with normal rules
           // Stop BEFORE a new volta or repeat start
           if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
             break;
           }
           endIndex = j;
-          // But stop AFTER a repeat end (include it in the volta)
+          
+          // Stop AFTER a repeat end (include it in the volta)
           if (nextMeasure.isRepeatEnd) {
             break;
           }
         }
         
         // Mark the end measure with voltaEnd (same volta info)
-        if (endIndex > i) {
-          (measures[endIndex] as any).voltaEnd = measure.voltaStart;
-        } else {
-          // Single measure volta - both start and end on same measure
-          (measures[i] as any).voltaEnd = measure.voltaStart;
-        }
+        (measures[endIndex] as any).voltaEnd = voltaInfo;
       }
     }
 

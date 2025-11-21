@@ -796,7 +796,8 @@ export class SVGRenderer {
         let endMeasureIndex = i;
         for (let j = i; j < measurePositions.length; j++) {
           const endMeasure = measurePositions[j].measure as any;
-          if (endMeasure.voltaEnd && endMeasure.voltaEnd === measure.voltaStart) {
+          // Compare volta info by text value since voltaEnd is a copy of voltaStart
+          if (endMeasure.voltaEnd && endMeasure.voltaEnd.text === measure.voltaStart.text) {
             endMeasureIndex = j;
             break;
           }
@@ -830,7 +831,18 @@ export class SVGRenderer {
           const endRightBarline = allBarlines.find(
             bl => bl.measureIndex === endMP.globalIndex && bl.side === 'right'
           );
-          const endX = endRightBarline?.exactX ?? (endMP.x! + endMP.width - 2);
+          let endX = endRightBarline?.exactX ?? (endMP.x! + endMP.width - 2);
+          
+          // Adjust endX to reach the rightmost visible part of double barlines
+          if (endRightBarline?.type === 'repeat-end') {
+            // :|| has thin line at x, thick line (stroke-width: 3) at x+6
+            // Thick line extends to x+6+1.5 = x+7.5
+            endX += 7.5;
+          } else if (endRightBarline?.type === 'final-double') {
+            // || has thin line at x, thick line (stroke-width: 5) at x+6
+            // Thick line extends to x+6+2.5 = x+8.5
+            endX += 8.5;
+          }
           
           // Position volta horizontal line at the TOP of the barline
           // The volta line forms a right angle with the top of the barline
@@ -874,8 +886,12 @@ export class SVGRenderer {
           }
           
           // Draw text label BELOW the bracket line (instead of above)
+          // Check if the start barline is a repeat-start to add extra spacing
+          const isAfterRepeatStart = startBarline?.type === 'repeat-start';
+          const textOffset = isAfterRepeatStart ? 15 : 5; // More space after ||: to avoid collision with dots
+          
           const voltaText = document.createElementNS(SVG_NS, 'text');
-          voltaText.setAttribute('x', (startX + 5).toString());
+          voltaText.setAttribute('x', (startX + textOffset).toString());
           voltaText.setAttribute('y', (y + textSize + 2).toString()); // BELOW: y + textSize + gap
           voltaText.setAttribute('font-family', 'Arial, sans-serif');
           voltaText.setAttribute('font-size', `${textSize}px`);
