@@ -320,6 +320,9 @@ export class SVGRenderer {
   // draw ties using collected notePositions and the TieManager for cross-line ties
   this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
 
+    // Draw pick strokes (mediator) after notes and ties
+    this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options);
+
     // Adjust viewBox based on actual rendered elements bounds (handles repeat counts, etc.)
     const bounds = placeAndSizeManager.getGlobalBounds();
     if (bounds) {
@@ -920,4 +923,170 @@ export class SVGRenderer {
       }
     }
   }
+
+  /**
+   * Rendu des coups de médiator (down/up) utilisant les paths fournis par l'utilisateur.
+   * - Alternance stricte globale (Down, Up, Down, ...)
+   * - Débit détecté sur l'ENSEMBLE du bloc (auto) ou forcé (8/16)
+   * - Placement relatif aux hampes: stems-down => AU-DESSUS; stems-up => AU-DESSOUS
+   * - Collisions gérées via PlaceAndSizeManager (vertical d'abord)
+   */
+  private drawPickStrokes(
+    svg: SVGElement,
+    grid: ChordGrid,
+    notePositions: Array<{ x: number; y: number; measureIndex: number; chordIndex: number; beatIndex: number; noteIndex: number; tieEnd?: boolean; tieFromVoid?: boolean; value?: number; stemTopY?: number; stemBottomY?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager,
+    stemsDirection: 'up' | 'down',
+    options: RenderOptions
+  ) {
+    const mode = options.pickStrokes;
+    if (!mode || mode === 'off') return;
+
+    // 1) Déterminer le débit (8 ou 16) sur l'ENSEMBLE du bloc si auto
+    const forcedStep = mode === '8' ? 8 : mode === '16' ? 16 : undefined;
+    const step = forcedStep ?? this.detectGlobalSubdivision(grid);
+
+    // 2) Construire la liste des attaques (onsets) dans l'ordre temporel
+    const onsets = [...notePositions]
+      .filter(p => !p.tieEnd && !p.tieFromVoid)
+      .sort((a, b) => {
+        // fallback order by measure/chord/beat/note
+        if (a.measureIndex !== b.measureIndex) return a.measureIndex - b.measureIndex;
+        if (a.chordIndex !== b.chordIndex) return a.chordIndex - b.chordIndex;
+        if (a.beatIndex !== b.beatIndex) return a.beatIndex - b.beatIndex;
+        return a.noteIndex - b.noteIndex;
+      });
+
+    // 3) Alternance stricte Down/Up globale
+    let nextDown = true; // commence par Down
+
+    // Paths d'origine (extraits des SVG fournis - FORME NOIRE UNIQUEMENT)
+    // Upbow (V inversé) d'après Music-upbow.svg
+    // Path: "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z"
+    // BBox original: x ~101.4-125.6 (24.2), y ~4.1-43.1 (39.0)
+    const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";
+    const UPBOW_ORIG_X = 101.4;
+    const UPBOW_ORIG_Y = 4.1;
+    const UPBOW_W = 24.2;
+    const UPBOW_H = 39.0;
+
+    // Downbow (carré avec ouverture en bas) d'après Music-downbow.svg
+    // Path: "m 99,44 -2,0 L 97,11 l 32,0 0,33 L 127,44 127,25 99,25 z"
+    // BBox original: x ~97-129 (32), y ~11-44 (33)
+    const DOWNBOW_PATH = "m 99,44 -2,0 L 97,11 l 32,0 0,33 L 127,44 127,25 99,25 z";
+    const DOWNBOW_ORIG_X = 97;
+    const DOWNBOW_ORIG_Y = 11;
+    const DOWNBOW_W = 32;
+    const DOWNBOW_H = 33;
+
+    // Taille visuelle cible (hauteur) en px
+    const TARGET_H = 12; // ajustable
+    const MARGIN = 3;    // écart par rapport à la tête
+
+    // Aide: dessiner un path à une position ancrée (x,y) avec bascule up/down
+    const drawSymbol = (
+      isDown: boolean,
+      anchorX: number,
+      anchorY: number,
+      above: boolean
+    ) => {
+      const d = isDown ? DOWNBOW_PATH : UPBOW_PATH;
+      const ow = isDown ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown ? DOWNBOW_H : UPBOW_H;
+      const origX = isDown ? DOWNBOW_ORIG_X : UPBOW_ORIG_X;
+      const origY = isDown ? DOWNBOW_ORIG_Y : UPBOW_ORIG_Y;
+
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+
+      // Positionner le path centré horizontalement sur anchorX
+      // et en dehors de la tête: au-dessus ou en-dessous selon orientation
+      const desiredY = above ? (anchorY - MARGIN - th) : (anchorY + MARGIN);
+      const desiredX = anchorX - tw / 2;
+
+      // Collision bbox estimée à partir des dimensions scalées
+      let bbox = { x: desiredX, y: desiredY, width: tw, height: th };
+      const adjusted = placeAndSizeManager.findFreePosition(bbox, 'vertical', [], 20) || bbox;
+
+      // Calculer la translation nécessaire pour ramener l'origine du path à la position ajustée
+      // On translate pour placer le coin supérieur gauche du bbox original scalé à adjusted.x/y
+      // puis on scale
+      const translateX = adjusted.x - origX * scale;
+      const translateY = adjusted.y - origY * scale;
+
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('transform', `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', '#000');
+      path.setAttribute('stroke', 'none');
+      g.appendChild(path);
+      svg.appendChild(g);
+
+      // Enregistrer pour collisions
+      placeAndSizeManager.registerElement('pick-stroke', adjusted, 7, {
+        direction: isDown ? 'down' : 'up',
+        exactX: anchorX,
+        exactY: above ? (adjusted.y + th) : adjusted.y,
+      });
+    };
+
+    // 4) Placement selon hampes
+    const isAboveForStemsDown = stemsDirection === 'down';
+
+    // 5) Rendu alterné (alternance sur chaque attaque)
+    onsets.forEach(on => {
+      const isDown = nextDown;
+      const above = isAboveForStemsDown; // stems-down => au-dessus; stems-up => en-dessous
+      drawSymbol(isDown, on.x, on.y, above);
+      nextDown = !nextDown;
+    });
+  }
+
+  /**
+   * Détection de la subdivision minimale sur l'ensemble du bloc.
+   * Règle: si la moindre attaque effective correspond à 16 (ou plus court), retourner 16; sinon 8.
+   */
+  private detectGlobalSubdivision(grid: ChordGrid): 8 | 16 {
+    // Construire un set des tuplets par groupId pour chaque mesure afin d'en déduire leur baseLen
+    let hasSixteenth = false;
+    for (const measure of grid.measures) {
+      // Map groupId -> baseLen (valeur numérique max rencontrée dans le groupe)
+      const groupBase: Record<string, number> = {};
+      // Première passe: collecter baseLen
+      for (const seg of (measure.chordSegments || [])) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const prev = groupBase[gid] ?? 0;
+              // baseLen = plus petite durée => plus grand nombre (16 < 8 en durée, mais valeur 16 > 8)
+              groupBase[gid] = Math.max(prev, n.value);
+            }
+          }
+        }
+      }
+      // Seconde passe: inspecter les attaques
+      for (const seg of (measure.chordSegments || [])) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.isRest || n.tieEnd || n.tieFromVoid) continue; // pas une attaque
+            let eff: number = n.value;
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const base = groupBase[gid] || n.value;
+              eff = Math.max(eff, base);
+            }
+            if (eff >= 16) { hasSixteenth = true; break; }
+          }
+          if (hasSixteenth) break;
+        }
+        if (hasSixteenth) break;
+      }
+      if (hasSixteenth) break;
+    }
+    return hasSixteenth ? 16 : 8;
+  }
+
 }

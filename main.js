@@ -178,6 +178,7 @@ var _ChordGridParser = class _ChordGridParser {
     const lines = input.trim().split("\n");
     let stemsDirection = "up";
     let displayRepeatSymbol = false;
+    let picksMode = void 0;
     let timeSignatureLine = lines[0];
     if (/stems-down/i.test(timeSignatureLine)) {
       stemsDirection = "down";
@@ -189,6 +190,14 @@ var _ChordGridParser = class _ChordGridParser {
     if (/show%/i.test(timeSignatureLine)) {
       displayRepeatSymbol = true;
       timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, "");
+    }
+    const picksMatch = /(picks-(off|auto|8|16))/i.exec(timeSignatureLine);
+    if (picksMatch) {
+      const mode = (picksMatch[2] || "").toLowerCase();
+      if (mode === "off" || mode === "auto" || mode === "8" || mode === "16") {
+        picksMode = mode;
+      }
+      timeSignatureLine = timeSignatureLine.replace(/picks-(off|auto|8|16)\s*/i, "");
     }
     timeSignatureLine = timeSignatureLine.trim();
     if (timeSignatureLine === "" && lines.length > 1) {
@@ -281,7 +290,7 @@ var _ChordGridParser = class _ChordGridParser {
         });
       }
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode };
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -3123,6 +3132,7 @@ var SVGRenderer = class {
     });
     this.drawVoltaBrackets(svg, measurePositions, placeAndSizeManager);
     this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
+    this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options);
     const bounds = placeAndSizeManager.getGlobalBounds();
     if (bounds) {
       const margin = 10;
@@ -3543,6 +3553,117 @@ var SVGRenderer = class {
       }
     }
   }
+  /**
+   * Rendu des coups de médiator (down/up) utilisant les paths fournis par l'utilisateur.
+   * - Alternance stricte globale (Down, Up, Down, ...)
+   * - Débit détecté sur l'ENSEMBLE du bloc (auto) ou forcé (8/16)
+   * - Placement relatif aux hampes: stems-down => AU-DESSUS; stems-up => AU-DESSOUS
+   * - Collisions gérées via PlaceAndSizeManager (vertical d'abord)
+   */
+  drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options) {
+    const mode = options.pickStrokes;
+    if (!mode || mode === "off") return;
+    const forcedStep = mode === "8" ? 8 : mode === "16" ? 16 : void 0;
+    const step = forcedStep != null ? forcedStep : this.detectGlobalSubdivision(grid);
+    const onsets = [...notePositions].filter((p) => !p.tieEnd && !p.tieFromVoid).sort((a, b) => {
+      if (a.measureIndex !== b.measureIndex) return a.measureIndex - b.measureIndex;
+      if (a.chordIndex !== b.chordIndex) return a.chordIndex - b.chordIndex;
+      if (a.beatIndex !== b.beatIndex) return a.beatIndex - b.beatIndex;
+      return a.noteIndex - b.noteIndex;
+    });
+    let nextDown = true;
+    const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";
+    const UPBOW_ORIG_X = 101.4;
+    const UPBOW_ORIG_Y = 4.1;
+    const UPBOW_W = 24.2;
+    const UPBOW_H = 39;
+    const DOWNBOW_PATH = "m 99,44 -2,0 L 97,11 l 32,0 0,33 L 127,44 127,25 99,25 z";
+    const DOWNBOW_ORIG_X = 97;
+    const DOWNBOW_ORIG_Y = 11;
+    const DOWNBOW_W = 32;
+    const DOWNBOW_H = 33;
+    const TARGET_H = 12;
+    const MARGIN = 3;
+    const drawSymbol = (isDown, anchorX, anchorY, above) => {
+      const d = isDown ? DOWNBOW_PATH : UPBOW_PATH;
+      const ow = isDown ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown ? DOWNBOW_H : UPBOW_H;
+      const origX = isDown ? DOWNBOW_ORIG_X : UPBOW_ORIG_X;
+      const origY = isDown ? DOWNBOW_ORIG_Y : UPBOW_ORIG_Y;
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+      const desiredY = above ? anchorY - MARGIN - th : anchorY + MARGIN;
+      const desiredX = anchorX - tw / 2;
+      let bbox = { x: desiredX, y: desiredY, width: tw, height: th };
+      const adjusted = placeAndSizeManager.findFreePosition(bbox, "vertical", [], 20) || bbox;
+      const translateX = adjusted.x - origX * scale;
+      const translateY = adjusted.y - origY * scale;
+      const g = document.createElementNS(SVG_NS, "g");
+      g.setAttribute("transform", `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "#000");
+      path.setAttribute("stroke", "none");
+      g.appendChild(path);
+      svg.appendChild(g);
+      placeAndSizeManager.registerElement("pick-stroke", adjusted, 7, {
+        direction: isDown ? "down" : "up",
+        exactX: anchorX,
+        exactY: above ? adjusted.y + th : adjusted.y
+      });
+    };
+    const isAboveForStemsDown = stemsDirection === "down";
+    onsets.forEach((on) => {
+      const isDown = nextDown;
+      const above = isAboveForStemsDown;
+      drawSymbol(isDown, on.x, on.y, above);
+      nextDown = !nextDown;
+    });
+  }
+  /**
+   * Détection de la subdivision minimale sur l'ensemble du bloc.
+   * Règle: si la moindre attaque effective correspond à 16 (ou plus court), retourner 16; sinon 8.
+   */
+  detectGlobalSubdivision(grid) {
+    var _a;
+    let hasSixteenth = false;
+    for (const measure of grid.measures) {
+      const groupBase = {};
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const prev = (_a = groupBase[gid]) != null ? _a : 0;
+              groupBase[gid] = Math.max(prev, n.value);
+            }
+          }
+        }
+      }
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.isRest || n.tieEnd || n.tieFromVoid) continue;
+            let eff = n.value;
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const base = groupBase[gid] || n.value;
+              eff = Math.max(eff, base);
+            }
+            if (eff >= 16) {
+              hasSixteenth = true;
+              break;
+            }
+          }
+          if (hasSixteenth) break;
+        }
+        if (hasSixteenth) break;
+      }
+      if (hasSixteenth) break;
+    }
+    return hasSixteenth ? 16 : 8;
+  }
 };
 
 // main.ts
@@ -3576,7 +3697,8 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
           const renderer = new SVGRenderer();
           const svg = renderer.render(grid, {
             stemsDirection: result.stemsDirection,
-            displayRepeatSymbol: result.displayRepeatSymbol
+            displayRepeatSymbol: result.displayRepeatSymbol,
+            pickStrokes: result.picksMode
           });
           el.appendChild(svg);
         } catch (err) {
