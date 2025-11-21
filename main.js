@@ -3565,13 +3565,46 @@ var SVGRenderer = class {
     if (!mode || mode === "off") return;
     const forcedStep = mode === "8" ? 8 : mode === "16" ? 16 : void 0;
     const step = forcedStep != null ? forcedStep : this.detectGlobalSubdivision(grid);
-    const onsets = [...notePositions].filter((p) => !p.tieEnd && !p.tieFromVoid).sort((a, b) => {
-      if (a.measureIndex !== b.measureIndex) return a.measureIndex - b.measureIndex;
-      if (a.chordIndex !== b.chordIndex) return a.chordIndex - b.chordIndex;
-      if (a.beatIndex !== b.beatIndex) return a.beatIndex - b.beatIndex;
-      return a.noteIndex - b.noteIndex;
+    const timeline = [];
+    const notesOnTimeline = [];
+    let currentSubdivision = 0;
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            const noteDuration = note.value;
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            const subdivisionCount = Math.round(step / noteDuration * dottedMultiplier);
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack
+            });
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
     });
-    let nextDown = true;
+    let isDown = true;
+    for (let i = 0; i < currentSubdivision; i++) {
+      timeline.push({
+        pickDirection: isDown ? "down" : "up",
+        subdivisionIndex: i
+      });
+      isDown = !isDown;
+    }
+    const attacksWithPicks = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
+      var _a;
+      return {
+        ...n,
+        pickDirection: ((_a = timeline[n.subdivisionStart]) == null ? void 0 : _a.pickDirection) || "down"
+      };
+    });
     const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";
     const UPBOW_ORIG_X = 101.4;
     const UPBOW_ORIG_Y = 4.1;
@@ -3584,12 +3617,12 @@ var SVGRenderer = class {
     const DOWNBOW_H = 33;
     const TARGET_H = 12;
     const MARGIN = 3;
-    const drawSymbol = (isDown, anchorX, anchorY, above) => {
-      const d = isDown ? DOWNBOW_PATH : UPBOW_PATH;
-      const ow = isDown ? DOWNBOW_W : UPBOW_W;
-      const oh = isDown ? DOWNBOW_H : UPBOW_H;
-      const origX = isDown ? DOWNBOW_ORIG_X : UPBOW_ORIG_X;
-      const origY = isDown ? DOWNBOW_ORIG_Y : UPBOW_ORIG_Y;
+    const drawSymbol = (isDown2, anchorX, anchorY, above) => {
+      const d = isDown2 ? DOWNBOW_PATH : UPBOW_PATH;
+      const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown2 ? DOWNBOW_H : UPBOW_H;
+      const origX = isDown2 ? DOWNBOW_ORIG_X : UPBOW_ORIG_X;
+      const origY = isDown2 ? DOWNBOW_ORIG_Y : UPBOW_ORIG_Y;
       const scale = TARGET_H / oh;
       const tw = ow * scale;
       const th = oh * scale;
@@ -3608,17 +3641,21 @@ var SVGRenderer = class {
       g.appendChild(path);
       svg.appendChild(g);
       placeAndSizeManager.registerElement("pick-stroke", adjusted, 7, {
-        direction: isDown ? "down" : "up",
+        direction: isDown2 ? "down" : "up",
         exactX: anchorX,
         exactY: above ? adjusted.y + th : adjusted.y
       });
     };
     const isAboveForStemsDown = stemsDirection === "down";
-    onsets.forEach((on) => {
-      const isDown = nextDown;
-      const above = isAboveForStemsDown;
-      drawSymbol(isDown, on.x, on.y, above);
-      nextDown = !nextDown;
+    attacksWithPicks.forEach((attackInfo) => {
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === attackInfo.measureIndex && np.chordIndex === attackInfo.chordIndex && np.beatIndex === attackInfo.beatIndex && np.noteIndex === attackInfo.noteIndex
+      );
+      if (notePos) {
+        const isDown2 = attackInfo.pickDirection === "down";
+        const above = isAboveForStemsDown;
+        drawSymbol(isDown2, notePos.x, notePos.y, above);
+      }
     });
   }
   /**

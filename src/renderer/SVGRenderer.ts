@@ -946,19 +946,76 @@ export class SVGRenderer {
     const forcedStep = mode === '8' ? 8 : mode === '16' ? 16 : undefined;
     const step = forcedStep ?? this.detectGlobalSubdivision(grid);
 
-    // 2) Construire la liste des attaques (onsets) dans l'ordre temporel
-    const onsets = [...notePositions]
-      .filter(p => !p.tieEnd && !p.tieFromVoid)
-      .sort((a, b) => {
-        // fallback order by measure/chord/beat/note
-        if (a.measureIndex !== b.measureIndex) return a.measureIndex - b.measureIndex;
-        if (a.chordIndex !== b.chordIndex) return a.chordIndex - b.chordIndex;
-        if (a.beatIndex !== b.beatIndex) return a.beatIndex - b.beatIndex;
-        return a.noteIndex - b.noteIndex;
-      });
+    // 2) Construire une TIMELINE rythmique continue basée sur la subdivision
+    // Chaque note/silence occupe un certain nombre de "slots" de subdivision
+    // On parcourt toutes les mesures dans l'ordre pour construire cette timeline
+    interface TimelineSlot {
+      pickDirection: 'down' | 'up';
+      subdivisionIndex: number; // position absolue dans la timeline (0, 1, 2, ...)
+    }
+    interface NoteOnTimeline {
+      measureIndex: number;
+      chordIndex: number;
+      beatIndex: number;
+      noteIndex: number;
+      subdivisionStart: number; // où commence cette note dans la timeline
+      isAttack: boolean; // true si c'est une vraie attaque (pas rest, pas tieEnd)
+    }
 
-    // 3) Alternance stricte Down/Up globale
-    let nextDown = true; // commence par Down
+    const timeline: TimelineSlot[] = [];
+    const notesOnTimeline: NoteOnTimeline[] = [];
+    let currentSubdivision = 0;
+
+    // Parcourir toutes les mesures/segments/beats/notes pour construire la timeline
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            // Calculer combien de subdivisions occupe cette note
+            const noteDuration = note.value; // 1, 2, 4, 8, 16, 32, 64
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            
+            // Nombre de subdivisions occupées = durée de la note exprimée en unités de 'step'
+            // Ex: si step=16 et note=8, alors 8 occupe 2 subdivisions de 16
+            // Ex: si step=8 et note=8, alors 8 occupe 1 subdivision de 8
+            const subdivisionCount = Math.round((step / noteDuration) * dottedMultiplier);
+            
+            // Enregistrer cette note dans la timeline
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack
+            });
+            
+            // Avancer la timeline de subdivisionCount positions
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+
+    // 3) Assigner les coups de médiator (Down/Up) à chaque position de la timeline
+    let isDown = true; // commence par Down
+    for (let i = 0; i < currentSubdivision; i++) {
+      timeline.push({
+        pickDirection: isDown ? 'down' : 'up',
+        subdivisionIndex: i
+      });
+      isDown = !isDown; // alterner
+    }
+
+    // 4) Mapper les notes ayant des attaques réelles à leur coup de médiator
+    const attacksWithPicks = notesOnTimeline
+      .filter(n => n.isAttack)
+      .map(n => ({
+        ...n,
+        pickDirection: timeline[n.subdivisionStart]?.pickDirection || 'down'
+      }));
 
     // Paths d'origine (extraits des SVG fournis - FORME NOIRE UNIQUEMENT)
     // Upbow (V inversé) d'après Music-upbow.svg
@@ -1032,15 +1089,24 @@ export class SVGRenderer {
       });
     };
 
-    // 4) Placement selon hampes
+    // 5) Placement selon hampes
     const isAboveForStemsDown = stemsDirection === 'down';
 
-    // 5) Rendu alterné (alternance sur chaque attaque)
-    onsets.forEach(on => {
-      const isDown = nextDown;
-      const above = isAboveForStemsDown; // stems-down => au-dessus; stems-up => en-dessous
-      drawSymbol(isDown, on.x, on.y, above);
-      nextDown = !nextDown;
+    // 6) Rendu: pour chaque attaque avec coup de médiator, trouver sa position graphique et dessiner
+    attacksWithPicks.forEach(attackInfo => {
+      // Retrouver la position graphique de cette note dans notePositions
+      const notePos = notePositions.find(np =>
+        np.measureIndex === attackInfo.measureIndex &&
+        np.chordIndex === attackInfo.chordIndex &&
+        np.beatIndex === attackInfo.beatIndex &&
+        np.noteIndex === attackInfo.noteIndex
+      );
+      
+      if (notePos) {
+        const isDown = attackInfo.pickDirection === 'down';
+        const above = isAboveForStemsDown; // stems-down => au-dessus; stems-up => en-dessous
+        drawSymbol(isDown, notePos.x, notePos.y, above);
+      }
     });
   }
 
