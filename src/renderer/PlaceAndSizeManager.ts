@@ -67,7 +67,8 @@ export type ElementType =
     | 'diamond'         // Tête de note en losange
     | 'slash'           // Barre de slash
     | 'double-bar'      // Double barre finale (||)
-    | 'dot';            // Points des notes pointées
+    | 'dot'             // Points des notes pointées
+    | 'pick-stroke';    // Indications de médiator (down/up)
 
 /**
  * Direction d'ajustement pour résoudre une collision.

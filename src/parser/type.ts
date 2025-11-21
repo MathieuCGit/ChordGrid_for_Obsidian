@@ -262,4 +262,5 @@ export interface ParseResult {
   measures: Measure[];
   stemsDirection?: 'up' | 'down';
   displayRepeatSymbol?: boolean;
+  picksMode?: 'off' | 'auto' | '8' | '16';
 }

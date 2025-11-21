@@ -42,6 +42,8 @@ export interface RenderOptions {
   stemsDirection?: 'up' | 'down';
   /** Afficher le symbole % pour les mesures répétées au lieu du rythme complet. Par défaut false. */
   displayRepeatSymbol?: boolean;
+  /** Indications de médiator: off | auto | 8 | 16 (proposition). Non utilisé tant que rendu non implémenté. */
+  pickStrokes?: 'off' | 'auto' | '8' | '16';
 }
 
 /**

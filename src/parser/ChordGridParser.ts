@@ -126,6 +126,7 @@ export class ChordGridParser {
     // Détection des mots-clés stems-up/down et show% sur la première ligne (dans n'importe quel ordre)
     let stemsDirection: 'up' | 'down' = 'up';
     let displayRepeatSymbol = false;
+    let picksMode: 'off' | 'auto' | '8' | '16' | undefined = undefined;
     let timeSignatureLine = lines[0];
     
     // Check for stems keywords (anywhere in the line)
@@ -141,6 +142,16 @@ export class ChordGridParser {
     if (/show%/i.test(timeSignatureLine)) {
       displayRepeatSymbol = true;
       timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, '');
+    }
+
+    // Check for picks directive: picks-off | picks-auto | picks-8 | picks-16 (anywhere in the line)
+    const picksMatch = /(picks-(off|auto|8|16))/i.exec(timeSignatureLine);
+    if (picksMatch) {
+      const mode = (picksMatch[2] || '').toLowerCase();
+      if (mode === 'off' || mode === 'auto' || mode === '8' || mode === '16') {
+        picksMode = mode as any;
+      }
+      timeSignatureLine = timeSignatureLine.replace(/picks-(off|auto|8|16)\s*/i, '');
     }
     
     // Remove leading whitespace after removing directives
@@ -298,7 +309,7 @@ export class ChordGridParser {
       }
     }
 
-  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol };
+  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode };
   }
 
   /**
