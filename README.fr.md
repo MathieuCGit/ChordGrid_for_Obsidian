@@ -84,6 +84,29 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
 - `||` : double barre fin de grille
 - `||:` : début de reprise
 - `:||` : fin de reprise
+- `:||x3` : fin de reprise avec compteur (jouer 3 fois au total)
+
+**Crochets de volta (v2.2+) :** Créer des fins alternatives (1re/2e fois) pour les sections répétées
+- `|.1-3` : Débute un crochet de volta pour les répétitions 1, 2 et 3
+- `|.4` : Débute un crochet de volta pour la répétition 4 (ou tout autre numéro unique)
+- `|.1,2,3` : Syntaxe alternative utilisant des virgules
+- `|.` : Marque explicitement la fin d'un crochet de volta (optionnel)
+- Les crochets de volta s'étendent automatiquement jusqu'à :
+  - Le prochain volta commence (ex: `|.1-3 ... :||.4`)
+  - Un marqueur de début de reprise `||:` est rencontré
+  - Un marqueur de fin explicite `|.` est placé
+- Apparence visuelle :
+  - Crochets fermés (avant `:||`) : crochet avec crochets des deux côtés
+  - Crochets ouverts (après `:||`) : crochet avec crochet à gauche seulement (fin/coda)
+- Exemples :
+  ```chordgrid
+  4/4 ||: C[4 4 4 4] |.1-3 G[4 4 4 4] :||.4 Am[4 4 4 4] ||
+  ```
+  ```chordgrid
+  4/4 ||: C[4 88_4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+  ```
+  Premier exemple : volta 1-3 couvre une mesure, volta 4 couvre une mesure
+  Second exemple : volta 1-3 couvre deux mesures avant `:||`, volta 4 s'étend jusqu'à Am en utilisant le marqueur `|.`
 
 **Accords :** Notation standard (`Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E` ...)
 
@@ -177,7 +200,7 @@ Rappel :
 | `8 8` | Deux croches séparées (espace coupe la ligature) |
 | `4.` | Noire pointée (= noire + croche) |
 | `16.32` | Direction des demi-ligatures adaptée (chemin analyseur) |
-| `4_88_ | [_8]` | Liaison à travers la barre de mesure |
+| `4_88_ \| [_8]` | Liaison à travers la barre de mesure |
 | `C[8]G[8]` | Ligature inter-segments si aucun espace (analyseur) |
 | `C[8] G[8]` | Espace = ligature cassée |
 | `%` | Répéter le rythme de la mesure précédente |
@@ -189,7 +212,11 @@ Rappel :
 | `{8_8_8}3` | Triolet avec toutes les notes liées |
 | `4_{8 8 8}3` | Noire liée à la première note du triolet |
 | `{8 8 8_}3 4` | Dernière note du triolet liée à la noire |
-| `| 4_ | {_8 8 8}3 |` | Liaison cross-mesure vers un tuplet |
+| `\| 4_ \| {_8 8 8}3 \|` | Liaison cross-mesure vers un tuplet |
+| `\|.1-3` | Débute un crochet de volta pour fins 1, 2, 3 |
+| `:||.4` | Fin de reprise et début volta 4 |
+| `\|.` | Marque explicitement la fin d'un crochet de volta |
+| `\|.1,2,3` | Syntaxe alternative avec virgules pour volta |
 
 ### Exemples
 
@@ -228,6 +255,18 @@ show% 4/4 | C[4 4 4 4] | % | G[%] | Am[88 88] |
 ```chordgrid
 4/4 | C[4 -4 4 4] | G[-2 4 4] | Am[88 -8 8 4] | F[4 4 -2] |
 ```
+
+**Crochets de volta (fins alternatives) :**
+```chordgrid
+4/4 ||: C[4 4 4 4] |.1-3 G[4 4 4 4] :||.4 Am[4 4 4 4] ||
+```
+
+**Volta avec plusieurs mesures et fin explicite :**
+```chordgrid
+4/4 ||: C[4 88_4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+```
+La première fin (1-3) couvre 2 mesures avant la fin de reprise.
+La dernière fin (4) s'étend sur 2 mesures en utilisant le marqueur `|.` pour indiquer où elle se termine.
 
 **Liaisons (ties) :**
 ```chordgrid

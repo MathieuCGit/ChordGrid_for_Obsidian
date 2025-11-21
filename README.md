@@ -94,6 +94,28 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 - `:||` : End repeat
 - `:||x3` : End repeat with count (play 3 times total)
 
+**Volta brackets (v2.2+):** Create first/second endings for repeated sections
+- `|.1-3` : Start volta bracket for repetitions 1, 2, and 3
+- `|.4` : Start volta bracket for repetition 4 (or any single number)
+- `|.1,2,3` : Alternative syntax using commas
+- `|.` : Explicitly mark the end of a volta bracket (optional)
+- Volta brackets automatically span until:
+  - The next volta starts (e.g., `|.1-3 ... :||.4`)
+  - A repeat start marker `||:` is encountered
+  - An explicit end marker `|.` is placed
+- Visual appearance:
+  - Closed brackets (before `:||`): bracket with hooks on both ends
+  - Open brackets (after `:||`): bracket with hook on left only (ending/coda)
+- Examples:
+  ```chordgrid
+  4/4 ||: C[4 4 4 4] |.1-3 G[4 4 4 4] :||.4 Am[4 4 4 4] ||
+  ```
+  ```chordgrid
+  4/4 ||: C[4 88_4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+  ```
+  First example: volta 1-3 covers one measure, volta 4 covers one measure
+  Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to Am using `|.` marker
+
 **Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
 
 **Rhythm in brackets (note values):**
@@ -188,7 +210,7 @@ Notes on syntax:
 | `8 8` | Two separate eighths (space splits beams) |
 | `4.` | Dotted quarter ( = quarter + eighth ) |
 | `16.32` | Beamlet direction adapts (analyzer path) |
-| `4_88_ | [_8]` | Tie across measure boundary |
+| `4_88_ \| [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
 | `%` | Repeat previous measure's rhythm |
@@ -200,7 +222,11 @@ Notes on syntax:
 | `{8_8_8}3` | Triplet with all notes tied together |
 | `4_{8 8 8}3` | Quarter note tied to first note of triplet |
 | `{8 8 8_}3 4` | Last note of triplet tied to quarter |
-| `| 4_ | {_8 8 8}3 |` | Cross-measure tie into tuplet |
+| `\| 4_ \| {_8 8 8}3 \|` | Cross-measure tie into tuplet |
+| `\|.1-3` | Start volta bracket for endings 1, 2, 3 |
+| `:||.4` | End repeat and start volta 4 |
+| `\|.` | Explicitly mark end of volta bracket |
+| `\|.1,2,3` | Alternative comma syntax for volta |
 
 ### Examples
 
@@ -245,6 +271,18 @@ show% 4/4 | C[4 4 4 4] | % | G[%] | Am[88 88] |
 ```chordgrid
 4/4 | C[4 -4 4 4] | G[-2 4 4] | Am[88 -8 8 4] | F[4 4 -2] |
 ```
+
+**Volta brackets (first/second endings):**
+```chordgrid
+4/4 ||: C[4 4 4 4] |.1-3 G[4 4 4 4] :||.4 Am[4 4 4 4] ||
+```
+
+**Volta with multiple measures and explicit end:**
+```chordgrid
+4/4 ||: C[4 88_4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+```
+The first ending (1-3) covers 2 measures before the repeat end.
+The last ending (4) extends over 2 measures using the `|.` marker to indicate where it ends.
 
 **Tied chords**
 ```chordgrid
