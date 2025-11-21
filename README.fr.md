@@ -50,6 +50,27 @@ Dans vos notes Obsidian, créez un bloc de code avec la langue `chordgrid` :
   stems-down 4/4 | C[88 4 4] | G[4 4 2] |
   ```
 
+**Coups de médiator (Unreleased – branche feature)** : Affiche des symboles alternés (↓ / ∨) représentant les coups de médiator (down / up) pour travailler le débit rythmique.
+- Directives : `picks-auto`, `picks-8`, `picks-16` (ligne séparée avant la mesure ou sur la même ligne avec `stems-*` / `show%`, ordre indifférent).
+- Mode auto : analyse TOUTE la grille – si au moins une double-croche (ou une valeur équivalente à la double-croche dans un tuplet) est présente, subdivision = 16, sinon 8.
+- Algorithme d'alternance : timeline rythmique continue ; chaque slot de subdivision bascule Down / Up. Les notes longues et les silences occupent plusieurs slots. Le symbole n'est dessiné que sur les vraies attaques (notes qui démarrent un son – pas silences, pas réceptions de liaison).
+- Silences & liaisons : même sans symbole sur un silence ou une note liée (recevant), ces éléments CONSOMMENT des slots et font avancer l'alternance.
+- Placement : si hampes vers le bas → symboles au-dessus des têtes ; hampes vers le haut (par défaut) → symboles en-dessous.
+- Collisions & alignement : calcul d'un décalage vertical uniforme appliqué à tous les symboles pour conserver un alignement horizontal propre tout en évitant les liaisons / ligatures.
+- Pas encore implémenté (prévu) : syntaxe de forçage local (`8d`, `8u`, `16d`, `16u`) pour surcharger l'alternance.
+
+Exemples :
+```chordgrid
+picks-auto 4/4 | C[8 16 16 8 8] | G[4 8 8 16 16] |
+```
+```chordgrid
+stems-down picks-16 4/4 | Am[16 16 16 16 8 8] | F[4 16 16 8 8] |
+```
+```chordgrid
+picks-8 4/4 | C[4 8 8 -4] | G[8 4 4 8] |
+```
+Note de comportement : Dans `picks-auto`, une mesure comme `[8 16 16]` affiche ↓ sur la croche (qui occupe en interne 2 slots de doubles-croches : ↓ puis ↑), puis ↓ sur la première double-croche, ↑ sur la seconde (visuel final : ↓ ↓ ↑) car la croche consomme deux subdivisions dans la timeline.
+
 **SVG responsive (v2.2+) :** Toutes les grilles d'accords sont maintenant rendues avec un SVG responsive qui s'adapte automatiquement à la largeur du conteneur tout en préservant le ratio d'aspect.
 
 **Mesures répétées (v2.2+) :** Affichage des mesures répétées avec des raccourcis de notation
@@ -206,6 +227,7 @@ Rappel :
 | `%` | Répéter le rythme de la mesure précédente |
 | `Accord[%]` | Répéter le rythme avec un nouvel accord |
 | `show%` | Afficher le symbole de répétition visuel au lieu du rythme complet |
+| `picks-auto` / `picks-8` / `picks-16` | Active l'affichage des coups de médiator (auto ou forcé) |
 | `{888}3` | Triolet de croches (ligature complète) |
 | `{8 8 8}3` | Triolet de croches (crochets séparés) |
 | `{161616 161616}6` | Sextolet avec ligatures multi-niveaux (2×3) |
@@ -312,6 +334,7 @@ L'espace avant `G` casse la ligature.
 - ✅ Grilles d'accords avec notation rythmique
 - ✅ **Contrôle de la direction des hampes** (v2.2.0) – mots-clés stems-up/stems-down respectant les standards de notation musicale
 - ✅ **Rendu SVG responsive** (v2.2.0) – adaptation automatique à la largeur du conteneur avec ratio d'aspect préservé
+- ✅ **Coups de médiator (pick strokes)** (Unreleased) – alternance automatique down/up basée sur la subdivision avec alignement horizontal propre
 - ✅ **Système CollisionManager** (v2.1.0) – placement intelligent des éléments évitant les chevauchements
 - ✅ **Espacement dynamique des signatures rythmiques** (v2.1.0) – calcul automatique de largeur et padding adaptatif
 - ✅ **Évitement de collision pour notes pointées** (v2.1.0) – courbes de liaison relevées automatiquement

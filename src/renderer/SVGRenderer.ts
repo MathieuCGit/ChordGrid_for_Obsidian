@@ -42,6 +42,8 @@ export interface RenderOptions {
   stemsDirection?: 'up' | 'down';
   /** Afficher le symbole % pour les mesures répétées au lieu du rythme complet. Par défaut false. */
   displayRepeatSymbol?: boolean;
+  /** Mode des coups de médiator ('off', 'auto', '8', '16'). Par défaut 'off'. */
+  pickStrokes?: 'off' | 'auto' | '8' | '16';
 }
 
 /**
@@ -317,6 +319,9 @@ export class SVGRenderer {
   
   // draw ties using collected notePositions and the TieManager for cross-line ties
   this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
+
+    // Draw pick strokes (mediator) after notes and ties
+    this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options);
 
     // Adjust viewBox based on actual rendered elements bounds (handles repeat counts, etc.)
     const bounds = placeAndSizeManager.getGlobalBounds();
@@ -918,4 +923,262 @@ export class SVGRenderer {
       }
     }
   }
+
+  /**
+   * Rendu des coups de médiator (down/up) utilisant les paths fournis par l'utilisateur.
+   * - Alternance stricte globale (Down, Up, Down, ...)
+   * - Débit détecté sur l'ENSEMBLE du bloc (auto) ou forcé (8/16)
+   * - Placement relatif aux hampes: stems-down => AU-DESSUS; stems-up => AU-DESSOUS
+   * - Collisions gérées via PlaceAndSizeManager (vertical d'abord)
+   */
+  private drawPickStrokes(
+    svg: SVGElement,
+    grid: ChordGrid,
+    notePositions: Array<{ x: number; y: number; measureIndex: number; chordIndex: number; beatIndex: number; noteIndex: number; tieEnd?: boolean; tieFromVoid?: boolean; value?: number; stemTopY?: number; stemBottomY?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager,
+    stemsDirection: 'up' | 'down',
+    options: RenderOptions
+  ) {
+    const mode = options.pickStrokes;
+    if (!mode || mode === 'off') return;
+
+    // 1) Déterminer le débit (8 ou 16) sur l'ENSEMBLE du bloc si auto
+    const forcedStep = mode === '8' ? 8 : mode === '16' ? 16 : undefined;
+    const step = forcedStep ?? this.detectGlobalSubdivision(grid);
+
+    // 2) Construire une TIMELINE rythmique continue basée sur la subdivision
+    // Chaque note/silence occupe un certain nombre de "slots" de subdivision
+    // On parcourt toutes les mesures dans l'ordre pour construire cette timeline
+    interface TimelineSlot {
+      pickDirection: 'down' | 'up';
+      subdivisionIndex: number; // position absolue dans la timeline (0, 1, 2, ...)
+    }
+    interface NoteOnTimeline {
+      measureIndex: number;
+      chordIndex: number;
+      beatIndex: number;
+      noteIndex: number;
+      subdivisionStart: number; // où commence cette note dans la timeline
+      isAttack: boolean; // true si c'est une vraie attaque (pas rest, pas tieEnd)
+    }
+
+    const timeline: TimelineSlot[] = [];
+    const notesOnTimeline: NoteOnTimeline[] = [];
+    let currentSubdivision = 0;
+
+    // Parcourir toutes les mesures/segments/beats/notes pour construire la timeline
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            // Calculer combien de subdivisions occupe cette note
+            const noteDuration = note.value; // 1, 2, 4, 8, 16, 32, 64
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            
+            // Nombre de subdivisions occupées = durée de la note exprimée en unités de 'step'
+            // Ex: si step=16 et note=8, alors 8 occupe 2 subdivisions de 16
+            // Ex: si step=8 et note=8, alors 8 occupe 1 subdivision de 8
+            const subdivisionCount = Math.round((step / noteDuration) * dottedMultiplier);
+            
+            // Enregistrer cette note dans la timeline
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack
+            });
+            
+            // Avancer la timeline de subdivisionCount positions
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+
+    // 3) Assigner les coups de médiator (Down/Up) à chaque position de la timeline
+    let isDown = true; // commence par Down
+    for (let i = 0; i < currentSubdivision; i++) {
+      timeline.push({
+        pickDirection: isDown ? 'down' : 'up',
+        subdivisionIndex: i
+      });
+      isDown = !isDown; // alterner
+    }
+
+    // 4) Mapper les notes ayant des attaques réelles à leur coup de médiator
+    const attacksWithPicks = notesOnTimeline
+      .filter(n => n.isAttack)
+      .map(n => ({
+        ...n,
+        pickDirection: timeline[n.subdivisionStart]?.pickDirection || 'down'
+      }));
+
+    // Paths d'origine (extraits des SVG fournis - FORME NOIRE UNIQUEMENT)
+    // Upbow (V inversé) d'après Music-upbow.svg
+    // Path: "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z"
+    // BBox original: x ~101.4-125.6 (24.2), y ~4.1-43.1 (39.0)
+    const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";
+    const UPBOW_ORIG_X = 101.4;
+    const UPBOW_ORIG_Y = 4.1;
+    const UPBOW_W = 24.2;
+    const UPBOW_H = 39.0;
+
+    // Downbow (carré avec ouverture en bas) d'après Music-downbow.svg
+    // Path: "m 99,44 -2,0 L 97,11 l 32,0 0,33 L 127,44 127,25 99,25 z"
+    // BBox original: x ~97-129 (32), y ~11-44 (33)
+    const DOWNBOW_PATH = "m 99,44 -2,0 L 97,11 l 32,0 0,33 L 127,44 127,25 99,25 z";
+    const DOWNBOW_ORIG_X = 97;
+    const DOWNBOW_ORIG_Y = 11;
+    const DOWNBOW_W = 32;
+    const DOWNBOW_H = 33;
+
+    // Taille visuelle cible (hauteur) en px
+    const TARGET_H = 12; // ajustable
+    const MARGIN = 3;    // écart par rapport à la tête
+
+    // 5) Placement selon hampes
+    const above = stemsDirection === 'down';
+
+    // 6) PASSE 1: Calculer le décalage vertical maximal nécessaire (offset depuis chaque note)
+    // Scanner tous les symboles et trouver le décalage qui évite toutes les collisions
+    let maxOffset = 0;
+
+    attacksWithPicks.forEach(attackInfo => {
+      const notePos = notePositions.find(np =>
+        np.measureIndex === attackInfo.measureIndex &&
+        np.chordIndex === attackInfo.chordIndex &&
+        np.beatIndex === attackInfo.beatIndex &&
+        np.noteIndex === attackInfo.noteIndex
+      );
+      
+      if (!notePos) return;
+
+      const isDown = attackInfo.pickDirection === 'down';
+      const ow = isDown ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown ? DOWNBOW_H : UPBOW_H;
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+
+      // Position désirée depuis la note
+      const desiredY = above ? (notePos.y - MARGIN - th) : (notePos.y + MARGIN);
+      const desiredX = notePos.x - tw / 2;
+
+      // Tester collision à cette position
+      const bbox = { x: desiredX, y: desiredY, width: tw, height: th };
+      const adjusted = placeAndSizeManager.findFreePosition(bbox, 'vertical', [], 20) || bbox;
+
+      // Calculer le décalage réel par rapport à la position désirée
+      const offset = Math.abs(adjusted.y - desiredY);
+      maxOffset = Math.max(maxOffset, offset);
+    });
+
+    // PASSE 2: Dessiner tous les symboles avec le même offset depuis leur note respective
+    const drawSymbol = (
+      isDown: boolean,
+      anchorX: number,
+      anchorY: number,
+      verticalOffset: number
+    ) => {
+      const d = isDown ? DOWNBOW_PATH : UPBOW_PATH;
+      const ow = isDown ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown ? DOWNBOW_H : UPBOW_H;
+      const origX = isDown ? DOWNBOW_ORIG_X : UPBOW_ORIG_X;
+      const origY = isDown ? DOWNBOW_ORIG_Y : UPBOW_ORIG_Y;
+
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+
+      // Appliquer le décalage uniforme depuis la position de la note
+      const baseY = above ? (anchorY - MARGIN - th) : (anchorY + MARGIN);
+      const finalY = above ? (baseY - verticalOffset) : (baseY + verticalOffset);
+      const finalX = anchorX - tw / 2;
+
+      const translateX = finalX - origX * scale;
+      const translateY = finalY - origY * scale;
+
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('transform', `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', '#000');
+      path.setAttribute('stroke', 'none');
+      g.appendChild(path);
+      svg.appendChild(g);
+
+      // Enregistrer pour collisions
+      const bbox = { x: finalX, y: finalY, width: tw, height: th };
+      placeAndSizeManager.registerElement('pick-stroke', bbox, 7, {
+        direction: isDown ? 'down' : 'up',
+        exactX: anchorX,
+        exactY: above ? (finalY + th) : finalY,
+      });
+    };
+
+    // 7) Rendu final avec offset uniforme depuis chaque note
+    attacksWithPicks.forEach(attackInfo => {
+      const notePos = notePositions.find(np =>
+        np.measureIndex === attackInfo.measureIndex &&
+        np.chordIndex === attackInfo.chordIndex &&
+        np.beatIndex === attackInfo.beatIndex &&
+        np.noteIndex === attackInfo.noteIndex
+      );
+      
+      if (notePos) {
+        const isDown = attackInfo.pickDirection === 'down';
+        drawSymbol(isDown, notePos.x, notePos.y, maxOffset);
+      }
+    });
+  }
+
+  /**
+   * Détection de la subdivision minimale sur l'ensemble du bloc.
+   * Règle: si la moindre attaque effective correspond à 16 (ou plus court), retourner 16; sinon 8.
+   */
+  private detectGlobalSubdivision(grid: ChordGrid): 8 | 16 {
+    // Construire un set des tuplets par groupId pour chaque mesure afin d'en déduire leur baseLen
+    let hasSixteenth = false;
+    for (const measure of grid.measures) {
+      // Map groupId -> baseLen (valeur numérique max rencontrée dans le groupe)
+      const groupBase: Record<string, number> = {};
+      // Première passe: collecter baseLen
+      for (const seg of (measure.chordSegments || [])) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const prev = groupBase[gid] ?? 0;
+              // baseLen = plus petite durée => plus grand nombre (16 < 8 en durée, mais valeur 16 > 8)
+              groupBase[gid] = Math.max(prev, n.value);
+            }
+          }
+        }
+      }
+      // Seconde passe: inspecter les attaques
+      for (const seg of (measure.chordSegments || [])) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.isRest || n.tieEnd || n.tieFromVoid) continue; // pas une attaque
+            let eff: number = n.value;
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const base = groupBase[gid] || n.value;
+              eff = Math.max(eff, base);
+            }
+            if (eff >= 16) { hasSixteenth = true; break; }
+          }
+          if (hasSixteenth) break;
+        }
+        if (hasSixteenth) break;
+      }
+      if (hasSixteenth) break;
+    }
+    return hasSixteenth ? 16 : 8;
+  }
+
 }

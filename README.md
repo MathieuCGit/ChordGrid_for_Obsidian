@@ -58,6 +58,27 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
   stems-down 4/4 | C[88 4 4] | G[4 4 2] |
   ```
 
+**Pick Stroke Markers (Mediator) (Unreleased – feature branch)**: Display alternate down / up pick strokes above or below notes for rhythmic subdivision practice.
+- Directives: `picks-auto`, `picks-8`, `picks-16` (put on its own line before the time signature or on the same line, order independent with `stems-*` / `show%`).
+- Auto mode: scans the ENTIRE grid (all measures) – if at least one sixteenth note (or effective 16th inside a tuplet) is present, subdivision = 16, else 8.
+- Alternation algorithm: continuous rhythmic timeline; every subdivision slot toggles Down / Up. Longer notes and rests occupy multiple slots. Symbols are only rendered on true attacks (notes that start a sound – not rests, not tie receiving notes).
+- Rests & ties: even if no symbol is drawn on a rest or a tie continuation, they STILL consume timeline slots and advance the alternation.
+- Placement: if stems are down → symbols above noteheads; stems up (default) → symbols below noteheads.
+- Collision & alignment: a uniform vertical offset is computed so all pick symbols share a common horizontal baseline while clearing ties / beams.
+- Not yet implemented (planned): local forcing syntax (`8d`, `8u`, `16d`, `16u`) to override automatic alternation.
+
+Examples:
+```chordgrid
+picks-auto 4/4 | C[8 16 16 8 8] | G[4 8 8 16 16] |
+```
+```chordgrid
+stems-down picks-16 4/4 | Am[16 16 16 16 8 8] | F[4 16 16 8 8] |
+```
+```chordgrid
+picks-8 4/4 | C[4 8 8 -4] | G[8 4 4 8] |
+```
+Behavior note: In `picks-auto`, a measure like `[8 16 16]` shows Down on the 8th (occupies 2 sixteenth slots internally: Down, Up), then Down on first 16th, Up on second 16th (result visually: ↓ ↓ ↑) because the quarter of timeline consumed by the 8th advances alternation twice.
+
 **Responsive SVG (v2.2+):** All chord grids now render with responsive SVG that automatically adapts to container width while maintaining proper aspect ratio.
 
 **Repeat measures (v2.2+):** Display repeated measures using notation shortcuts
@@ -216,6 +237,7 @@ Notes on syntax:
 | `%` | Repeat previous measure's rhythm |
 | `Chord[%]` | Repeat rhythm with new chord |
 | `show%` | Display visual repeat symbol instead of full rhythm |
+| `picks-auto` / `picks-8` / `picks-16` | Enable pick stroke rendering with automatic or forced subdivision |
 | `{888}3` | Eighth note triplet (fully beamed) |
 | `{8 8 8}3` | Eighth note triplet (separate flags) |
 | `{161616 161616}6` | Sextuplet with multi-level beaming (2×3) |
@@ -364,6 +386,7 @@ chord-grid/
 - ✅ Chord charts with rhythmic notation
 - ✅ **Stem direction control** (v2.2.0) – stems-up/stems-down keywords following musical notation standards
 - ✅ **Responsive SVG rendering** (v2.2.0) – automatic adaptation to container width with proper aspect ratio
+- ✅ **Pick stroke (mediator) markers** (Unreleased) – automatic down/up alternation with subdivision timeline and collision-safe alignment
 - ✅ **CollisionManager system** (v2.1.0) – intelligent element placement avoiding overlaps
 - ✅ **Dynamic time signature spacing** (v2.1.0) – automatic width calculation and adaptive padding
 - ✅ **Dotted note collision avoidance** (v2.1.0) – tie curves raised automatically
