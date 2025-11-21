@@ -164,7 +164,10 @@ export class MeasureRenderer {
         });
         const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
 
-        let currentX = this.x; // segment left
+        // Add extra padding if measure starts with repeat barline to avoid collisions
+        const extraLeftPadding = (this.measure as any).isRepeatStart ? 15 : 0;
+        
+        let currentX = this.x + extraLeftPadding; // segment left
         for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
             const segment = segments[segmentIndex];
 
@@ -200,6 +203,7 @@ export class MeasureRenderer {
                     
                     // Check for collisions and adjust position if needed
                     let finalY = chordY;
+                    let finalX = chordX;
                     if (this.placeAndSizeManager) {
                         const chordBBox = {
                             x: chordX - chordWidth / 2,
@@ -208,29 +212,44 @@ export class MeasureRenderer {
                             height: fontSize + 4
                         };
                         
-                        // Check if there's a collision
+                        // Check if there's a collision (especially with barlines at priority 0)
                         if (this.placeAndSizeManager.hasCollision(chordBBox)) {
-                            // Try to find a free vertical position excluding other chord texts
-                            const adjustedPos = this.placeAndSizeManager.findFreePosition(
+                            // First try horizontal adjustment (for left barlines like ||:)
+                            const adjustedPosH = this.placeAndSizeManager.findFreePosition(
                                 chordBBox,
-                                'vertical',
+                                'horizontal',
                                 ['chord']
                             );
-                            if (adjustedPos) {
-                                finalY = adjustedPos.y + fontSize; // Convert back to baseline
+                            
+                            if (adjustedPosH) {
+                                finalX = adjustedPosH.x + chordWidth / 2; // Convert back to center
+                                // Update bbox with new X
+                                chordBBox.x = adjustedPosH.x;
+                            }
+                            
+                            // Then check vertical if still needed
+                            if (this.placeAndSizeManager.hasCollision(chordBBox)) {
+                                const adjustedPosV = this.placeAndSizeManager.findFreePosition(
+                                    chordBBox,
+                                    'vertical',
+                                    ['chord']
+                                );
+                                if (adjustedPosV) {
+                                    finalY = adjustedPosV.y + fontSize; // Convert back to baseline
+                                }
                             }
                         }
                         
-                        // Register the chord element
+                        // Register the chord element with final position
                         this.placeAndSizeManager.registerElement('chord', {
-                            x: chordX - chordWidth / 2,
+                            x: finalX - chordWidth / 2,
                             y: finalY - fontSize,
                             width: chordWidth,
                             height: fontSize + 4
                         }, 5, { chord: segment.chord, measureIndex, segmentIndex });
                     }
                     
-                    const chordText = this.createText(segment.chord, chordX, finalY, '22px', 'bold');
+                    const chordText = this.createText(segment.chord, finalX, finalY, '22px', 'bold');
                     chordText.setAttribute('text-anchor', 'middle');
                     chordText.setAttribute('font-family', 'Arial, sans-serif');
                     svg.appendChild(chordText);
@@ -727,11 +746,11 @@ export class MeasureRenderer {
         // Register barline in PlaceAndSizeManager for accurate bounds calculation
         if (this.placeAndSizeManager) {
             this.placeAndSizeManager.registerElement('barline', {
-                x: x - 1,  // Account for stroke width
+                x: x - 3,  // Extra margin to prevent collisions
                 y: y,
-                width: 3,  // 1.5px stroke + margin
+                width: 6,  // Wider bbox to ensure no overlap
                 height: height
-            }, 2);  // Priority 2 - barlines are fixed elements
+            }, 0);  // Priority 0 - barlines are absolutely fixed and unmovable
         }
     }
 
@@ -801,22 +820,26 @@ export class MeasureRenderer {
             // Register repeat dots for collision detection
             if (this.placeAndSizeManager) {
                 this.placeAndSizeManager.registerElement('dot', {
-                    x: dotX - 3,  // Extend collision box a bit
-                    y: dotY - 3,
-                    width: 6,
-                    height: 6
-                }, 8, { type: 'repeat-barline' });
+                    x: dotX - 4,  // Larger collision box to ensure no overlap
+                    y: dotY - 4,
+                    width: 8,
+                    height: 8
+                }, 0, { type: 'repeat-barline' });  // Priority 0 - dots are part of barline, absolutely fixed
             }
         });
 
-        // Register the repeat barline itself (two lines span from x to x+6)
+        // Register the repeat barline itself including dots area (extends 12px for dots)
         if (this.placeAndSizeManager) {
+            // The dots extend 12px from the barline, we need to protect that space
+            const bboxX = isStart ? x - 3 : x - 15;  // Start: protect right side, End: protect left side with dots
+            const bboxWidth = isStart ? 20 : 20;  // 6px bars + 12px dots + margins
+            
             this.placeAndSizeManager.registerElement('barline', {
-                x: x - 1,
+                x: bboxX,
                 y: y,
-                width: 8,  // 6px between lines + margins
+                width: bboxWidth,
                 height: height
-            }, 2, { type: isStart ? 'repeat-start' : 'repeat-end' });
+            }, 0, { type: isStart ? 'repeat-start' : 'repeat-end' });  // Priority 0 - absolutely fixed
         }
     }
 
@@ -844,11 +867,11 @@ export class MeasureRenderer {
         // Register the final double barline (two lines span from x to x+6+2.5)
         if (this.placeAndSizeManager) {
             this.placeAndSizeManager.registerElement('barline', {
-                x: x - 1,
+                x: x - 3,  // Extra margin for safety
                 y: y,
-                width: 10,  // 6px spacing + 5px thick stroke / 2
+                width: 12,  // 6px spacing + 5px thick stroke + margins
                 height: height
-            }, 2, { type: 'final-double' });
+            }, 0, { type: 'final-double' });  // Priority 0 - absolutely fixed
         }
     }
 
