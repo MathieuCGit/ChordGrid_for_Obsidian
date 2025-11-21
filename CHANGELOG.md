@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Repeat count notation**
+  - `:||x3` syntax to indicate number of times a repeat section should be played
+  - Count displays as small text (10px) to the right of the end repeat barline
+  - Works with both full rhythm and `show%` display modes
+  - Position: 5px from top, 10px right of barline (consistent with musical notation standards)
+
 ### Fixed
 - **Barline rendering for repeat measures**
   - Fixed final double barline (`||`) not appearing on repeat measures with `show%` directive
   - Repeat measures now correctly render all barline types (`:||`, `||:`, `||`)
 - **Repeat barline visual style**
-  - Repeat barlines (`||:` and `:||`) now use classical notation style with thin (1.5px) + thick (5px) lines
-  - Matches final double barline style for consistent professional appearance
+  - Repeat barlines (`||:` and `:||`) now use classical notation style with thin (1.5px) + thick (3px) lines
+  - Thick line positioned on inside of repeat section (classical convention)
+  - Final double barline uses thin (1.5px) + thick (5px) for stronger visual ending
   - Both lines spaced 6px apart following standard music engraving conventions
 
 ## [2.2.0] - 2025-11-20

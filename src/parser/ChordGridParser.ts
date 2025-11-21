@@ -330,11 +330,12 @@ export class ChordGridParser {
     const measures: Measure[] = [];
 
     // Tokenize by barlines while keeping the barline token
-    // Accept barlines: ||:, :||, ||, |
+    // Accept barlines: ||:, :||, ||, | (with optional repeat count like :||x3)
     // IMPORTANT: Order matters! Test longest patterns first to avoid partial matches
-    const tokens: Array<{bar: string; content: string}> = [];
+    const tokens: Array<{bar: string; content: string; repeatCount?: number}> = [];
     // Regex to split while capturing barlines (ordered by length: longest first)
-    const re = /(\|\|:|:?\|\||\|)/g;
+    // Capture :||x\d+ as a single token to extract repeat count
+    const re = /(\|\|:|:?\|\|(?:x\d+)?|\|)/g;
     let lastIndex = 0;
     let m: RegExpExecArray | null;
     const parts: {sep: string | null, text: string}[] = [];
@@ -358,7 +359,15 @@ export class ChordGridParser {
         currentText += p.text || '';
       } else {
         // separator encountered -> emit measure with this barline (keep raw content)
-        tokens.push({bar: p.sep, content: currentText});
+        // Extract repeat count from :||x3 pattern
+        let barline = p.sep;
+        let repeatCount: number | undefined;
+        const repeatMatch = /^(:?\|\|)x(\d+)$/.exec(barline);
+        if (repeatMatch) {
+          barline = repeatMatch[1]; // Extract :|| or ||
+          repeatCount = parseInt(repeatMatch[2], 10); // Extract the number
+        }
+        tokens.push({bar: barline, content: currentText, repeatCount});
         currentText = '';
       }
     }
@@ -390,9 +399,6 @@ export class ChordGridParser {
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       
-      // Debug: log token processing
-      // console.log(`Token ${ti}:`, { bar: t.bar, content: t.content.substring(0, 20), pendingStartBarline });
-      
       // Check if this is a start repeat marker (||:) with no content
       if (t.content.trim().length === 0 && t.bar === '||:') {
         // Store it to apply to the next measure
@@ -415,7 +421,7 @@ export class ChordGridParser {
           console.warn("Cannot use '%' repeat notation on first measure");
           continue;
         }
-        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar);
+        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar, t.repeatCount);
         
         // Apply pending start barline if any
         if (pendingStartBarline === '||:') {
@@ -559,6 +565,11 @@ export class ChordGridParser {
         (newMeasure as any).isRepeatEnd = true;
       }
 
+      // Add repeat count if present (e.g., :||x3)
+      if (t.repeatCount !== undefined) {
+        (newMeasure as any).repeatCount = t.repeatCount;
+      }
+
       measures.push(newMeasure);
       
       // Update reference to last explicit measure (for % notation)
@@ -617,7 +628,7 @@ export class ChordGridParser {
    * @param barline - The barline type for the new measure
    * @returns A deep clone of the measure with cleared boundary ties
    */
-  private cloneMeasure(source: Measure, barline: BarlineType): Measure {
+  private cloneMeasure(source: Measure, barline: BarlineType, repeatCount?: number): Measure {
     // Deep clone beats and notes
     const clonedBeats: Beat[] = source.beats.map(beat => ({
       ...beat,
@@ -654,6 +665,11 @@ export class ChordGridParser {
       (cloned as any).isRepeatStart = true;
     } else if (barline === ':||') {
       (cloned as any).isRepeatEnd = true;
+    }
+
+    // Add repeat count if provided
+    if (repeatCount !== undefined) {
+      (cloned as any).repeatCount = repeatCount;
     }
 
     return cloned;

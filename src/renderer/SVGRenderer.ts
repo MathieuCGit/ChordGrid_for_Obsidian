@@ -32,7 +32,7 @@ import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
 import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
 // DebugLogger supprimé pour release utilisateur
-import { CollisionManager } from './CollisionManager';
+import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 
 /**
  * Options de rendu pour le SVGRenderer.
@@ -184,7 +184,7 @@ export class SVGRenderer {
   svg.setAttribute('xmlns', SVG_NS);
 
     // Initialize managers
-    const collisionManager = new CollisionManager();
+    const placeAndSizeManager = new PlaceAndSizeManager();
     const tieManager = new TieManager();
     const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[] = [];
 
@@ -202,7 +202,7 @@ export class SVGRenderer {
     const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, 'bold');
     svg.appendChild(timeText);
     (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
-    collisionManager.registerElement('time-signature', {
+    placeAndSizeManager.registerElement('time-signature', {
       x: baseLeftPadding,
       y: timeSigBaselineY - timeSigFontSize,
       width: timeSigWidthEstimate,
@@ -291,7 +291,7 @@ export class SVGRenderer {
       }
   // Toujours forcer 'up' par défaut si non précisé
   const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
-  const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir ?? 'up', options.displayRepeatSymbol ?? false);
+  const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir ?? 'up', options.displayRepeatSymbol ?? false);
   mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
       // Draw analyzer beams overlay
@@ -304,7 +304,30 @@ export class SVGRenderer {
   // DebugLogger supprimé
   
   // draw ties using collected notePositions and the TieManager for cross-line ties
-  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager, stemsDirection);
+  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
+
+    // Adjust viewBox based on actual rendered elements bounds (handles repeat counts, etc.)
+    const bounds = placeAndSizeManager.getGlobalBounds();
+    if (bounds) {
+      // Uniform margins on all sides now that all elements (including barlines) are registered
+      const margin = 10;
+      
+      const adjustedX = Math.max(0, bounds.minX - margin);
+      const adjustedY = Math.max(0, bounds.minY - margin);
+      const adjustedWidth = bounds.maxX - bounds.minX + margin * 2;
+      const adjustedHeight = bounds.maxY - bounds.minY + margin * 2;
+      
+      svg.setAttribute('viewBox', `${adjustedX} ${adjustedY} ${adjustedWidth} ${adjustedHeight}`);
+      
+      // Also update background rect to match new viewBox
+      const bg = svg.querySelector('rect[fill="white"]');
+      if (bg) {
+        bg.setAttribute('x', adjustedX.toString());
+        bg.setAttribute('y', adjustedY.toString());
+        bg.setAttribute('width', adjustedWidth.toString());
+        bg.setAttribute('height', adjustedHeight.toString());
+      }
+    }
 
     return svg;
   }
@@ -353,7 +376,7 @@ export class SVGRenderer {
     svgWidth: number,
     tieManager: TieManager,
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
-    collisionManager?: CollisionManager,
+    placeAndSizeManager?: PlaceAndSizeManager,
     stemsDirection?: 'up' | 'down'
   ) {
   // DebugLogger supprimé
@@ -423,7 +446,7 @@ export class SVGRenderer {
 
     // Nettoyage : suppression du log des notes avec tie markers
 
-    const dotsForCollisions = collisionManager ? collisionManager.getElements().filter(e => e.type === 'dot') : [];
+    const dotsForCollisions = placeAndSizeManager ? placeAndSizeManager.getElements().filter(e => e.type === 'dot') : [];
     const fallbackStemsOrientation: 'up' | 'down' = stemsDirection ?? 'down';
     const inferStemsOrientation = (
       note: { y: number; stemTopY?: number; stemBottomY?: number }
@@ -492,7 +515,7 @@ export class SVGRenderer {
       }
       
       // Collision avoidance: adjust curve if any dot overlaps
-      if (collisionManager) {
+      if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
         const preliminaryTopY = orientation === 'up' ? Math.min(startY, endY) : controlY;
@@ -527,12 +550,12 @@ export class SVGRenderer {
       }
       svg.appendChild(path);
       // Register tie bounding box approximation
-      if (collisionManager) {
+      if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
         const topY = Math.min(controlY, startY, endY);
         const bottomY = Math.max(controlY, startY, endY);
-        collisionManager.registerElement('tie', { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+        placeAndSizeManager.registerElement('tie', { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
       }
     };
 
@@ -716,3 +739,4 @@ export class SVGRenderer {
     // Tie curves already adjusted during drawing if collision with dots detected.
   }
 }
+

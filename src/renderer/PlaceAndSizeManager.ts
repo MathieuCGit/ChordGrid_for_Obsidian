@@ -1,26 +1,27 @@
 /**
- * @file CollisionManager.ts
- * @description Système de gestion des collisions entre éléments SVG.
+ * @file PlaceAndSizeManager.ts
+ * @description Système de gestion de la position et de la taille de tous les éléments SVG.
  * 
- * Ce gestionnaire maintient un registre de toutes les zones occupées (bounding boxes)
- * par les différents éléments du rendu (notes, accords, tuplets, liaisons, etc.) et
+ * Ce gestionnaire maintient un registre spatial de toutes les zones occupées (bounding boxes)
+ * par les différents éléments du rendu (notes, accords, tuplets, liaisons, barlines, etc.) et
  * fournit des méthodes pour :
  * - Détecter les collisions potentielles
  * - Ajuster automatiquement les positions pour éviter les chevauchements
  * - Suggérer des emplacements optimaux pour de nouveaux éléments
+ * - Calculer les dimensions globales pour le viewBox et les marges
  * 
  * @example
  * ```typescript
- * const collisionMgr = new CollisionManager();
+ * const placeMgr = new PlaceAndSizeManager();
  * 
  * // Enregistrer une zone occupée par un accord
- * collisionMgr.registerElement('chord', { x: 100, y: 40, width: 30, height: 20 });
+ * placeMgr.registerElement('chord', { x: 100, y: 40, width: 30, height: 20 });
  * 
  * // Vérifier si une position cause une collision
- * const hasCollision = collisionMgr.hasCollision({ x: 110, y: 45, width: 20, height: 15 });
+ * const hasCollision = placeMgr.hasCollision({ x: 110, y: 45, width: 20, height: 15 });
  * 
  * // Obtenir une position ajustée pour éviter les collisions
- * const adjusted = collisionMgr.findFreePosition({ x: 110, y: 45, width: 20, height: 15 }, 'vertical');
+ * const adjusted = placeMgr.findFreePosition({ x: 110, y: 45, width: 20, height: 15 }, 'vertical');
  * ```
  */
 
@@ -59,6 +60,7 @@ export type ElementType =
     | 'rest'            // Silences
     | 'barline'         // Barres de mesure
     | 'staff-line'      // Ligne de portée
+    | 'repeat-count'    // Compteur de reprises (x3, x2, etc.)
     | 'dot';            // Points des notes pointées
 
 /**
@@ -67,9 +69,9 @@ export type ElementType =
 export type AdjustmentDirection = 'horizontal' | 'vertical' | 'both';
 
 /**
- * Configuration du gestionnaire de collisions.
+ * Configuration du gestionnaire de position et taille.
  */
-interface CollisionConfig {
+interface PlaceAndSizeConfig {
     minSpacing: number;              // Espacement minimum entre éléments (px)
     chordTupletVerticalSpacing: number; // Espacement vertical entre accords et tuplets
     noteHorizontalSpacing: number;   // Espacement horizontal entre notes
@@ -77,21 +79,22 @@ interface CollisionConfig {
 }
 
 /**
- * Gestionnaire de collisions pour le rendu SVG.
+ * Gestionnaire de position et taille pour le rendu SVG.
  * 
  * Maintient un registre spatial de tous les éléments rendus et fournit
- * des algorithmes pour détecter et résoudre les collisions.
+ * des algorithmes pour détecter et résoudre les collisions, ainsi que
+ * pour calculer les dimensions globales du rendu.
  */
-export class CollisionManager {
+export class PlaceAndSizeManager {
     private elements: RegisteredElement[] = [];
-    private config: CollisionConfig;
+    private config: PlaceAndSizeConfig;
 
     /**
-     * Constructeur du gestionnaire de collisions.
+     * Constructeur du gestionnaire de position et taille.
      * 
      * @param config - Configuration optionnelle
      */
-    constructor(config?: Partial<CollisionConfig>) {
+    constructor(config?: Partial<PlaceAndSizeConfig>) {
         this.config = {
             minSpacing: 2,
             chordTupletVerticalSpacing: 8,
@@ -118,7 +121,7 @@ export class CollisionManager {
         this.elements.push({ type, bbox, priority, metadata });
         
         if (this.config.debugMode) {
-            console.log(`[CollisionManager] Registered ${type}`, bbox);
+            console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox);
         }
     }
 
@@ -217,14 +220,14 @@ export class CollisionManager {
 
             if (!this.hasCollision(candidate, excludeTypes)) {
                 if (this.config.debugMode) {
-                    console.log(`[CollisionManager] Found free position after ${attempt} attempts`, candidate);
+                    console.log(`[PlaceAndSizeManager] Found free position after ${attempt} attempts`, candidate);
                 }
                 return candidate;
             }
         }
 
         if (this.config.debugMode) {
-            console.warn(`[CollisionManager] Could not find free position after ${maxAttempts} attempts`);
+            console.warn(`[PlaceAndSizeManager] Could not find free position after ${maxAttempts} attempts`);
         }
         
         return null;
@@ -278,7 +281,7 @@ export class CollisionManager {
     public clear(): void {
         this.elements = [];
         if (this.config.debugMode) {
-            console.log('[CollisionManager] Cleared all elements');
+            console.log('[PlaceAndSizeManager] Cleared all elements');
         }
     }
 
@@ -291,7 +294,7 @@ export class CollisionManager {
         const before = this.elements.length;
         this.elements = this.elements.filter(e => e.type !== type);
         if (this.config.debugMode) {
-            console.log(`[CollisionManager] Cleared ${before - this.elements.length} elements of type ${type}`);
+            console.log(`[PlaceAndSizeManager] Cleared ${before - this.elements.length} elements of type ${type}`);
         }
     }
 
@@ -320,6 +323,33 @@ export class CollisionManager {
             total: this.elements.length,
             byType
         };
+    }
+
+    /**
+     * Calcule les bounds globaux de tous les éléments enregistrés.
+     * Utile pour dimensionner correctement le SVG avec des marges.
+     * 
+     * @returns Les coordonnées min/max de tous les éléments, ou null si aucun élément
+     */
+    public getGlobalBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
+        if (this.elements.length === 0) {
+            return null;
+        }
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        this.elements.forEach(el => {
+            const { x, y, width, height } = el.bbox;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + width);
+            maxY = Math.max(maxY, y + height);
+        });
+
+        return { minX, minY, maxX, maxY };
     }
 
     /**

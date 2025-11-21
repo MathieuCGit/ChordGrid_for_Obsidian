@@ -1,5 +1,5 @@
 import { SVGRenderer } from '../src/renderer/SVGRenderer';
-import { CollisionManager } from '../src/renderer/CollisionManager';
+import { PlaceAndSizeManager } from '../src/renderer/PlaceAndSizeManager';
 import { TieManager } from '../src/utils/TieManager';
 
 describe('Tie rendering with dotted notes', () => {
@@ -31,10 +31,10 @@ describe('Tie rendering with dotted notes', () => {
 
   it('raises tie control point to avoid dotted note dot overlap', () => {
     const renderer = new SVGRenderer();
-    const collisionManager = new CollisionManager();
+    const placeAndSizeManager = new PlaceAndSizeManager();
 
     // Simulate a dotted note dot near the tie path
-    collisionManager.registerElement('dot', { x: 108, y: 74, width: 4, height: 4 }, 9, { value: 4, dotted: true });
+    placeAndSizeManager.registerElement('dot', { x: 108, y: 74, width: 4, height: 4 }, 9, { value: 4, dotted: true });
 
     const fakeSvg = new FakeElement('svg') as unknown as SVGElement & { __dynamicLineStartPadding?: number };
     fakeSvg.__dynamicLineStartPadding = 40;
@@ -94,7 +94,7 @@ describe('Tie rendering with dotted notes', () => {
         400,
         tieManager,
         measurePositions,
-        collisionManager
+        placeAndSizeManager
       );
     } finally {
       (global as any).document = previousDocument;
@@ -123,3 +123,4 @@ describe('Tie rendering with dotted notes', () => {
     expect(controlY).toBeCloseTo(expectedRaisedControlY, 5);
   });
 });
+

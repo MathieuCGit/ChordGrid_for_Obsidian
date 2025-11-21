@@ -92,6 +92,7 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 - `||` : Double bar end of grid
 - `||:` : Start repeat
 - `:||` : End repeat
+- `:||x3` : End repeat with count (play 3 times total)
 
 **Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
 
@@ -212,6 +213,12 @@ Notes on syntax:
 ```chordgrid
 4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||
 ```
+
+**Chart with repeat count (v2.2+):**
+```chordgrid
+4/4 ||: C[4 88_4 4] | % | G[%] | % :||x3
+```
+The `x3` indicates the section should be played 3 times total.
 
 **Repeat measures with visual symbol (v2.2+):**
 ```chordgrid

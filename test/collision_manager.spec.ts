@@ -1,8 +1,8 @@
-import { CollisionManager, BoundingBox } from '../src/renderer/CollisionManager';
+import { PlaceAndSizeManager, BoundingBox } from '../src/renderer/PlaceAndSizeManager';
 
-describe('CollisionManager basic behavior', () => {
+describe('PlaceAndSizeManager basic behavior', () => {
   test('registerElement and getStats', () => {
-    const cm = new CollisionManager();
+    const cm = new PlaceAndSizeManager();
     cm.registerElement('chord', { x: 10, y: 10, width: 30, height: 15 }, 5);
     cm.registerElement('tuplet-number', { x: 15, y: 5, width: 20, height: 10 }, 7);
     const stats = cm.getStats();
@@ -12,7 +12,7 @@ describe('CollisionManager basic behavior', () => {
   });
 
   test('hasCollision positive and negative cases', () => {
-    const cm = new CollisionManager();
+    const cm = new PlaceAndSizeManager();
     cm.registerElement('chord', { x: 100, y: 40, width: 40, height: 20 }, 5);
     // Overlapping vertically
     expect(cm.hasCollision({ x: 110, y: 45, width: 10, height: 10 })).toBe(true);
@@ -21,7 +21,7 @@ describe('CollisionManager basic behavior', () => {
   });
 
   test('findFreePosition vertical avoidance', () => {
-    const cm = new CollisionManager({ minSpacing: 2 });
+    const cm = new PlaceAndSizeManager({ minSpacing: 2 });
     cm.registerElement('chord', { x: 50, y: 50, width: 30, height: 20 }, 5);
     const request: BoundingBox = { x: 55, y: 55, width: 20, height: 10 };
     // Initial collides
@@ -36,7 +36,7 @@ describe('CollisionManager basic behavior', () => {
   });
 
   test('findFreePosition horizontal avoidance', () => {
-    const cm = new CollisionManager({ minSpacing: 2 });
+    const cm = new PlaceAndSizeManager({ minSpacing: 2 });
     cm.registerElement('chord', { x: 50, y: 50, width: 30, height: 20 }, 5);
     const request: BoundingBox = { x: 55, y: 55, width: 20, height: 10 };
     const free = cm.findFreePosition(request, 'horizontal');
@@ -48,7 +48,7 @@ describe('CollisionManager basic behavior', () => {
   });
 
   test('excludeTypes prevents considering certain collisions', () => {
-    const cm = new CollisionManager();
+    const cm = new PlaceAndSizeManager();
     cm.registerElement('chord', { x: 0, y: 0, width: 20, height: 20 }, 5);
     const box = { x: 5, y: 5, width: 5, height: 5 };
     expect(cm.hasCollision(box)).toBe(true);
@@ -56,7 +56,7 @@ describe('CollisionManager basic behavior', () => {
   });
 
   test('suggestVerticalOffset for tuplet-number above chord', () => {
-    const cm = new CollisionManager({ chordTupletVerticalSpacing: 10 });
+    const cm = new PlaceAndSizeManager({ chordTupletVerticalSpacing: 10 });
     cm.registerElement('chord', { x: 100, y: 40, width: 30, height: 20 }, 5);
     const defaultY = 45; // inside chord vertical span (40..60)
     const adjusted = cm.suggestVerticalOffset('tuplet-number', 'chord', defaultY);
@@ -65,7 +65,7 @@ describe('CollisionManager basic behavior', () => {
   });
 
   test('clearType removes only specified elements', () => {
-    const cm = new CollisionManager();
+    const cm = new PlaceAndSizeManager();
     cm.registerElement('chord', { x: 0, y: 0, width: 10, height: 10 }, 5);
     cm.registerElement('note', { x: 20, y: 0, width: 10, height: 10 }, 5);
     cm.clearType('chord');
@@ -75,3 +75,4 @@ describe('CollisionManager basic behavior', () => {
     expect(stats.byType['chord']).toBeUndefined();
   });
 });
+

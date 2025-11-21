@@ -38,7 +38,8 @@ describe('SVGRenderer responsive SVG', () => {
     const svg = renderer.render(grid);
     expect(svg.getAttribute('width')).toBe('100%');
     expect(svg.getAttribute('height')).toBe('auto');
-    expect(svg.getAttribute('viewBox')).toMatch(/^0 0 \d+ \d+$/);
+    // viewBox is now dynamically adjusted based on content bounds
+    expect(svg.getAttribute('viewBox')).toMatch(/^[\d.-]+ [\d.-]+ [\d.]+ [\d.]+$/);
   });
 
   it('background rect matches viewBox dimensions', () => {

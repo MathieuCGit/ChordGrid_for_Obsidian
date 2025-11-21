@@ -313,7 +313,7 @@ var _ChordGridParser = class _ChordGridParser {
     }
     const measures = [];
     const tokens = [];
-    const re = /(\|\|:|:?\|\||\|)/g;
+    const re = /(\|\|:|:?\|\|(?:x\d+)?|\|)/g;
     let lastIndex = 0;
     let m;
     const parts = [];
@@ -331,7 +331,14 @@ var _ChordGridParser = class _ChordGridParser {
       if (p.sep === null) {
         currentText += p.text || "";
       } else {
-        tokens.push({ bar: p.sep, content: currentText });
+        let barline = p.sep;
+        let repeatCount;
+        const repeatMatch = /^(:?\|\|)x(\d+)$/.exec(barline);
+        if (repeatMatch) {
+          barline = repeatMatch[1];
+          repeatCount = parseInt(repeatMatch[2], 10);
+        }
+        tokens.push({ bar: barline, content: currentText, repeatCount });
         currentText = "";
       }
     }
@@ -359,7 +366,7 @@ var _ChordGridParser = class _ChordGridParser {
           console.warn("Cannot use '%' repeat notation on first measure");
           continue;
         }
-        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar);
+        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar, t.repeatCount);
         if (pendingStartBarline === "||:") {
           clonedMeasure.isRepeatStart = true;
           pendingStartBarline = null;
@@ -460,6 +467,9 @@ var _ChordGridParser = class _ChordGridParser {
       if (bar === ":||") {
         newMeasure.isRepeatEnd = true;
       }
+      if (t.repeatCount !== void 0) {
+        newMeasure.repeatCount = t.repeatCount;
+      }
       measures.push(newMeasure);
       lastExplicitMeasure = newMeasure;
     }
@@ -510,7 +520,7 @@ var _ChordGridParser = class _ChordGridParser {
    * @param barline - The barline type for the new measure
    * @returns A deep clone of the measure with cleared boundary ties
    */
-  cloneMeasure(source, barline) {
+  cloneMeasure(source, barline, repeatCount) {
     const clonedBeats = source.beats.map((beat) => ({
       ...beat,
       notes: beat.notes.map((note) => ({ ...note })),
@@ -539,6 +549,9 @@ var _ChordGridParser = class _ChordGridParser {
       cloned.isRepeatStart = true;
     } else if (barline === ":||") {
       cloned.isRepeatEnd = true;
+    }
+    if (repeatCount !== void 0) {
+      cloned.repeatCount = repeatCount;
     }
     return cloned;
   }
@@ -938,8 +951,8 @@ var SVG_NS = "http://www.w3.org/2000/svg";
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
   // Hauteur de référence d'une quarter note (slash + stem)
-  constructor(collisionManager) {
-    this.collisionManager = collisionManager;
+  constructor(PlaceAndSizeManager2) {
+    this.PlaceAndSizeManager = PlaceAndSizeManager2;
     // Rendering style constants
     __publicField(this, "dotRadius", 1.8);
     __publicField(this, "NOTE_HEIGHT", 30);
@@ -977,9 +990,9 @@ var RestRenderer = class {
     }
   }
   registerRestBBox(x, y, width, height, note) {
-    if (!this.collisionManager) return;
+    if (!this.PlaceAndSizeManager) return;
     const bbox = { x: x - width / 2, y, width, height };
-    this.collisionManager.registerElement("rest", bbox, 6, { value: note.value, dotted: note.dotted });
+    this.PlaceAndSizeManager.registerElement("rest", bbox, 6, { value: note.value, dotted: note.dotted });
   }
   drawWholeRest(svg, x, y, dotted) {
     const width = 10;
@@ -1096,13 +1109,13 @@ var RestRenderer = class {
 
 // src/renderer/MeasureRenderer.ts
 var MeasureRenderer = class {
-  constructor(measure, x, y, width, beamedAtLevel1, collisionManager, stemsDirection, displayRepeatSymbol) {
+  constructor(measure, x, y, width, beamedAtLevel1, placeAndSizeManager, stemsDirection, displayRepeatSymbol) {
     this.measure = measure;
     this.x = x;
     this.y = y;
     this.width = width;
     this.beamedAtLevel1 = beamedAtLevel1;
-    this.collisionManager = collisionManager;
+    this.placeAndSizeManager = placeAndSizeManager;
     /**
      * Constructeur du renderer de mesure.
      * 
@@ -1111,7 +1124,7 @@ var MeasureRenderer = class {
      * @param y - Position Y de départ de la mesure dans le SVG
      * @param width - Largeur allouée à la mesure
      * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
-     * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
+     * @param placeAndSizeManager - Gestionnaire de position et taille pour éviter les chevauchements
      * @param stemsDirection - Direction des hampes ('up' ou 'down')
      * @param displayRepeatSymbol - Afficher le symbole % pour les mesures répétées
      */
@@ -1120,7 +1133,7 @@ var MeasureRenderer = class {
     __publicField(this, "displayRepeatSymbol");
     this.stemsDirection = stemsDirection === "down" ? "down" : "up";
     this.displayRepeatSymbol = displayRepeatSymbol != null ? displayRepeatSymbol : false;
-    this.restRenderer = new RestRenderer(this.collisionManager);
+    this.restRenderer = new RestRenderer(this.placeAndSizeManager);
   }
   /**
    * Dessine la mesure complète dans le SVG.
@@ -1159,6 +1172,9 @@ var MeasureRenderer = class {
       this.drawChordName(svg, this.measure.chord, this.x + 30);
       if (this.measure.isRepeatEnd) {
         this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+        if (this.measure.repeatCount !== void 0) {
+          this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+        }
       } else if (this.measure.barline === "||") {
         this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
       } else {
@@ -1224,15 +1240,15 @@ var MeasureRenderer = class {
           const fontSize = 22;
           const chordWidth = segment.chord.length * fontSize * 0.6;
           let finalY = chordY;
-          if (this.collisionManager) {
+          if (this.placeAndSizeManager) {
             const chordBBox = {
               x: chordX - chordWidth / 2,
               y: chordY - fontSize,
               width: chordWidth,
               height: fontSize + 4
             };
-            if (this.collisionManager.hasCollision(chordBBox)) {
-              const adjustedPos = this.collisionManager.findFreePosition(
+            if (this.placeAndSizeManager.hasCollision(chordBBox)) {
+              const adjustedPos = this.placeAndSizeManager.findFreePosition(
                 chordBBox,
                 "vertical",
                 ["chord"]
@@ -1241,7 +1257,7 @@ var MeasureRenderer = class {
                 finalY = adjustedPos.y + fontSize;
               }
             }
-            this.collisionManager.registerElement("chord", {
+            this.placeAndSizeManager.registerElement("chord", {
               x: chordX - chordWidth / 2,
               y: finalY - fontSize,
               width: chordWidth,
@@ -1259,6 +1275,9 @@ var MeasureRenderer = class {
     }
     if (this.measure.isRepeatEnd) {
       this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
     } else if (this.measure.barline === "||") {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
     } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
@@ -1378,14 +1397,14 @@ var MeasureRenderer = class {
         stemBottomY,
         value: nv.value
       });
-      if (this.collisionManager) {
+      if (this.placeAndSizeManager) {
         const noteHeadBBox = {
           x: headLeftX,
           y: staffLineY - 12,
           width: headRightX - headLeftX,
           height: 24
         };
-        this.collisionManager.registerElement("note", noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
+        this.placeAndSizeManager.registerElement("note", noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
         if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0) {
           const stemBBox = {
             x: noteX - 3,
@@ -1394,7 +1413,7 @@ var MeasureRenderer = class {
             width: 3,
             height: stemBottomY - stemTopY
           };
-          this.collisionManager.registerElement("stem", stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+          this.placeAndSizeManager.registerElement("stem", stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
         }
       }
     });
@@ -1426,14 +1445,14 @@ var MeasureRenderer = class {
       rightBar.setAttribute("stroke", "#000");
       rightBar.setAttribute("stroke-width", "1");
       svg.appendChild(rightBar);
-      if (this.collisionManager) {
+      if (this.placeAndSizeManager) {
         const bracketBBox = {
           x: tupletStartX,
           y: bracketY - 6,
           width: tupletEndX - tupletStartX,
           height: 12
         };
-        this.collisionManager.registerElement("tuplet-bracket", bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
+        this.placeAndSizeManager.registerElement("tuplet-bracket", bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
       }
       const centerX = (tupletStartX + tupletEndX) / 2;
       let tupletTextY = bracketY - 3;
@@ -1448,7 +1467,7 @@ var MeasureRenderer = class {
       } else {
         text.textContent = String(tupletGroup.count);
       }
-      if (this.collisionManager) {
+      if (this.placeAndSizeManager) {
         const textWidth = (text.textContent || "").length * 6;
         let numberBBox = {
           x: centerX - textWidth / 2,
@@ -1456,15 +1475,15 @@ var MeasureRenderer = class {
           width: textWidth,
           height: 12
         };
-        if (this.collisionManager.hasCollision(numberBBox, ["tuplet-bracket", "tuplet-number"])) {
-          const adjusted = this.collisionManager.findFreePosition(numberBBox, "vertical", ["tuplet-number"]);
+        if (this.placeAndSizeManager.hasCollision(numberBBox, ["tuplet-bracket", "tuplet-number"])) {
+          const adjusted = this.placeAndSizeManager.findFreePosition(numberBBox, "vertical", ["tuplet-number"]);
           if (adjusted) {
             tupletTextY = adjusted.y + 10;
             text.setAttribute("y", String(tupletTextY));
             numberBBox = { ...numberBBox, y: adjusted.y };
           }
         }
-        this.collisionManager.registerElement("tuplet-number", numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
+        this.placeAndSizeManager.registerElement("tuplet-number", numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
       }
       svg.appendChild(text);
     });
@@ -1498,10 +1517,10 @@ var MeasureRenderer = class {
       dot.setAttribute("fill", "#000");
       dot.setAttribute("data-cg-dot", "1");
       svg.appendChild(dot);
-      if (this.collisionManager) {
+      if (this.placeAndSizeManager) {
         const cx = centerX + 10;
         const cy = staffLineY - 4;
-        this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+        this.placeAndSizeManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
       }
     }
     return centerX;
@@ -1540,10 +1559,10 @@ var MeasureRenderer = class {
       dot.setAttribute("fill", "#000");
       dot.setAttribute("data-cg-dot", "1");
       svg.appendChild(dot);
-      if (this.collisionManager) {
+      if (this.placeAndSizeManager) {
         const cx = x + 10;
         const cy = staffLineY - 4;
-        this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+        this.placeAndSizeManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
       }
     }
     return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
@@ -1638,6 +1657,16 @@ var MeasureRenderer = class {
     line.setAttribute("stroke", "#000");
     line.setAttribute("stroke-width", "1.5");
     svg.appendChild(line);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("barline", {
+        x: x - 1,
+        // Account for stroke width
+        y,
+        width: 3,
+        // 1.5px stroke + margin
+        height
+      }, 2);
+    }
   }
   drawBarWithRepeat(svg, x, y, height, isStart) {
     if (isStart) {
@@ -1688,8 +1717,8 @@ var MeasureRenderer = class {
       circle.setAttribute("r", "2");
       circle.setAttribute("fill", "#000");
       svg.appendChild(circle);
-      if (this.collisionManager) {
-        this.collisionManager.registerElement("dot", {
+      if (this.placeAndSizeManager) {
+        this.placeAndSizeManager.registerElement("dot", {
           x: dotX - 3,
           // Extend collision box a bit
           y: dotY - 3,
@@ -1698,6 +1727,15 @@ var MeasureRenderer = class {
         }, 8, { type: "repeat-barline" });
       }
     });
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("barline", {
+        x: x - 1,
+        y,
+        width: 8,
+        // 6px between lines + margins
+        height
+      }, 2, { type: isStart ? "repeat-start" : "repeat-end" });
+    }
   }
   drawFinalDoubleBar(svg, x, y, height) {
     const bar1 = document.createElementNS(SVG_NS, "line");
@@ -1716,6 +1754,45 @@ var MeasureRenderer = class {
     bar2.setAttribute("stroke", "#000");
     bar2.setAttribute("stroke-width", "5");
     svg.appendChild(bar2);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("barline", {
+        x: x - 1,
+        y,
+        width: 10,
+        // 6px spacing + 5px thick stroke / 2
+        height
+      }, 2, { type: "final-double" });
+    }
+  }
+  /**
+   * Draw the repeat count (e.g., "x3") after a repeat end barline.
+   * @param svg - SVG parent element
+   * @param x - X position of the barline
+   * @param count - Number of repeats
+   */
+  drawRepeatCount(svg, x, count) {
+    const textX = x + 10;
+    const textY = this.y + 5;
+    const fontSize = 22;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", textX.toString());
+    text.setAttribute("y", textY.toString());
+    text.setAttribute("font-family", "Arial, sans-serif");
+    text.setAttribute("font-size", `${fontSize}px`);
+    text.setAttribute("font-weight", "normal");
+    text.setAttribute("fill", "#000");
+    text.textContent = `x${count}`;
+    svg.appendChild(text);
+    if (this.placeAndSizeManager) {
+      const textWidth = count >= 10 ? 40 : 30;
+      this.placeAndSizeManager.registerElement("repeat-count", {
+        x: textX,
+        y: textY - fontSize,
+        // Text baseline is at textY, so top is textY - fontSize
+        width: textWidth,
+        height: fontSize
+      }, 5, { count });
+    }
   }
   /**
    * Draw the repeat symbol (%) in the center of the measure.
@@ -2315,10 +2392,10 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions, stemsDire
   }
 }
 
-// src/renderer/CollisionManager.ts
-var CollisionManager = class {
+// src/renderer/PlaceAndSizeManager.ts
+var PlaceAndSizeManager = class {
   /**
-   * Constructeur du gestionnaire de collisions.
+   * Constructeur du gestionnaire de position et taille.
    * 
    * @param config - Configuration optionnelle
    */
@@ -2344,7 +2421,7 @@ var CollisionManager = class {
   registerElement(type, bbox, priority = 5, metadata) {
     this.elements.push({ type, bbox, priority, metadata });
     if (this.config.debugMode) {
-      console.log(`[CollisionManager] Registered ${type}`, bbox);
+      console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox);
     }
   }
   /**
@@ -2413,13 +2490,13 @@ var CollisionManager = class {
       }
       if (!this.hasCollision(candidate, excludeTypes)) {
         if (this.config.debugMode) {
-          console.log(`[CollisionManager] Found free position after ${attempt} attempts`, candidate);
+          console.log(`[PlaceAndSizeManager] Found free position after ${attempt} attempts`, candidate);
         }
         return candidate;
       }
     }
     if (this.config.debugMode) {
-      console.warn(`[CollisionManager] Could not find free position after ${maxAttempts} attempts`);
+      console.warn(`[PlaceAndSizeManager] Could not find free position after ${maxAttempts} attempts`);
     }
     return null;
   }
@@ -2457,7 +2534,7 @@ var CollisionManager = class {
   clear() {
     this.elements = [];
     if (this.config.debugMode) {
-      console.log("[CollisionManager] Cleared all elements");
+      console.log("[PlaceAndSizeManager] Cleared all elements");
     }
   }
   /**
@@ -2469,7 +2546,7 @@ var CollisionManager = class {
     const before = this.elements.length;
     this.elements = this.elements.filter((e) => e.type !== type);
     if (this.config.debugMode) {
-      console.log(`[CollisionManager] Cleared ${before - this.elements.length} elements of type ${type}`);
+      console.log(`[PlaceAndSizeManager] Cleared ${before - this.elements.length} elements of type ${type}`);
     }
   }
   /**
@@ -2494,6 +2571,29 @@ var CollisionManager = class {
       total: this.elements.length,
       byType
     };
+  }
+  /**
+   * Calcule les bounds globaux de tous les éléments enregistrés.
+   * Utile pour dimensionner correctement le SVG avec des marges.
+   * 
+   * @returns Les coordonnées min/max de tous les éléments, ou null si aucun élément
+   */
+  getGlobalBounds() {
+    if (this.elements.length === 0) {
+      return null;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    this.elements.forEach((el) => {
+      const { x, y, width, height } = el.bbox;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + width);
+      maxY = Math.max(maxY, y + height);
+    });
+    return { minX, minY, maxX, maxY };
   }
   /**
    * Vérifie si deux bounding boxes se chevauchent (avec marge optionnelle).
@@ -2610,7 +2710,7 @@ var SVGRenderer = class {
     svg.setAttribute("height", "auto");
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("xmlns", SVG_NS);
-    const collisionManager = new CollisionManager();
+    const placeAndSizeManager = new PlaceAndSizeManager();
     const tieManager = new TieManager();
     const notePositions = [];
     const bg = document.createElementNS(SVG_NS, "rect");
@@ -2624,7 +2724,7 @@ var SVGRenderer = class {
     const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, "bold");
     svg.appendChild(timeText);
     svg.__dynamicLineStartPadding = dynamicLineStartPadding;
-    collisionManager.registerElement("time-signature", {
+    placeAndSizeManager.registerElement("time-signature", {
       x: baseLeftPadding,
       y: timeSigBaselineY - timeSigFontSize,
       width: timeSigWidthEstimate,
@@ -2705,14 +2805,30 @@ var SVGRenderer = class {
         });
       }
       const stemsDir = stemsDirection === "down" ? "down" : "up";
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager, stemsDir != null ? stemsDir : "up", (_c = options.displayRepeatSymbol) != null ? _c : false);
+      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir != null ? stemsDir : "up", (_c = options.displayRepeatSymbol) != null ? _c : false);
       mr.drawMeasure(svg, globalIndex2, notePositions, grid);
       if (analyzedMeasures[globalIndex2]) {
         drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
       }
       lineAccumulated[lineIndex] += mWidth;
     });
-    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager, stemsDirection);
+    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
+    const bounds = placeAndSizeManager.getGlobalBounds();
+    if (bounds) {
+      const margin = 10;
+      const adjustedX = Math.max(0, bounds.minX - margin);
+      const adjustedY = Math.max(0, bounds.minY - margin);
+      const adjustedWidth = bounds.maxX - bounds.minX + margin * 2;
+      const adjustedHeight = bounds.maxY - bounds.minY + margin * 2;
+      svg.setAttribute("viewBox", `${adjustedX} ${adjustedY} ${adjustedWidth} ${adjustedHeight}`);
+      const bg2 = svg.querySelector('rect[fill="white"]');
+      if (bg2) {
+        bg2.setAttribute("x", adjustedX.toString());
+        bg2.setAttribute("y", adjustedY.toString());
+        bg2.setAttribute("width", adjustedWidth.toString());
+        bg2.setAttribute("height", adjustedHeight.toString());
+      }
+    }
     return svg;
   }
   /**
@@ -2752,7 +2868,7 @@ var SVGRenderer = class {
    * @param tieManager - Gestionnaire de liaisons entre lignes
    * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
    */
-  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, collisionManager, stemsDirection) {
+  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, placeAndSizeManager, stemsDirection) {
     var _a;
     const lineStartPadding = (_a = svg.__dynamicLineStartPadding) != null ? _a : 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
@@ -2795,7 +2911,7 @@ var SVGRenderer = class {
       }
     }
     const matched = /* @__PURE__ */ new Set();
-    const dotsForCollisions = collisionManager ? collisionManager.getElements().filter((e) => e.type === "dot") : [];
+    const dotsForCollisions = placeAndSizeManager ? placeAndSizeManager.getElements().filter((e) => e.type === "dot") : [];
     const fallbackStemsOrientation = stemsDirection != null ? stemsDirection : "down";
     const inferStemsOrientation = (note) => {
       if (note.stemTopY !== void 0 && note.stemBottomY !== void 0) {
@@ -2830,7 +2946,7 @@ var SVGRenderer = class {
       } else {
         controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
       }
-      if (collisionManager) {
+      if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
         const preliminaryTopY = orientation === "up" ? Math.min(startY, endY) : controlY;
@@ -2864,12 +2980,12 @@ var SVGRenderer = class {
         path.setAttribute("data-end", `${e.measureIndex}:${e.chordIndex}:${e.beatIndex}:${e.noteIndex}`);
       }
       svg.appendChild(path);
-      if (collisionManager) {
+      if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
         const topY = Math.min(controlY, startY, endY);
         const bottomY = Math.max(controlY, startY, endY);
-        collisionManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+        placeAndSizeManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
       }
     };
     const drawHalfToMeasureRight = (measureIdx, startX, startY, orientation, startMeta) => {

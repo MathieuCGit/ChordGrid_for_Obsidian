@@ -22,7 +22,7 @@ interface NotePosition {
 }
 import { RestRenderer } from './RestRenderer';
 import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
-import { CollisionManager } from './CollisionManager';
+import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { SVG_NS } from './constants';
 
 /**
@@ -41,7 +41,7 @@ export class MeasureRenderer {
      * @param y - Position Y de départ de la mesure dans le SVG
      * @param width - Largeur allouée à la mesure
      * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
-     * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
+     * @param placeAndSizeManager - Gestionnaire de position et taille pour éviter les chevauchements
      * @param stemsDirection - Direction des hampes ('up' ou 'down')
      * @param displayRepeatSymbol - Afficher le symbole % pour les mesures répétées
      */
@@ -55,13 +55,13 @@ export class MeasureRenderer {
         private readonly y: number,
         private readonly width: number,
         private readonly beamedAtLevel1?: Set<string>,
-        private readonly collisionManager?: CollisionManager,
+        private readonly placeAndSizeManager?: PlaceAndSizeManager,
         stemsDirection?: 'up' | 'down',
         displayRepeatSymbol?: boolean
     ) {
         this.stemsDirection = stemsDirection === 'down' ? 'down' : 'up';
         this.displayRepeatSymbol = displayRepeatSymbol ?? false;
-        this.restRenderer = new RestRenderer(this.collisionManager);
+        this.restRenderer = new RestRenderer(this.placeAndSizeManager);
     }
 
     /**
@@ -108,6 +108,10 @@ export class MeasureRenderer {
             // Draw right barline with ALL barline types (repeat, double bar, simple)
             if ((this.measure as any).isRepeatEnd) {
                 this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+                // Draw repeat count if present (e.g., x3)
+                if ((this.measure as any).repeatCount !== undefined) {
+                    this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+                }
             } else if (this.measure.barline === '||') {
                 this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
             } else {
@@ -196,7 +200,7 @@ export class MeasureRenderer {
                     
                     // Check for collisions and adjust position if needed
                     let finalY = chordY;
-                    if (this.collisionManager) {
+                    if (this.placeAndSizeManager) {
                         const chordBBox = {
                             x: chordX - chordWidth / 2,
                             y: chordY - fontSize,
@@ -205,9 +209,9 @@ export class MeasureRenderer {
                         };
                         
                         // Check if there's a collision
-                        if (this.collisionManager.hasCollision(chordBBox)) {
+                        if (this.placeAndSizeManager.hasCollision(chordBBox)) {
                             // Try to find a free vertical position excluding other chord texts
-                            const adjustedPos = this.collisionManager.findFreePosition(
+                            const adjustedPos = this.placeAndSizeManager.findFreePosition(
                                 chordBBox,
                                 'vertical',
                                 ['chord']
@@ -218,7 +222,7 @@ export class MeasureRenderer {
                         }
                         
                         // Register the chord element
-                        this.collisionManager.registerElement('chord', {
+                        this.placeAndSizeManager.registerElement('chord', {
                             x: chordX - chordWidth / 2,
                             y: finalY - fontSize,
                             width: chordWidth,
@@ -239,6 +243,10 @@ export class MeasureRenderer {
 
         if ((this.measure as any).isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
+            // Draw repeat count if present (e.g., x3)
+            if ((this.measure as any).repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            }
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
         } else if (this.measure.barline || measureIndex === (grid.measures.length - 1)) {
@@ -414,14 +422,14 @@ export class MeasureRenderer {
             });
 
             // Register note head & stem for collision management
-            if (this.collisionManager) {
+            if (this.placeAndSizeManager) {
                 const noteHeadBBox = {
                     x: headLeftX,
                     y: staffLineY - 12,
                     width: headRightX - headLeftX,
                     height: 24
                 };
-                this.collisionManager.registerElement('note', noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
+                this.placeAndSizeManager.registerElement('note', noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
                 if (hasStem && stemTopY !== undefined && stemBottomY !== undefined) {
                     const stemBBox = {
                         x: noteX - 3, // approximate stem x based on drawStem logic
@@ -429,7 +437,7 @@ export class MeasureRenderer {
                         width: 3,
                         height: stemBottomY - stemTopY
                     };
-                    this.collisionManager.registerElement('stem', stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+                    this.placeAndSizeManager.registerElement('stem', stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
                 }
             }
         });
@@ -473,14 +481,14 @@ export class MeasureRenderer {
             svg.appendChild(rightBar);
 
             // Register tuplet bracket bounding box (approx width & height)
-            if (this.collisionManager) {
+            if (this.placeAndSizeManager) {
                 const bracketBBox = {
                     x: tupletStartX,
                     y: bracketY - 6,
                     width: tupletEndX - tupletStartX,
                     height: 12
                 };
-                this.collisionManager.registerElement('tuplet-bracket', bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
+                this.placeAndSizeManager.registerElement('tuplet-bracket', bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
             }
             
             // Tuplet number or ratio centered above the bracket
@@ -499,7 +507,7 @@ export class MeasureRenderer {
                 text.textContent = String(tupletGroup.count);
             }
             // Collision adjust for tuplet number against chords or other elements
-            if (this.collisionManager) {
+            if (this.placeAndSizeManager) {
                 const textWidth = (text.textContent || '').length * 6; // rough monospace approximation
                 let numberBBox = {
                     x: centerX - textWidth / 2,
@@ -507,15 +515,15 @@ export class MeasureRenderer {
                     width: textWidth,
                     height: 12
                 };
-                if (this.collisionManager.hasCollision(numberBBox, ['tuplet-bracket','tuplet-number'])) {
-                    const adjusted = this.collisionManager.findFreePosition(numberBBox, 'vertical', ['tuplet-number']);
+                if (this.placeAndSizeManager.hasCollision(numberBBox, ['tuplet-bracket','tuplet-number'])) {
+                    const adjusted = this.placeAndSizeManager.findFreePosition(numberBBox, 'vertical', ['tuplet-number']);
                     if (adjusted) {
                         tupletTextY = adjusted.y + 10; // baseline correction
                         text.setAttribute('y', String(tupletTextY));
                         numberBBox = { ...numberBBox, y: adjusted.y };
                     }
                 }
-                this.collisionManager.registerElement('tuplet-number', numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
+                this.placeAndSizeManager.registerElement('tuplet-number', numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
             }
             svg.appendChild(text);
         });
@@ -553,10 +561,10 @@ export class MeasureRenderer {
             // Tag for later collision adjustment (we don't have measureIndex here; defer to parent context if needed)
             dot.setAttribute('data-cg-dot', '1');
             svg.appendChild(dot);
-            if (this.collisionManager) {
+            if (this.placeAndSizeManager) {
                 const cx = centerX + 10;
                 const cy = staffLineY - 4;
-                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+                this.placeAndSizeManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
             }
         }
 
@@ -599,10 +607,10 @@ export class MeasureRenderer {
             dot.setAttribute('fill', '#000');
             dot.setAttribute('data-cg-dot', '1');
             svg.appendChild(dot);
-            if (this.collisionManager) {
+            if (this.placeAndSizeManager) {
                 const cx = x + 10;
                 const cy = staffLineY - 4;
-                this.collisionManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+                this.placeAndSizeManager.registerElement('dot', { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
             }
         }
     return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
@@ -715,6 +723,16 @@ export class MeasureRenderer {
         line.setAttribute('stroke', '#000');
         line.setAttribute('stroke-width', '1.5');
         svg.appendChild(line);
+
+        // Register barline in PlaceAndSizeManager for accurate bounds calculation
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement('barline', {
+                x: x - 1,  // Account for stroke width
+                y: y,
+                width: 3,  // 1.5px stroke + margin
+                height: height
+            }, 2);  // Priority 2 - barlines are fixed elements
+        }
     }
 
     private drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean): void {
@@ -781,8 +799,8 @@ export class MeasureRenderer {
             svg.appendChild(circle);
             
             // Register repeat dots for collision detection
-            if (this.collisionManager) {
-                this.collisionManager.registerElement('dot', {
+            if (this.placeAndSizeManager) {
+                this.placeAndSizeManager.registerElement('dot', {
                     x: dotX - 3,  // Extend collision box a bit
                     y: dotY - 3,
                     width: 6,
@@ -790,6 +808,16 @@ export class MeasureRenderer {
                 }, 8, { type: 'repeat-barline' });
             }
         });
+
+        // Register the repeat barline itself (two lines span from x to x+6)
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement('barline', {
+                x: x - 1,
+                y: y,
+                width: 8,  // 6px between lines + margins
+                height: height
+            }, 2, { type: isStart ? 'repeat-start' : 'repeat-end' });
+        }
     }
 
     private drawFinalDoubleBar(svg: SVGElement, x: number, y: number, height: number): void {
@@ -812,6 +840,50 @@ export class MeasureRenderer {
         bar2.setAttribute('stroke', '#000');
         bar2.setAttribute('stroke-width', '5');
         svg.appendChild(bar2);
+
+        // Register the final double barline (two lines span from x to x+6+2.5)
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement('barline', {
+                x: x - 1,
+                y: y,
+                width: 10,  // 6px spacing + 5px thick stroke / 2
+                height: height
+            }, 2, { type: 'final-double' });
+        }
+    }
+
+    /**
+     * Draw the repeat count (e.g., "x3") after a repeat end barline.
+     * @param svg - SVG parent element
+     * @param x - X position of the barline
+     * @param count - Number of repeats
+     */
+    private drawRepeatCount(svg: SVGElement, x: number, count: number): void {
+        const textX = x + 10; // 10px to the right of the barline
+        const textY = this.y + 5; // 5px from top (higher than chords)
+        const fontSize = 22; // Larger than time signature (18px), same as chords
+        
+        const text = document.createElementNS(SVG_NS, 'text');
+        text.setAttribute('x', textX.toString());
+        text.setAttribute('y', textY.toString());
+        text.setAttribute('font-family', 'Arial, sans-serif');
+        text.setAttribute('font-size', `${fontSize}px`);
+        text.setAttribute('font-weight', 'normal');
+        text.setAttribute('fill', '#000');
+        text.textContent = `x${count}`;
+        svg.appendChild(text);
+        
+        // Register in collision manager for proper SVG bounds calculation
+        if (this.placeAndSizeManager) {
+            // Approximate text width: "x3" = ~30px at 22px font
+            const textWidth = count >= 10 ? 40 : 30; // Extra width for double digits
+            this.placeAndSizeManager.registerElement('repeat-count', {
+                x: textX,
+                y: textY - fontSize, // Text baseline is at textY, so top is textY - fontSize
+                width: textWidth,
+                height: fontSize
+            }, 5, { count });
+        }
     }
 
     /**

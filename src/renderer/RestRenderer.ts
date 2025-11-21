@@ -19,7 +19,7 @@
 
 import { NoteElement } from '../parser/type';
 import { SVG_NS } from './constants';
-import { CollisionManager } from './CollisionManager';
+import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 
 /**
  * Classe de rendu des silences musicaux.
@@ -32,7 +32,7 @@ export class RestRenderer {
   // Rendering style constants
   private readonly dotRadius = 1.8;
   private readonly NOTE_HEIGHT = 30; // Hauteur de référence d'une quarter note (slash + stem)
-  constructor(private collisionManager?: CollisionManager) {}
+  constructor(private PlaceAndSizeManager?: PlaceAndSizeManager) {}
   
   /**
    * Dessine un silence selon sa valeur rythmique.
@@ -68,9 +68,9 @@ export class RestRenderer {
   }
 
   private registerRestBBox(x: number, y: number, width: number, height: number, note: NoteElement) {
-    if (!this.collisionManager) return;
+    if (!this.PlaceAndSizeManager) return;
     const bbox = { x: x - width / 2, y, width, height };
-    this.collisionManager.registerElement('rest', bbox, 6, { value: note.value, dotted: note.dotted });
+    this.PlaceAndSizeManager.registerElement('rest', bbox, 6, { value: note.value, dotted: note.dotted });
   }
   
   private drawWholeRest(svg: SVGElement, x: number, y: number, dotted: boolean) {
