@@ -227,10 +227,11 @@ export class MeasureRenderer {
                         };
                         
                         // Check if there's a collision (especially with barlines at priority 0)
-                        if (this.placeAndSizeManager.hasCollision(chordBBox)) {
+                        if (this.placeAndSizeManager.hasCollision(chordBBox, 'chord')) {
                             // First try horizontal adjustment (for left barlines like ||:)
                             const adjustedPosH = this.placeAndSizeManager.findFreePosition(
                                 chordBBox,
+                                'chord',  // Type being placed
                                 'horizontal',
                                 ['chord']
                             );
@@ -242,9 +243,10 @@ export class MeasureRenderer {
                             }
                             
                             // Then check vertical if still needed
-                            if (this.placeAndSizeManager.hasCollision(chordBBox)) {
+                            if (this.placeAndSizeManager.hasCollision(chordBBox, 'chord')) {
                                 const adjustedPosV = this.placeAndSizeManager.findFreePosition(
                                     chordBBox,
+                                    'chord',  // Type being placed
                                     'vertical',
                                     ['chord']
                                 );
@@ -576,8 +578,8 @@ export class MeasureRenderer {
                     width: textWidth,
                     height: 12
                 };
-                if (this.placeAndSizeManager.hasCollision(numberBBox, ['tuplet-bracket','tuplet-number'])) {
-                    const adjusted = this.placeAndSizeManager.findFreePosition(numberBBox, 'vertical', ['tuplet-number']);
+                if (this.placeAndSizeManager.hasCollision(numberBBox, 'tuplet-number', ['tuplet-bracket','tuplet-number'])) {
+                    const adjusted = this.placeAndSizeManager.findFreePosition(numberBBox, 'tuplet-number', 'vertical', ['tuplet-number']);
                     if (adjusted) {
                         tupletTextY = adjusted.y + 10; // baseline correction
                         text.setAttribute('y', String(tupletTextY));

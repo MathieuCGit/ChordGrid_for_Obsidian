@@ -42,8 +42,46 @@ interface RegisteredElement {
     type: ElementType;
     bbox: BoundingBox;
     priority: number; // 0 = haute priorité (ne bouge pas), 10 = basse priorité (peut être déplacé)
+    layer: CollisionLayer; // Couche verticale de collision
+    horizontalMargin: number; // Marge horizontale de sécurité autour de l'élément (px)
     metadata?: any; // Informations supplémentaires (noteIndex, measureIndex, etc.)
 }
+
+/**
+ * Élément planifié (phase de calcul, avant rendu).
+ * Contient toutes les infos nécessaires pour le dessin ultérieur.
+ */
+export interface PlannedElement {
+    type: ElementType;
+    initialBBox: BoundingBox;  // Position souhaitée initiale
+    adjustedBBox?: BoundingBox; // Position après ajustement pour collisions (calculée)
+    priority: number;
+    renderData: any; // Données spécifiques pour le rendu (texte, couleur, stroke, etc.)
+    metadata?: any;
+}
+
+/**
+ * Couches de collision verticale - définit quels groupes d'éléments peuvent entrer en collision verticalement.
+ * 
+ * Les éléments d'une même couche peuvent entrer en collision entre eux.
+ * Les éléments de couches différentes n'entrent généralement pas en collision,
+ * sauf configuration spécifique (ex: chord peut éviter barline si trop proche).
+ * 
+ * Hiérarchie verticale (du bas vers le haut) :
+ * 1. staff - notes, silences, hampes, beams, ties (liaisons)
+ * 2. tuplets - numéros et brackets de tuplets
+ * 3. decoration - pick-strokes (∏, V)
+ * 4. above-staff - accords (noms d'accords)
+ * 5. above-measure - volta brackets/text
+ * 6. structure - barlines (éléments verticaux transversaux)
+ */
+export type CollisionLayer = 
+    | 'above-measure' // Volta brackets/text - au-dessus de tout le bloc
+    | 'above-staff'   // Accords (noms d'accords) - au-dessus de la portée
+    | 'decoration'    // Pick strokes (∏, V) - au-dessus des tuplets
+    | 'tuplets'       // Tuplets brackets/numbers - au-dessus du staff
+    | 'staff'         // Notes, silences, hampes, beams, ties - sur la portée
+    | 'structure';    // Barlines, time signatures - structure verticale
 
 /**
  * Types d'éléments pouvant entrer en collision.
@@ -63,6 +101,7 @@ export type ElementType =
     | 'repeat-count'    // Compteur de reprises (x3, x2, etc.)
     | 'repeat-symbol'   // Symbole % pour mesure répétée
     | 'volta-bracket'   // Crochets de volta/endings
+    | 'volta-text'      // Texte des numéros de volta (1-3, 4, etc.)
     | 'flag'            // Crochets de notes (8e, 16e sans ligature)
     | 'diamond'         // Tête de note en losange
     | 'slash'           // Barre de slash
@@ -94,6 +133,7 @@ interface PlaceAndSizeConfig {
  */
 export class PlaceAndSizeManager {
     private elements: RegisteredElement[] = [];
+    private plannedElements: PlannedElement[] = [];
     private config: PlaceAndSizeConfig;
 
     /**
@@ -112,23 +152,265 @@ export class PlaceAndSizeManager {
     }
 
     /**
+     * Détermine la couche de collision appropriée pour un type d'élément.
+     * 
+     * @param type - Type de l'élément
+     * @returns La couche de collision appropriée
+     */
+    private getCollisionLayer(type: ElementType): CollisionLayer {
+        switch (type) {
+            // Éléments au-dessus du bloc de mesures
+            case 'volta-bracket':
+            case 'volta-text':
+                return 'above-measure';
+            
+            // Éléments au-dessus de la portée (noms d'accords)
+            case 'chord':
+            case 'repeat-count':
+                return 'above-staff';
+            
+            // Décorations (pick-strokes uniquement)
+            case 'pick-stroke':
+                return 'decoration';
+            
+            // Tuplets (au-dessus du staff, sous les decorations)
+            case 'tuplet-bracket':
+            case 'tuplet-number':
+                return 'tuplets';
+            
+            // Éléments sur la portée (notes, rests, stems, beams, ties)
+            case 'note':
+            case 'rest':
+            case 'stem':
+            case 'beam':
+            case 'tie':
+            case 'flag':
+            case 'diamond':
+            case 'slash':
+            case 'dot':
+            case 'staff-line':
+                return 'staff';
+            
+            // Éléments structurels
+            case 'barline':
+            case 'time-signature':
+            case 'double-bar':
+            case 'repeat-symbol':
+                return 'structure';
+            
+            default:
+                return 'staff'; // Par défaut
+        }
+    }
+
+    /**
+     * Détermine la marge horizontale de sécurité pour un type d'élément.
+     * 
+     * Cette marge crée un "espace de sécurité" horizontal de part et d'autre de l'élément
+     * pour éviter que d'autres éléments ne le touchent (surtout important pour barlines, 
+     * accords, volta text, etc.).
+     * 
+     * @param type - Type de l'élément
+     * @returns Marge horizontale en pixels
+     */
+    private getHorizontalMargin(type: ElementType): number {
+        switch (type) {
+            // Éléments critiques nécessitant un large espace
+            case 'barline':
+            case 'double-bar':
+                return 5; // Barres de mesure : large marge pour la lisibilité
+            
+            case 'time-signature':
+                return 4; // Chiffrage : besoin d'espace pour la lisibilité
+            
+            // Éléments textuels au-dessus de la portée
+            case 'chord':
+                return 3; // Accords : marge moyenne
+            
+            case 'volta-text':
+            case 'repeat-count':
+                return 3; // Textes volta/repeat : marge moyenne
+            
+            case 'tuplet-number':
+                return 2; // Numéros de tuplet : petite marge
+            
+            // Éléments graphiques nécessitant un peu d'espace
+            case 'volta-bracket':
+            case 'tuplet-bracket':
+                return 1; // Brackets : marge minimale
+            
+            // Éléments sur la portée (notes, rests)
+            case 'note':
+            case 'rest':
+            case 'diamond':
+            case 'slash':
+                return 1; // Petite marge pour éviter collisions avec accords
+            
+            // Éléments linéaires/décoratifs sans besoin de marge
+            case 'stem':
+            case 'beam':
+            case 'tie':
+            case 'pick-stroke':
+            case 'flag':
+            case 'dot':
+            case 'staff-line':
+            case 'repeat-symbol':
+                return 0; // Pas de marge horizontale
+            
+            default:
+                return 2; // Par défaut : marge moyenne
+        }
+    }
+
+    /**
+     * Vérifie si deux types d'éléments ont besoin d'une protection contre les collisions HORIZONTALES.
+     * 
+     * Certains éléments (stem, beam, tie, staff-line) peuvent se superposer horizontalement sans problème.
+     * D'autres (barlines, chords, volta-text) ont besoin d'espace horizontal protégé.
+     * 
+     * @param type1 - Premier type d'élément
+     * @param type2 - Deuxième type d'élément
+     * @returns true si les éléments ne doivent PAS se chevaucher horizontalement
+     */
+    private canCollideHorizontally(type1: ElementType, type2: ElementType): boolean {
+        // Éléments qui peuvent TOUJOURS se superposer horizontalement (pas de collision)
+        const transparentHorizontal = new Set<ElementType>([
+            'stem', 'beam', 'tie', 'staff-line', 'flag'
+        ]);
+        
+        // Si les DEUX éléments sont transparents, pas de collision
+        if (transparentHorizontal.has(type1) && transparentHorizontal.has(type2)) {
+            return false;
+        }
+        
+        // Si UN élément est transparent et l'autre ne définit pas de marge horizontale, pas de collision
+        const margin1 = this.getHorizontalMargin(type1);
+        const margin2 = this.getHorizontalMargin(type2);
+        
+        if (transparentHorizontal.has(type1) && margin2 === 0) {
+            return false;
+        }
+        if (transparentHorizontal.has(type2) && margin1 === 0) {
+            return false;
+        }
+        
+        // Sinon, collision horizontale possible
+        return true;
+    }
+
+    /**
+     * Vérifie si deux types d'éléments peuvent entrer en collision VERTICALE.
+     * Utilise le système de layers pour déterminer si deux éléments peuvent se superposer verticalement.
+     * 
+     * @param type1 - Premier type d'élément
+     * @param type2 - Deuxième type d'élément
+     * @returns true si les éléments ne doivent PAS se chevaucher verticalement
+     */
+    private canCollideVertically(type1: ElementType, type2: ElementType): boolean {
+        const layer1 = this.getCollisionLayer(type1);
+        const layer2 = this.getCollisionLayer(type2);
+        
+        // Même couche : collision possible
+        if (layer1 === layer2) {
+            return true;
+        }
+        
+        // Règles spéciales entre couches différentes :
+        
+        // above-measure (volta) peut collider avec structure (barlines)
+        if ((layer1 === 'above-measure' && layer2 === 'structure') ||
+            (layer1 === 'structure' && layer2 === 'above-measure')) {
+            return true;
+        }
+        
+        // above-measure (volta) peut collider avec above-staff (chord/tuplet)
+        if ((layer1 === 'above-measure' && layer2 === 'above-staff') ||
+            (layer1 === 'above-staff' && layer2 === 'above-measure')) {
+            return true;
+        }
+        
+        // above-staff peut collider avec structure (ex: chord évite barline)
+        if ((layer1 === 'above-staff' && layer2 === 'structure') ||
+            (layer1 === 'structure' && layer2 === 'above-staff')) {
+            return true;
+        }
+        
+        // staff ne collide PAS avec above-staff (séparation verticale naturelle)
+        if ((layer1 === 'staff' && layer2 === 'above-staff') ||
+            (layer1 === 'above-staff' && layer2 === 'staff')) {
+            return false;
+        }
+        
+        // staff ne collide PAS avec above-measure (encore plus séparé)
+        if ((layer1 === 'staff' && layer2 === 'above-measure') ||
+            (layer1 === 'above-measure' && layer2 === 'staff')) {
+            return false;
+        }
+        
+        // decoration ne collide PAS avec above-staff (séparation verticale)
+        if ((layer1 === 'decoration' && layer2 === 'above-staff') ||
+            (layer1 === 'above-staff' && layer2 === 'decoration')) {
+            return false;
+        }
+        
+        // decoration ne collide PAS avec above-measure (encore plus séparé)
+        if ((layer1 === 'decoration' && layer2 === 'above-measure') ||
+            (layer1 === 'above-measure' && layer2 === 'decoration')) {
+            return false;
+        }
+        
+        // Par défaut, pas de collision entre couches différentes
+        return false;
+    }
+
+    /**
+     * Vérifie si deux types d'éléments peuvent entrer en collision (2D: horizontal ET vertical).
+     * 
+     * Logique :
+     * - Si les éléments sont sur des layers verticaux séparés (ex: notes vs chords) → PAS de collision
+     * - Si les éléments sont sur le même layer vertical → vérifier collision horizontale
+     * 
+     * @param type1 - Premier type d'élément
+     * @param type2 - Deuxième type d'élément
+     * @returns true si les éléments peuvent entrer en collision
+     */
+    private canCollide(type1: ElementType, type2: ElementType): boolean {
+        // D'abord vérifier si les layers verticaux permettent la collision
+        const canCollideVert = this.canCollideVertically(type1, type2);
+        
+        // Si les layers verticaux sont séparés (pas de collision verticale possible),
+        // alors pas de collision du tout
+        if (!canCollideVert) {
+            return false;
+        }
+        
+        // Si les layers verticaux se chevauchent (même layer ou layers compatibles),
+        // alors vérifier la collision horizontale
+        return this.canCollideHorizontally(type1, type2);
+    }
+
+    /**
      * Enregistre un nouvel élément dans le gestionnaire.
      * 
      * @param type - Type de l'élément
      * @param bbox - Zone occupée par l'élément
      * @param priority - Priorité de l'élément (0 = fixe, 10 = mobile)
      * @param metadata - Métadonnées optionnelles
+     * @param overrideLayer - Layer personnalisé (pour éléments dynamiques comme pick-strokes)
      */
     public registerElement(
         type: ElementType, 
         bbox: BoundingBox, 
         priority: number = 5,
-        metadata?: any
+        metadata?: any,
+        overrideLayer?: CollisionLayer
     ): void {
-        this.elements.push({ type, bbox, priority, metadata });
+        const layer = overrideLayer ?? this.getCollisionLayer(type);
+        const horizontalMargin = this.getHorizontalMargin(type);
+        this.elements.push({ type, bbox, priority, layer, horizontalMargin, metadata });
         
         if (this.config.debugMode) {
-            console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox);
+            console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`);
         }
     }
 
@@ -136,22 +418,33 @@ export class PlaceAndSizeManager {
      * Vérifie si une zone entre en collision avec des éléments existants.
      * 
      * @param bbox - Zone à tester
+     * @param testType - Type de l'élément qu'on teste (pour vérifier canCollide)
      * @param excludeTypes - Types d'éléments à exclure de la vérification
      * @param spacing - Marge supplémentaire autour de la zone (défaut: minSpacing)
      * @returns true si collision détectée
      */
     public hasCollision(
-        bbox: BoundingBox, 
+        bbox: BoundingBox,
+        testType?: ElementType,
         excludeTypes: ElementType[] = [],
         spacing?: number
     ): boolean {
-        const margin = spacing ?? this.config.minSpacing;
+        const baseMargin = spacing ?? this.config.minSpacing;
+        const testMargin = testType ? this.getHorizontalMargin(testType) : 0;
         
         return this.elements.some(element => {
             if (excludeTypes.includes(element.type)) {
                 return false;
             }
-            return this.boxesCollide(bbox, element.bbox, margin);
+            // Si testType fourni, vérifier si les types peuvent entrer en collision
+            if (testType && !this.canCollide(testType, element.type)) {
+                return false;
+            }
+            
+            // Combiner les marges : marge de base + marge horizontale de l'élément testé + marge de l'élément existant
+            const totalMargin = baseMargin + testMargin + element.horizontalMargin;
+            
+            return this.boxesCollide(bbox, element.bbox, totalMargin);
         });
     }
 
@@ -159,22 +452,33 @@ export class PlaceAndSizeManager {
      * Trouve tous les éléments en collision avec une zone donnée.
      * 
      * @param bbox - Zone à tester
+     * @param testType - Type de l'élément qu'on teste (pour vérifier canCollide)
      * @param excludeTypes - Types d'éléments à exclure
      * @param spacing - Marge supplémentaire
      * @returns Liste des éléments en collision
      */
     public findCollisions(
         bbox: BoundingBox,
+        testType?: ElementType,
         excludeTypes: ElementType[] = [],
         spacing?: number
     ): RegisteredElement[] {
-        const margin = spacing ?? this.config.minSpacing;
+        const baseMargin = spacing ?? this.config.minSpacing;
+        const testMargin = testType ? this.getHorizontalMargin(testType) : 0;
         
         return this.elements.filter(element => {
             if (excludeTypes.includes(element.type)) {
                 return false;
             }
-            return this.boxesCollide(bbox, element.bbox, margin);
+            // Si testType fourni, vérifier si les types peuvent entrer en collision
+            if (testType && !this.canCollide(testType, element.type)) {
+                return false;
+            }
+            
+            // Combiner les marges
+            const totalMargin = baseMargin + testMargin + element.horizontalMargin;
+            
+            return this.boxesCollide(bbox, element.bbox, totalMargin);
         });
     }
 
@@ -182,6 +486,7 @@ export class PlaceAndSizeManager {
      * Trouve une position libre pour un élément en ajustant sa position.
      * 
      * @param bbox - Zone souhaitée
+     * @param testType - Type de l'élément qu'on cherche à placer
      * @param direction - Direction d'ajustement préférée
      * @param excludeTypes - Types à exclure de la détection
      * @param maxAttempts - Nombre maximum de tentatives
@@ -189,12 +494,13 @@ export class PlaceAndSizeManager {
      */
     public findFreePosition(
         bbox: BoundingBox,
+        testType?: ElementType,
         direction: AdjustmentDirection = 'vertical',
         excludeTypes: ElementType[] = [],
         maxAttempts: number = 20
     ): BoundingBox | null {
         // Si pas de collision, retourner la position d'origine
-        if (!this.hasCollision(bbox, excludeTypes)) {
+        if (!this.hasCollision(bbox, testType, excludeTypes)) {
             return bbox;
         }
 
@@ -225,7 +531,7 @@ export class PlaceAndSizeManager {
                 else candidate = { ...bbox, x: bbox.x - distance };
             }
 
-            if (!this.hasCollision(candidate, excludeTypes)) {
+            if (!this.hasCollision(candidate, testType, excludeTypes)) {
                 if (this.config.debugMode) {
                     console.log(`[PlaceAndSizeManager] Found free position after ${attempt} attempts`, candidate);
                 }
@@ -361,18 +667,127 @@ export class PlaceAndSizeManager {
 
     /**
      * Vérifie si deux bounding boxes se chevauchent (avec marge optionnelle).
+     * La marge est appliquée AUTOUR de chaque box (des deux côtés).
+     * 
+     * Exemple : box à x=150, width=15, margin=5
+     *   → zone protégée : (150-5) à (150+15+5) = 145 à 170
      * 
      * @param a - Première box
      * @param b - Deuxième box
-     * @param margin - Marge supplémentaire à considérer
+     * @param margin - Marge supplémentaire à considérer (appliquée des deux côtés)
      * @returns true si collision détectée
      */
     private boxesCollide(a: BoundingBox, b: BoundingBox, margin: number = 0): boolean {
+        // Agrandir les boxes de 'margin' de chaque côté pour la comparaison
+        const aExpanded = {
+            x: a.x - margin,
+            y: a.y - margin,
+            width: a.width + 2 * margin,
+            height: a.height + 2 * margin
+        };
+        const bExpanded = {
+            x: b.x - margin,
+            y: b.y - margin,
+            width: b.width + 2 * margin,
+            height: b.height + 2 * margin
+        };
+        
+        // Test de collision standard (boxes ne se chevauchent PAS si...)
         return !(
-            a.x + a.width + margin < b.x ||
-            b.x + b.width + margin < a.x ||
-            a.y + a.height + margin < b.y ||
-            b.y + b.height + margin < a.y
+            aExpanded.x + aExpanded.width < bExpanded.x ||
+            bExpanded.x + bExpanded.width < aExpanded.x ||
+            aExpanded.y + aExpanded.height < bExpanded.y ||
+            bExpanded.y + bExpanded.height < aExpanded.y
         );
+    }
+
+    // ========== MÉTHODES DE PLANIFICATION (2-PHASE ARCHITECTURE) ==========
+
+    /**
+     * PHASE 1 (CALCUL): Planifie un élément pour le rendu.
+     * Enregistre la position initiale souhaitée sans dessiner.
+     * 
+     * @param type - Type d'élément
+     * @param initialBBox - Position/dimensions souhaitées initiales
+     * @param priority - Priorité (éléments à priorité élevée fixés en premier)
+     * @param renderData - Données nécessaires au rendu (texte, couleur, style, etc.)
+     * @param metadata - Métadonnées optionnelles
+     */
+    public planElement(
+        type: ElementType,
+        initialBBox: BoundingBox,
+        priority: number,
+        renderData: any,
+        metadata?: any
+    ): void {
+        this.plannedElements.push({
+            type,
+            initialBBox,
+            priority,
+            renderData,
+            metadata
+        });
+    }
+
+    /**
+     * PHASE 2 (RÉSOLUTION): Résout toutes les collisions entre éléments planifiés.
+     * Ajuste les positions selon les priorités et les règles de collision.
+     * Doit être appelé après avoir planifié tous les éléments, avant le rendu.
+     */
+    public resolveAllCollisions(): void {
+        // Trier par priorité décroissante (les éléments à haute priorité sont fixés en premier)
+        const sorted = [...this.plannedElements].sort((a, b) => b.priority - a.priority);
+
+        // Résoudre les collisions en ordre de priorité
+        for (const planned of sorted) {
+            const layer = this.getCollisionLayer(planned.type);
+            const margin = this.getHorizontalMargin(planned.type);
+
+            // Trouver les éléments déjà placés avec lesquels on peut entrer en collision
+            const alreadyPlaced = this.plannedElements
+                .filter(p => p.adjustedBBox && this.canCollide(p.type, planned.type))
+                .map(p => p.type);
+
+            // Chercher une position libre
+            const adjustedBBox = this.findFreePosition(
+                planned.initialBBox,
+                planned.type,
+                'horizontal',
+                alreadyPlaced,
+                10
+            );
+
+            planned.adjustedBBox = adjustedBBox || planned.initialBBox;
+
+            // Enregistrer temporairement pour la détection de collision avec les éléments suivants
+            this.registerElement(planned.type, planned.adjustedBBox, planned.priority, planned.metadata);
+        }
+    }
+
+    /**
+     * PHASE 3 (RENDU): Récupère tous les éléments planifiés avec leurs positions ajustées.
+     * À utiliser dans la phase de rendu pour dessiner les éléments.
+     * 
+     * @returns Tableau des éléments planifiés avec positions finales
+     */
+    public getPlannedElements(): PlannedElement[] {
+        return this.plannedElements;
+    }
+
+    /**
+     * Efface tous les éléments planifiés.
+     * À appeler au début d'un nouveau cycle de rendu.
+     */
+    public clearPlannedElements(): void {
+        this.plannedElements = [];
+    }
+
+    /**
+     * Efface à la fois les éléments enregistrés et planifiés.
+     * Réinitialisation complète du gestionnaire.
+     */
+    public clearAll(): void {
+        this.clear();
+        this.clearPlannedElements();
     }
 }

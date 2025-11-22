@@ -47,9 +47,122 @@ export interface RenderOptions {
 }
 
 /**
+ * Structure représentant une ligne de rendu calculée.
+ */
+export interface RenderLine {
+    measures: Measure[]; // Les mesures qui vont sur cette ligne
+    width: number;       // Largeur totale utilisée par les mesures
+    height: number;      // Hauteur de la ligne
+    startY: number;      // Position Y de départ de la ligne
+}
+
+/**
  * Classe principale pour le rendu SVG des grilles d'accords.
  */
 export class SVGRenderer {
+  // Constantes pour le calcul de layout
+  private readonly BASE_MEASURE_WIDTH = 240;
+  private readonly SEPARATOR_WIDTH = 12;
+  private readonly INNER_PADDING_PER_SEGMENT = 20;
+  private readonly HEAD_HALF_MAX = 6;
+  private readonly MEASURE_HEIGHT = 120;
+  private readonly LINE_VERTICAL_SPACING = 20; // Espace entre les lignes
+
+  /**
+   * Calcule l'espacement minimum pour une valeur rythmique donnée.
+   */
+  private getMinSpacingForValue(v: number): number {
+    if (v >= 64) return 16;
+    if (v >= 32) return 20;
+    if (v >= 16) return 26;
+    if (v >= 8)  return 24;
+    return 20;
+  }
+
+  /**
+   * Calcule la largeur requise pour un temps (beat).
+   */
+  private calculateBeatWidth(beat: any): number {
+    const noteCount = beat?.notes?.length || 0;
+    if (noteCount <= 1) return 28 + 10 + this.HEAD_HALF_MAX;
+    
+    const spacing = Math.max(
+      ...beat.notes.map((n: any) => {
+        const base = this.getMinSpacingForValue(n.value);
+        return n.isRest ? base + 4 : base;
+      })
+    );
+    return 10 + 10 + this.HEAD_HALF_MAX + (noteCount - 1) * spacing + 8;
+  }
+
+  /**
+   * Calcule la largeur totale requise pour une mesure.
+   */
+  private calculateMeasureWidth(measure: Measure): number {
+    const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+    let width = 0;
+    
+    segments.forEach((seg: any, idx: number) => {
+      if (idx > 0 && seg.leadingSpace) width += this.SEPARATOR_WIDTH;
+      const beatsWidth = (seg.beats || []).reduce((acc: number, b: any) => acc + this.calculateBeatWidth(b), 0);
+      width += beatsWidth + this.INNER_PADDING_PER_SEGMENT;
+    });
+    
+    return Math.max(this.BASE_MEASURE_WIDTH, Math.ceil(width));
+  }
+
+  /**
+   * Calcule la mise en page (layout) des mesures en lignes.
+   */
+  private calculateLayout(measures: Measure[], maxWidth: number): RenderLine[] {
+    const lines: RenderLine[] = [];
+    let currentLineMeasures: Measure[] = [];
+    let currentLineWidth = 0;
+    let currentY = 0;
+
+    for (const measure of measures) {
+      const measureWidth = this.calculateMeasureWidth(measure);
+      
+      // Détection du saut de ligne
+      // 1. Manque de place (sauf si c'est la première mesure de la ligne)
+      const isOverflowing = currentLineMeasures.length > 0 && 
+                           (currentLineWidth + measureWidth) > maxWidth;
+      
+      // 2. Saut de ligne forcé (futur flag utilisateur)
+      const forceBreak = false; // measure.flags?.forceLineBreak;
+
+      if (isOverflowing || forceBreak) {
+        // Finaliser la ligne courante
+        lines.push({
+          measures: currentLineMeasures,
+          width: currentLineWidth,
+          height: this.MEASURE_HEIGHT,
+          startY: currentY
+        });
+
+        // Préparer la nouvelle ligne
+        currentLineMeasures = [];
+        currentLineWidth = 0;
+        currentY += this.MEASURE_HEIGHT + this.LINE_VERTICAL_SPACING;
+      }
+
+      currentLineMeasures.push(measure);
+      currentLineWidth += measureWidth;
+    }
+
+    // Ajouter la dernière ligne si elle contient des mesures
+    if (currentLineMeasures.length > 0) {
+      lines.push({
+        measures: currentLineMeasures,
+        width: currentLineWidth,
+        height: this.MEASURE_HEIGHT,
+        startY: currentY
+      });
+    }
+
+    return lines;
+  }
+
   /**
    * Rend une grille d'accords en élément SVG.
    * 
@@ -75,9 +188,9 @@ export class SVGRenderer {
   }
 
   private createSVG(grid: ChordGrid, stemsDirection: 'up' | 'down', options: RenderOptions): SVGElement {
-  const measuresPerLine = 4;
-  const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
-  const measureHeight = 120;
+    const measuresPerLine = 4;
+    const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
+    const measureHeight = 120;
 
     // DebugLogger.log('📐 Creating SVG layout', { 
     //   measuresPerLine, 
@@ -85,14 +198,14 @@ export class SVGRenderer {
     //   measureHeight 
     // });
 
-  // Pre-compute dynamic widths per measure based on rhythmic density
-  // (Time signature width factored into initial padding later)
-  const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-  const timeSigFontSize = 18;
-  const timeSigAvgCharFactor = 0.53; // further reduced for tighter spacing
-  const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
-  const baseLeftPadding = 10;
-  const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4; // minimal margin after metric
+    // Pre-compute dynamic widths per measure based on rhythmic density
+    // (Time signature width factored into initial padding later)
+    const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
+    const timeSigFontSize = 18;
+    const timeSigAvgCharFactor = 0.53; // further reduced for tighter spacing
+    const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
+    const baseLeftPadding = 10;
+    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4; // minimal margin after metric
     const separatorWidth = 12;
     const innerPaddingPerSegment = 20;
     const headHalfMax = 6; // for diamond
@@ -127,56 +240,40 @@ export class SVGRenderer {
       // Ensure a sensible minimum
       return Math.max(baseMeasureWidth, Math.ceil(width));
     };
-    const dynamicMeasureWidths = grid.measures.map(m => requiredMeasureWidth(m));
+    const dynamicMeasureWidths = grid.measures.map(m => this.calculateMeasureWidth(m));
 
     // Build linear positions honoring line breaks and available line width budget
-    let currentLine = 0;
-    let measuresInCurrentLine = 0;
+    const maxLineWidth = measuresPerLine * baseMeasureWidth; // budget per line (before margins)
+    const renderLines = this.calculateLayout(grid.measures, maxLineWidth);
+    this.resolveCrossLineTies(renderLines);
+
+    // Reconstruct measurePositions for compatibility with existing methods
     const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number, x?: number, y?: number}[] = [];
     let globalIndex = 0;
-    const maxLineWidth = measuresPerLine * baseMeasureWidth; // budget per line (before margins)
-    let currentLineWidth = 0;
-
-    grid.measures.forEach((measure, mi) => {
-      const mWidth = dynamicMeasureWidths[mi];
-
-      // wrap if adding this measure would exceed budget
-      if (measuresInCurrentLine > 0 && (currentLineWidth + mWidth) > maxLineWidth) {
-        // DebugLogger.log(`↵ Auto line break (${measuresInCurrentLine} measures)`);
-        currentLine++;
-        measuresInCurrentLine = 0;
-        currentLineWidth = 0;
-      }
-
-      // Always render the measure first
-      const isLineStart = measuresInCurrentLine === 0;
-      // mark on the measure so MeasureRenderer can draw a left bar when first in line
-      (measure as any).__isLineStart = isLineStart;
-      measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++, width: mWidth });
-      measuresInCurrentLine++;
-      currentLineWidth += mWidth;
-
-      // Then, if this measure is marked as an explicit line break, move to next line
-      if ((measure as any).isLineBreak) {
-        // DebugLogger.log('↵ Line break detected');
-        currentLine++;
-        measuresInCurrentLine = 0;
-        currentLineWidth = 0;
-      }
+    
+    renderLines.forEach((line, lineIndex) => {
+        line.measures.forEach((measure, posInLine) => {
+            // Mark line start for MeasureRenderer
+            (measure as any).__isLineStart = (posInLine === 0);
+            
+            measurePositions.push({
+                measure,
+                lineIndex,
+                posInLine,
+                globalIndex: globalIndex++,
+                width: this.calculateMeasureWidth(measure)
+            });
+        });
     });
 
     // DebugLogger.log('📊 Layout calculated', { 
-    //   totalLines: currentLine + 1, 
-    //   totalMeasures: measurePositions.length 
+    //   totalLines: renderLines.length, 
+    //   totalMeasures: grid.measures.length 
     // });
 
-    const lines = currentLine + 1;
+    const lines = renderLines.length;
     // Compute SVG width as max line accumulation plus margins
-    const linesWidths: number[] = new Array(lines).fill(0);
-    measurePositions.forEach(p => {
-      linesWidths[p.lineIndex] += p.width;
-    });
-    const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
+    const width = Math.max(...renderLines.map(l => l.width), baseMeasureWidth) + 60;
     const height = lines * (measureHeight + 20) + 20;
 
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -204,17 +301,10 @@ export class SVGRenderer {
     const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, 'bold');
     svg.appendChild(timeText);
     (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
-    placeAndSizeManager.registerElement('time-signature', {
-      x: baseLeftPadding,
-      y: timeSigBaselineY - timeSigFontSize,
-      width: timeSigWidthEstimate,
-      height: timeSigFontSize + 4
-    }, 0, { 
-      text: timeSignatureString, 
-      widthEstimate: timeSigWidthEstimate,
-      exactX: baseLeftPadding + timeSigWidthEstimate / 2,
-      exactY: timeSigBaselineY
-    });
+    
+    // Note: Time signature is registered in the first line context later if needed, 
+    // but since it's static at top left, we can just draw it.
+    // If we want it to collide properly on line 1, we should register it inside the loop for line 1.
 
   // DebugLogger.log('🎼 Rendering measures');
     // Prepare analyzed measures for beam rendering
@@ -278,74 +368,116 @@ export class SVGRenderer {
     }
 
   // Use dynamic padding instead of fixed 40 to prevent overlap with multi-digit time signatures
-  const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
+  // const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
     
-    measurePositions.forEach((mp) => {
-      const x = lineAccumulated[mp.lineIndex];
-      const y = mp.lineIndex * (measureHeight + 20) + 20;
-      // Store actual x,y in measurePositions for later use (volta brackets, etc.)
-      mp.x = x;
-      mp.y = y;
-      const {measure, lineIndex, width: mWidth, globalIndex} = mp;
-      // Build a per-measure subset for MeasureRenderer: only segmentIndex:noteIndex entries in this measure
-      let perMeasureBeamSet: Set<string> | undefined;
-      if (level1BeamSet) {
-        perMeasureBeamSet = new Set<string>();
-        analyzedMeasures[globalIndex]?.beamGroups?.forEach((g: any) => {
-          if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
-            g.notes.forEach((r: any) => {
-              const key = `${r.segmentIndex}:${r.noteIndex}`;
-              perMeasureBeamSet!.add(key);
-            });
-          }
-        });
-      }
-  // Toujours forcer 'up' par défaut si non précisé
-  const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
-  const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir ?? 'up', options.displayRepeatSymbol ?? false);
-  mr.drawMeasure(svg, globalIndex, notePositions, grid);
+    // ========== ARCHITECTURE LINE-SCOPED ==========
+    // On traite chaque ligne comme un univers clos pour les collisions
+    
+    let globalMeasureIndex = 0;
 
-      // Draw analyzer beams overlay
-      if (analyzedMeasures[globalIndex]) {
-        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any, stemsDir);
-      }
-      lineAccumulated[lineIndex] += mWidth;
+    renderLines.forEach((line, lineIndex) => {
+        // 1. RESET DU CONTEXTE SPATIAL
+        placeAndSizeManager.clearAll();
+        
+        // Register time signature on first line to avoid collision
+        if (lineIndex === 0) {
+             placeAndSizeManager.registerElement('time-signature', {
+              x: baseLeftPadding,
+              y: timeSigBaselineY - timeSigFontSize,
+              width: timeSigWidthEstimate,
+              height: timeSigFontSize + 4
+            }, 0, { 
+              text: timeSignatureString, 
+              widthEstimate: timeSigWidthEstimate,
+              exactX: baseLeftPadding + timeSigWidthEstimate / 2,
+              exactY: timeSigBaselineY
+            });
+        }
+
+        const lineY = line.startY + 20; // Marge top
+        let currentX = (svg as any).__dynamicLineStartPadding || 40;
+
+        // 2. CONSTRUCTION DES POSITIONS LOCALES
+        const lineMeasurePositions: any[] = [];
+        
+        line.measures.forEach((measure, posInLine) => {
+            const mWidth = this.calculateMeasureWidth(measure);
+            (measure as any).__isLineStart = (posInLine === 0);
+            
+            lineMeasurePositions.push({
+                measure,
+                lineIndex,
+                posInLine,
+                globalIndex: globalMeasureIndex++,
+                width: mWidth,
+                x: currentX,
+                y: lineY
+            });
+            
+            currentX += mWidth;
+        });
+
+        // 3. PLANIFICATION & RÉSOLUTION LOCALE
+        this.planBarlines(lineMeasurePositions, placeAndSizeManager);
+        this.planVoltaText(lineMeasurePositions, placeAndSizeManager);
+        placeAndSizeManager.resolveAllCollisions();
+
+        const stemsDir = stemsDirection === 'down' ? 'down' : 'up';
+
+        // 4. RENDU DES MESURES
+        lineMeasurePositions.forEach((mp) => {
+            const {measure, globalIndex, width: mWidth, x, y} = mp;
+            
+            // Préparation des beams (logique existante)
+            let perMeasureBeamSet: Set<string> | undefined;
+            if (level1BeamSet) {
+                perMeasureBeamSet = new Set<string>();
+                analyzedMeasures[globalIndex]?.beamGroups?.forEach((g: any) => {
+                    if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+                        g.notes.forEach((r: any) => {
+                            perMeasureBeamSet!.add(`${r.segmentIndex}:${r.noteIndex}`);
+                        });
+                    }
+                });
+            }
+
+            const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir ?? 'up', options.displayRepeatSymbol ?? false);
+            mr.drawMeasure(svg, globalIndex, notePositions, grid);
+
+            // Draw analyzer beams overlay
+            if (analyzedMeasures[globalIndex]) {
+                drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any, stemsDir);
+            }
+        });
+
+        // 5. DESSIN DES ÉLÉMENTS DE DÉCORATION LOCAUX
+        this.drawVoltaBrackets(svg, lineMeasurePositions, placeAndSizeManager);
+        
+        // Filtrer les notes de la ligne courante pour les méthodes suivantes
+        const currentLineNotes = notePositions.filter(n => 
+            lineMeasurePositions.some(mp => mp.globalIndex === n.measureIndex)
+        );
+
+        const allowedMeasureIndices = new Set(lineMeasurePositions.map(mp => mp.globalIndex));
+
+        // Enregistrement des Pick-Strokes (Ligne courante uniquement)
+        this.preRegisterPickStrokes(grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+        
+        // Dessin des Liaisons (Ligne courante uniquement)
+        this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
+
+        // Dessin des Pick-Strokes (Ligne courante uniquement)
+        this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
     });
 
-    // Draw volta brackets (after all measures are rendered)
-    this.drawVoltaBrackets(svg, measurePositions, placeAndSizeManager);
-
-  // DebugLogger supprimé
-  
-  // draw ties using collected notePositions and the TieManager for cross-line ties
-  this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection);
-
-    // Draw pick strokes (mediator) after notes and ties
-    this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options);
-
     // Adjust viewBox based on actual rendered elements bounds (handles repeat counts, etc.)
-    const bounds = placeAndSizeManager.getGlobalBounds();
-    if (bounds) {
-      // Uniform margins on all sides now that all elements (including barlines) are registered
-      const margin = 10;
-      
-      const adjustedX = Math.max(0, bounds.minX - margin);
-      const adjustedY = Math.max(0, bounds.minY - margin);
-      const adjustedWidth = bounds.maxX - bounds.minX + margin * 2;
-      const adjustedHeight = bounds.maxY - bounds.minY + margin * 2;
-      
-      svg.setAttribute('viewBox', `${adjustedX} ${adjustedY} ${adjustedWidth} ${adjustedHeight}`);
-      
-      // Also update background rect to match new viewBox
-      const bg = svg.querySelector('rect[fill="white"]');
-      if (bg) {
-        bg.setAttribute('x', adjustedX.toString());
-        bg.setAttribute('y', adjustedY.toString());
-        bg.setAttribute('width', adjustedWidth.toString());
-        bg.setAttribute('height', adjustedHeight.toString());
-      }
-    }
-
+    const bounds = placeAndSizeManager.getGlobalBounds(); // Attention: ne contient que la dernière ligne !
+    // TODO: Il faudra calculer les bounds globaux différemment ou accumuler
+    
+    // Pour l'instant on garde le width/height calculé par le layout
+    // const margin = 10;
+    // svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    
     return svg;
   }
 
@@ -394,7 +526,8 @@ export class SVGRenderer {
     tieManager: TieManager,
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
     placeAndSizeManager?: PlaceAndSizeManager,
-    stemsDirection?: 'up' | 'down'
+    stemsDirection?: 'up' | 'down',
+    allowedMeasureIndices?: Set<number>
   ) {
   // DebugLogger supprimé
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
@@ -521,7 +654,7 @@ export class SVGRenderer {
       
       // Position de la courbe selon la direction des hampes
       // Hampes UP : liaisons EN DESSOUS des notes (controlY plus grand)
-      // Hampes DOWN : liaisons AU DESSUS des notes (controlY plus petit)
+      // Hampes DOWN : liaisons AU-DESSUS des notes (controlY plus petit)
       let controlY: number;
       if (orientation === 'up') {
         // Liaisons en dessous
@@ -529,6 +662,67 @@ export class SVGRenderer {
       } else {
         // Liaisons au-dessus (comportement original)
         controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      }
+      
+      // Éviter les collisions avec les pick-strokes (layer decoration)
+      // Scanner tous les pick-strokes dans la zone horizontale ET verticale pertinente
+      if (placeAndSizeManager) {
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const decorationElements = placeAndSizeManager.getElements().filter(e => e.type === 'pick-stroke');
+        
+        // Déterminer la zone verticale où la liaison sera tracée
+        const tieReferenceY = orientation === 'up' ? Math.max(startY, endY) : Math.min(startY, endY);
+        
+        // Trouver les limites verticales des pick-strokes dans cette zone
+        let decorationTop = Infinity;
+        let decorationBottom = -Infinity;
+        let hasRelevantPickStroke = false;
+        
+        decorationElements.forEach((elem) => {
+          const db = elem.bbox;
+          
+          // Vérifier si le pick-stroke est dans la zone horizontale de la tie
+          const horizOverlap = db.x < maxX && (db.x + db.width) > minX;
+          if (!horizOverlap) return;
+          
+          // Vérifier si le pick-stroke est dans la bonne zone verticale
+          // - Pour orientation 'up' (liaisons en dessous) : pick-stroke doit être en dessous des notes
+          // - Pour orientation 'down' (liaisons au-dessus) : pick-stroke doit être au-dessus des notes
+          const pickStrokeCenterY = db.y + db.height / 2;
+          
+          // Plus besoin de MAX_VERTICAL_DISTANCE car PlaceAndSizeManager est scopé à la ligne
+          const isInRelevantVerticalZone = orientation === 'up' 
+            ? (pickStrokeCenterY > tieReferenceY) // pick-stroke en dessous
+            : (pickStrokeCenterY < tieReferenceY); // pick-stroke au-dessus
+          
+          if (isInRelevantVerticalZone) {
+            decorationTop = Math.min(decorationTop, db.y);
+            decorationBottom = Math.max(decorationBottom, db.y + db.height);
+            hasRelevantPickStroke = true;
+          }
+        });
+        
+        // Ajuster controlY si conflit avec un pick-stroke pertinent
+        if (hasRelevantPickStroke && decorationTop !== Infinity) {
+          const clearance = 4; // Marge de sécurité
+          const oldControlY = controlY;
+          if (orientation === 'up') {
+            // Liaisons en dessous : si controlY entre dans la zone decoration, repousser vers le bas
+            if (controlY < decorationBottom + clearance) {
+              controlY = decorationBottom + clearance;
+            }
+          } else {
+            // Liaisons au-dessus : si controlY entre dans la zone decoration, repousser vers le haut
+            if (controlY > decorationTop - clearance) {
+              controlY = decorationTop - clearance;
+            }
+          }
+          console.log(`controlY adjusted: ${oldControlY.toFixed(2)} → ${controlY.toFixed(2)}`);
+        } else {
+          console.log('No relevant pick-stroke found, controlY unchanged');
+        }
+        console.log('=================\n');
       }
       
       // Collision avoidance: adjust curve if any dot overlaps
@@ -604,6 +798,9 @@ export class SVGRenderer {
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
+
+      // FILTRE: Si on ne traite qu'une ligne spécifique, ignorer les notes des autres mesures
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(cur.measureIndex)) continue;
 
       // compute visual anchor points (prefer head bounds when available)
       const orientation = inferStemsOrientation(cur);
@@ -766,6 +963,244 @@ export class SVGRenderer {
   }
 
   /**
+   * PHASE 1: Planifie les positions des barlines sans les dessiner.
+   * 
+   * @param measurePositions - Array of measure positions
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  private planBarlines(
+    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager
+  ): void {
+    measurePositions.forEach((mp, i) => {
+      if (mp.x === undefined || mp.y === undefined) return;
+      
+      const measure = mp.measure as any;
+      const leftBarX = mp.x;
+      const rightBarX = mp.x + mp.width - 2;
+      const y = mp.y;
+      const height = 120;
+      
+      // Plan left barline (for first measure or repeat-start)
+      if (i === 0 || measure.__isLineStart || measure.isRepeatStart) {
+        const barlineType = measure.isRepeatStart ? 'repeat-start' : 'normal';
+        placeAndSizeManager.planElement('barline', {
+          x: leftBarX - 3,
+          y: y,
+          width: 6,
+          height: height
+        }, 100, // High priority - barlines are fixed
+        { exactX: leftBarX, measureIndex: mp.globalIndex, side: 'left', type: barlineType },
+        { exactX: leftBarX, measureIndex: mp.globalIndex, side: 'left', type: barlineType });
+      }
+      
+      // Plan right barline (always present)
+      let barlineType = 'normal';
+      if (measure.barline === ':||' || measure.barline === 'repeat-end') {
+        barlineType = 'repeat-end';
+      } else if (measure.barline === '||') {
+        barlineType = 'final-double';
+      }
+      
+      placeAndSizeManager.planElement('barline', {
+        x: rightBarX - 3,
+        y: y,
+        width: 6,
+        height: height
+      }, 100, // High priority - barlines are fixed
+      { exactX: rightBarX, measureIndex: mp.globalIndex, side: 'right', type: barlineType },
+      { exactX: rightBarX, measureIndex: mp.globalIndex, side: 'right', type: barlineType });
+    });
+  }
+
+  /**
+   * PHASE 1: Planifie les positions des volta text sans les dessiner.
+   * 
+   * @param measurePositions - Array of measure positions with x, y coordinates
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  private planVoltaText(
+    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager
+  ): void {
+    // Find all volta starts and plan text positions
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure as any;
+      
+      if (measure.voltaStart) {
+        const startMP = measurePositions[i];
+        
+        // Only process if x, y are defined
+        if (startMP.x !== undefined && startMP.y !== undefined) {
+          // Calculate startX - position de la barline de gauche du volta
+          let startX: number;
+          if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+            // Barline droite de la mesure précédente
+            startX = measurePositions[i - 1].x! + measurePositions[i - 1].width - 2;
+          } else {
+            // Barline gauche de la première mesure de la ligne
+            startX = startMP.x!;
+          }
+          
+          const y = startMP.y;
+          const textSize = 14;
+          const textOffset = 5;
+          const voltaInfo = measure.voltaStart;
+          
+          // Calculate initial text position
+          const initialTextX = startX + textOffset;
+          const textY = y + textSize + 2;
+          const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
+          
+          const initialBBox = {
+            x: initialTextX,
+            y: textY - textSize,
+            width: estimatedTextWidth,
+            height: textSize
+          };
+          
+          // Plan with lower priority than barlines (will be adjusted if collision)
+          placeAndSizeManager.planElement(
+            'volta-text',
+            initialBBox,
+            50, // Medium priority - can be adjusted
+            {
+              text: voltaInfo.text,
+              x: initialTextX,
+              y: textY,
+              fontSize: textSize,
+              measureIndex: i
+            },
+            { voltaInfo, measureIndex: i }
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Pré-enregistre les positions des barlines dans PlaceAndSizeManager.
+   * Cela permet aux volta text de détecter et éviter les collisions avec les barlines.
+   * 
+   * @param measurePositions - Array of measure positions
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  private preRegisterBarlines(
+    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager
+  ): void {
+    measurePositions.forEach((mp, i) => {
+      if (mp.x === undefined || mp.y === undefined) return;
+      
+      const measure = mp.measure as any;
+      const leftBarX = mp.x;
+      const rightBarX = mp.x + mp.width - 2;
+      const y = mp.y;
+      const height = 120;
+      
+      // Register left barline (for first measure or repeat-start)
+      if (i === 0 || measure.__isLineStart || measure.isRepeatStart) {
+        const barlineType = measure.isRepeatStart ? 'repeat-start' : 'normal';
+        placeAndSizeManager.registerElement('barline', {
+          x: leftBarX - 3,
+          y: y,
+          width: 6,
+          height: height
+        }, 0, { exactX: leftBarX, measureIndex: mp.globalIndex, side: 'left', type: barlineType });
+      }
+      
+      // Register right barline (always present)
+      let barlineType = 'normal';
+      if (measure.barline === ':||' || measure.barline === 'repeat-end') {
+        barlineType = 'repeat-end';
+      } else if (measure.barline === '||') {
+        barlineType = 'final-double';
+      }
+      
+      placeAndSizeManager.registerElement('barline', {
+        x: rightBarX - 3,
+        y: y,
+        width: 6,
+        height: height
+      }, 0, { exactX: rightBarX, measureIndex: mp.globalIndex, side: 'right', type: barlineType });
+    });
+  }
+
+  /**
+   * PHASE 1: Planifie les positions des volta text sans les dessiner.
+   * 
+   * @param measurePositions - Array of measure positions with x, y coordinates
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  private preRegisterVoltaTextPositions(
+    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager
+  ): void {
+    // Barlines are already pre-registered, so findFreePosition will detect them
+
+    // Find all volta starts and calculate text positions
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure as any;
+      
+      if (measure.voltaStart) {
+        const startMP = measurePositions[i];
+        
+        // Only process if x, y are defined
+        if (startMP.x !== undefined && startMP.y !== undefined) {
+          // Calculate startX - position de la barline de gauche du volta
+          let startX: number;
+          if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+            // Barline droite de la mesure précédente
+            startX = measurePositions[i - 1].x! + measurePositions[i - 1].width - 2;
+          } else {
+            // Barline gauche de la première mesure de la ligne
+            startX = startMP.x!;
+          }
+          
+          const y = startMP.y;
+          const textSize = 14;
+          const textOffset = 5;
+          const voltaInfo = measure.voltaStart;
+          
+          // Calculate initial text position
+          const initialTextX = startX + textOffset;
+          const textY = y + textSize + 2;
+          const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
+          
+          const initialBBox = {
+            x: initialTextX,
+            y: textY - textSize,
+            width: estimatedTextWidth,
+            height: textSize
+          };
+          
+          // Use PlaceAndSizeManager to find a collision-free position
+          // The pre-registered barlines will be detected automatically
+          const adjustedBBox = placeAndSizeManager.findFreePosition(
+            initialBBox,
+            'volta-text',      // Type of element (for layer-based collision checking)
+            'horizontal',       // Adjust horizontally only
+            ['volta-text', 'volta-bracket'],  // Exclude self-collision
+            10                  // Max 10 attempts
+          );
+          
+          const finalBBox = adjustedBBox || initialBBox;
+          
+          // Register in collision manager (priority 5 = movable)
+          // Volta-text has horizontalMargin=3px (defined in getHorizontalMargin)
+          placeAndSizeManager.registerElement('volta-text', finalBBox, 5, {
+            text: voltaInfo.text,
+            exactX: finalBBox.x + estimatedTextWidth / 2,
+            exactY: textY - textSize / 2
+          });
+        }
+      }
+    }
+  }
+
+  /**
    * Draw volta brackets above measures.
    * 
    * Scans all measures for voltaStart/voltaEnd properties and draws brackets
@@ -854,7 +1289,6 @@ export class SVGRenderer {
           const y = startBarline?.y ?? startMP.y;
           const hookHeight = 15; // Height of descending hooks
           const textSize = 14; // Font size for volta numbers
-          const estimatedTextHeight = textSize + 4; // Text height with some padding
           
           const voltaInfo = measure.voltaStart;
           
@@ -890,14 +1324,22 @@ export class SVGRenderer {
             svg.appendChild(rightHook);
           }
           
-          // Draw text label BELOW the bracket line (instead of above)
-          // Check if the start barline is a repeat-start to add extra spacing
-          const isAfterRepeatStart = startBarline?.type === 'repeat-start';
-          const textOffset = isAfterRepeatStart ? 15 : 5; // More space after ||: to avoid collision with dots
+          // Draw text label BELOW the bracket line
+          // Retrieve the adjusted position from PlannedElements
+          const textY = y + textSize + 2;
+          
+          // Find the planned volta-text element for this volta
+          const plannedTexts = placeAndSizeManager.getPlannedElements().filter(el => 
+            el.type === 'volta-text' && 
+            el.renderData?.measureIndex === i
+          );
+          
+          const plannedText = plannedTexts[0];
+          const textX = plannedText?.adjustedBBox?.x ?? (startX + 5); // Use adjusted position or fallback
           
           const voltaText = document.createElementNS(SVG_NS, 'text');
-          voltaText.setAttribute('x', (startX + textOffset).toString());
-          voltaText.setAttribute('y', (y + textSize + 2).toString()); // BELOW: y + textSize + gap
+          voltaText.setAttribute('x', textX.toString());
+          voltaText.setAttribute('y', textY.toString());
           voltaText.setAttribute('font-family', 'Arial, sans-serif');
           voltaText.setAttribute('font-size', `${textSize}px`);
           voltaText.setAttribute('font-weight', 'normal');
@@ -906,8 +1348,19 @@ export class SVGRenderer {
           voltaText.textContent = voltaInfo.text;
           svg.appendChild(voltaText);
           
-          // Register in collision manager with proper dimensions
-          // Volta is above staff: line at y, hooks descend DOWN, text is BELOW the line
+          // Register volta-text in collision manager after drawing
+          if (plannedText?.adjustedBBox) {
+            placeAndSizeManager.registerElement('volta-text', plannedText.adjustedBBox, 5, {
+              text: voltaInfo.text,
+              exactX: plannedText.adjustedBBox.x,
+              exactY: textY
+            });
+          }
+          
+          // Register volta bracket (the graphical bracket, not the text) in collision manager
+          // Volta is above staff: line at y, hooks descend DOWN
+          const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
+          const estimatedTextHeight = textSize + 4;
           placeAndSizeManager.registerElement('volta-bracket', {
             x: startX,
             y: y, // Top is the horizontal line
@@ -925,6 +1378,148 @@ export class SVGRenderer {
   }
 
   /**
+   * Pré-enregistrement des pick-strokes dans PlaceAndSizeManager SANS les dessiner.
+   * Cette méthode doit être appelée AVANT detectAndDrawTies() pour que les ties
+   * puissent détecter et éviter les pick-strokes via le système de layers.
+   * 
+   * Calcule les mêmes positions que drawPickStrokes mais enregistre uniquement
+   * les bounding boxes dans PlaceAndSizeManager.
+   */
+  private preRegisterPickStrokes(
+    grid: ChordGrid,
+    notePositions: Array<{ x: number; y: number; measureIndex: number; chordIndex: number; beatIndex: number; noteIndex: number; tieEnd?: boolean; tieFromVoid?: boolean; value?: number; stemTopY?: number; stemBottomY?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager,
+    stemsDirection: 'up' | 'down',
+    options: RenderOptions,
+    allowedMeasureIndices?: Set<number>
+  ) {
+    const mode = options.pickStrokes;
+    if (!mode || mode === 'off') return;
+
+    // 1) Déterminer le débit (8 ou 16) sur l'ENSEMBLE du bloc si auto
+    const forcedStep = mode === '8' ? 8 : mode === '16' ? 16 : undefined;
+    const step = forcedStep ?? this.detectGlobalSubdivision(grid);
+
+    // 2) Construire la timeline (même logique que drawPickStrokes)
+    interface TimelineSlot {
+      pickDirection: 'down' | 'up';
+      subdivisionIndex: number;
+    }
+    interface NoteOnTimeline {
+      measureIndex: number;
+      chordIndex: number;
+      beatIndex: number;
+      noteIndex: number;
+      subdivisionStart: number;
+      isAttack: boolean;
+    }
+
+    const timeline: TimelineSlot[] = [];
+    const notesOnTimeline: NoteOnTimeline[] = [];
+    let currentSubdivision = 0;
+
+    // Parcourir toutes les mesures/segments/beats/notes pour construire la timeline
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            // Calculer combien de subdivisions occupe cette note
+            const noteDuration = note.value; // 1, 2, 4, 8, 16, 32, 64
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            const subdivisionCount = Math.round((step / noteDuration) * dottedMultiplier);
+            
+            // Enregistrer cette note dans la timeline
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack
+            });
+            
+            // Avancer la timeline
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+
+    // 3) Assigner les coups de médiator à chaque position de la timeline
+    let isDown = true;
+    for (let i = 0; i < currentSubdivision; i++) {
+      timeline.push({
+        pickDirection: isDown ? 'down' : 'up',
+        subdivisionIndex: i
+      });
+      isDown = !isDown;
+    }
+
+    // 4) Identifier les attaques réelles avec leur coup de médiator
+    const attacksWithPicks = notesOnTimeline
+      .filter(n => n.isAttack)
+      .map(n => ({
+        measureIndex: n.measureIndex,
+        chordIndex: n.chordIndex,
+        beatIndex: n.beatIndex,
+        noteIndex: n.noteIndex,
+        pickDirection: timeline[n.subdivisionStart]?.pickDirection || 'down'
+      }))
+
+    // 4) Calculer les dimensions des symboles (mêmes constantes que drawPickStrokes)
+    const UPBOW_W = 24.2;
+    const UPBOW_H = 39.0;
+    const DOWNBOW_W = 32;
+    const DOWNBOW_H = 33;
+    const TARGET_H = 12;
+    const MARGIN = 3;
+    const NOTE_HEAD_HALF_HEIGHT = 5;
+
+    // 5) Enregistrer les bounding boxes sans dessiner
+    attacksWithPicks.forEach(attackInfo => {
+      // FILTRE: Si on ne traite qu'une ligne spécifique, ignorer les autres mesures
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(attackInfo.measureIndex)) return;
+
+      const notePos = notePositions.find(np =>
+        np.measureIndex === attackInfo.measureIndex &&
+        np.chordIndex === attackInfo.chordIndex &&
+        np.beatIndex === attackInfo.beatIndex &&
+        np.noteIndex === attackInfo.noteIndex
+      );
+      
+      if (notePos) {
+        const hasStem = notePos.stemTopY !== undefined && notePos.stemBottomY !== undefined;
+        const stemDirection = hasStem && notePos.stemTopY! < notePos.y ? 'up' : 'down';
+        const placeAbove = stemDirection === 'down';
+        
+        const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+        
+        const isDown = attackInfo.pickDirection === 'down';
+        const oh = isDown ? DOWNBOW_H : UPBOW_H;
+        const ow = isDown ? DOWNBOW_W : UPBOW_W;
+        const scale = TARGET_H / oh;
+        const tw = ow * scale;
+        const th = oh * scale;
+        
+        const finalY = placeAbove ? (noteHeadEdgeY - MARGIN - th) : (noteHeadEdgeY + MARGIN);
+        const finalX = notePos.x - tw / 2;
+        
+        // Enregistrer uniquement (pas de dessin)
+        const bbox = { x: finalX, y: finalY, width: tw, height: th };
+        placeAndSizeManager.registerElement('pick-stroke', bbox, 7, {
+          direction: isDown ? 'down' : 'up',
+          exactX: notePos.x,
+          exactY: placeAbove ? (finalY + th) : finalY,
+        });
+      }
+    });
+  }
+
+  /**
    * Rendu des coups de médiator (down/up) utilisant les paths fournis par l'utilisateur.
    * - Alternance stricte globale (Down, Up, Down, ...)
    * - Débit détecté sur l'ENSEMBLE du bloc (auto) ou forcé (8/16)
@@ -937,7 +1532,8 @@ export class SVGRenderer {
     notePositions: Array<{ x: number; y: number; measureIndex: number; chordIndex: number; beatIndex: number; noteIndex: number; tieEnd?: boolean; tieFromVoid?: boolean; value?: number; stemTopY?: number; stemBottomY?: number }>,
     placeAndSizeManager: PlaceAndSizeManager,
     stemsDirection: 'up' | 'down',
-    options: RenderOptions
+    options: RenderOptions,
+    allowedMeasureIndices?: Set<number>
   ) {
     const mode = options.pickStrokes;
     if (!mode || mode === 'off') return;
@@ -1040,49 +1636,15 @@ export class SVGRenderer {
     const TARGET_H = 12; // ajustable
     const MARGIN = 3;    // écart par rapport à la tête
 
-    // 5) Placement selon hampes
-    const above = stemsDirection === 'down';
+    // 5) Les pick-strokes restent à position fixe près des notes
+    //    C'est aux autres éléments (chords, tuplets) de les éviter via le layer system
 
-    // 6) PASSE 1: Calculer le décalage vertical maximal nécessaire (offset depuis chaque note)
-    // Scanner tous les symboles et trouver le décalage qui évite toutes les collisions
-    let maxOffset = 0;
-
-    attacksWithPicks.forEach(attackInfo => {
-      const notePos = notePositions.find(np =>
-        np.measureIndex === attackInfo.measureIndex &&
-        np.chordIndex === attackInfo.chordIndex &&
-        np.beatIndex === attackInfo.beatIndex &&
-        np.noteIndex === attackInfo.noteIndex
-      );
-      
-      if (!notePos) return;
-
-      const isDown = attackInfo.pickDirection === 'down';
-      const ow = isDown ? DOWNBOW_W : UPBOW_W;
-      const oh = isDown ? DOWNBOW_H : UPBOW_H;
-      const scale = TARGET_H / oh;
-      const tw = ow * scale;
-      const th = oh * scale;
-
-      // Position désirée depuis la note
-      const desiredY = above ? (notePos.y - MARGIN - th) : (notePos.y + MARGIN);
-      const desiredX = notePos.x - tw / 2;
-
-      // Tester collision à cette position
-      const bbox = { x: desiredX, y: desiredY, width: tw, height: th };
-      const adjusted = placeAndSizeManager.findFreePosition(bbox, 'vertical', [], 20) || bbox;
-
-      // Calculer le décalage réel par rapport à la position désirée
-      const offset = Math.abs(adjusted.y - desiredY);
-      maxOffset = Math.max(maxOffset, offset);
-    });
-
-    // PASSE 2: Dessiner tous les symboles avec le même offset depuis leur note respective
+    // Fonction de dessin des pick-strokes à position fixe
     const drawSymbol = (
       isDown: boolean,
       anchorX: number,
-      anchorY: number,
-      verticalOffset: number
+      noteHeadEdgeY: number,  // Y du bord de la tête de note (haut ou bas selon stems)
+      placeAbove: boolean
     ) => {
       const d = isDown ? DOWNBOW_PATH : UPBOW_PATH;
       const ow = isDown ? DOWNBOW_W : UPBOW_W;
@@ -1094,9 +1656,8 @@ export class SVGRenderer {
       const tw = ow * scale;
       const th = oh * scale;
 
-      // Appliquer le décalage uniforme depuis la position de la note
-      const baseY = above ? (anchorY - MARGIN - th) : (anchorY + MARGIN);
-      const finalY = above ? (baseY - verticalOffset) : (baseY + verticalOffset);
+      // Position fixe - pas de décalage (verticalOffset supprimé)
+      const finalY = placeAbove ? (noteHeadEdgeY - MARGIN - th) : (noteHeadEdgeY + MARGIN);
       const finalX = anchorX - tw / 2;
 
       const translateX = finalX - origX * scale;
@@ -1116,12 +1677,15 @@ export class SVGRenderer {
       placeAndSizeManager.registerElement('pick-stroke', bbox, 7, {
         direction: isDown ? 'down' : 'up',
         exactX: anchorX,
-        exactY: above ? (finalY + th) : finalY,
+        exactY: placeAbove ? (finalY + th) : finalY,
       });
     };
 
-    // 7) Rendu final avec offset uniforme depuis chaque note
+    // 6) Rendu des pick-strokes à position fixe
     attacksWithPicks.forEach(attackInfo => {
+      // FILTRE: Si on ne traite qu'une ligne spécifique, ignorer les autres mesures
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(attackInfo.measureIndex)) return;
+
       const notePos = notePositions.find(np =>
         np.measureIndex === attackInfo.measureIndex &&
         np.chordIndex === attackInfo.chordIndex &&
@@ -1130,8 +1694,19 @@ export class SVGRenderer {
       );
       
       if (notePos) {
+        // Déterminer la direction de la hampe pour CETTE note spécifique
+        const hasStem = notePos.stemTopY !== undefined && notePos.stemBottomY !== undefined;
+        const stemDirection = hasStem && notePos.stemTopY! < notePos.y ? 'up' : 'down';
+        const placeAbove = stemDirection === 'down'; // stems-down → pick au-dessus
+        
+        // Calculer le bord de la tête de note (haut ou bas selon direction de hampe)
+        const NOTE_HEAD_HALF_HEIGHT = 5;
+        const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+        
         const isDown = attackInfo.pickDirection === 'down';
-        drawSymbol(isDown, notePos.x, notePos.y, maxOffset);
+        drawSymbol(isDown, notePos.x, noteHeadEdgeY, placeAbove);
       }
     });
   }
@@ -1181,4 +1756,44 @@ export class SVGRenderer {
     return hasSixteenth ? 16 : 8;
   }
 
+  /**
+   * Résout les liaisons qui traversent les lignes (cross-line ties).
+   * Marque les notes avec tieToVoid/tieFromVoid pour un rendu correct ligne par ligne.
+   */
+  private resolveCrossLineTies(renderLines: RenderLine[]) {
+    // 1. Construire une liste plate de toutes les notes avec leur position (ligne)
+    const allNotes: { note: any, lineIndex: number }[] = [];
+    
+    renderLines.forEach((line, lineIndex) => {
+        line.measures.forEach((measure) => {
+            const segments = measure.chordSegments || [{beats: measure.beats}];
+            segments.forEach((seg: any) => {
+                seg.beats.forEach((beat: any) => {
+                    beat.notes.forEach((note: any) => {
+                        allNotes.push({ note, lineIndex });
+                    });
+                });
+            });
+        });
+    });
+
+    // 2. Parcourir pour lier start -> end
+    for (let i = 0; i < allNotes.length; i++) {
+        const current = allNotes[i];
+        if (current.note.tieStart) {
+            // Chercher le prochain tieEnd
+            for (let j = i + 1; j < allNotes.length; j++) {
+                const target = allNotes[j];
+                if (target.note.tieEnd) {
+                    // Trouvé ! Vérifier si changement de ligne
+                    if (current.lineIndex !== target.lineIndex) {
+                        current.note.tieToVoid = true;
+                        target.note.tieFromVoid = true;
+                    }
+                    break; // On a trouvé la cible, on arrête de chercher pour ce tieStart
+                }
+            }
+        }
+    }
+  }
 }
