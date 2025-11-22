@@ -76,7 +76,8 @@ export default class ChordGridPlugin extends Plugin {
           const svg = renderer.render(grid, {
             stemsDirection: result.stemsDirection,
             displayRepeatSymbol: result.displayRepeatSymbol,
-            pickStrokes: result.picksMode
+            pickStrokes: result.picksMode,
+            measuresPerLine: result.measuresPerLine
           });
           el.appendChild(svg);
         } catch (err) {

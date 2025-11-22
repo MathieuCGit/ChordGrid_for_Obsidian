@@ -44,8 +44,8 @@ export interface RenderOptions {
   displayRepeatSymbol?: boolean;
   /** Mode des coups de médiator ('off', 'auto', '8', '16'). Par défaut 'off'. */
   pickStrokes?: 'off' | 'auto' | '8' | '16';
-  /** Mode layout manuel : respecte strictement les retours à la ligne du texte et compresse si nécessaire. */
-  manualLayout?: boolean;
+  /** Nombre de mesures par ligne (force le layout). Si non spécifié, utilise le mode automatique. */
+  measuresPerLine?: number;
 }
 
 /**
@@ -69,6 +69,10 @@ export class SVGRenderer {
   private readonly HEAD_HALF_MAX = 6;
   private readonly MEASURE_HEIGHT = 120;
   private readonly LINE_VERTICAL_SPACING = 20; // Espace entre les lignes
+  
+  // Limites d'espacement dynamique pour la lisibilité
+  private readonly MIN_SPACING_RATIO = 0.7;  // En dessous, illisible (trop serré)
+  private readonly MAX_SPACING_RATIO = 1.5;  // Au-dessus, illisible (trop espacé)
 
   /**
    * Calcule l'espacement minimum pour une valeur rythmique donnée.
@@ -114,28 +118,60 @@ export class SVGRenderer {
   }
 
   /**
-   * Calcule la mise en page (layout) des mesures en lignes.
+   * Largeur effective utilisée au rendu, tenant compte du ratio de compression éventuel.
    */
-  private calculateLayout(measures: Measure[], maxWidth: number, manualLayout: boolean = false): RenderLine[] {
+  private getRenderedMeasureWidth(measure: Measure): number {
+    const base = this.calculateMeasureWidth(measure);
+    const ratio = (measure as any).__spacingRatio;
+    return ratio ? base * ratio : base;
+  }
+
+  /**
+   * Calcule la mise en page (layout) des mesures en lignes.
+   * 
+   * @param measures - Tableau de toutes les mesures
+   * @param maxWidth - Largeur maximum d'une ligne (utilisé en mode auto)
+   * @param forcedMeasuresPerLine - Si défini, force exactement N mesures par ligne
+   * @returns Tableau de lignes de rendu
+   */
+  private calculateLayout(measures: Measure[], maxWidth: number, forcedMeasuresPerLine?: number): RenderLine[] {
     const lines: RenderLine[] = [];
     let currentLineMeasures: Measure[] = [];
     let currentLineWidth = 0;
     let currentY = 0;
 
-    for (const measure of measures) {
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
       const measureWidth = this.calculateMeasureWidth(measure);
       
-      // Détection du saut de ligne
-      // 1. Manque de place (sauf si c'est la première mesure de la ligne)
-      // Si manualLayout est activé, on ignore le débordement
-      const isOverflowing = !manualLayout && currentLineMeasures.length > 0 && 
-                           (currentLineWidth + measureWidth) > maxWidth;
+      // Ajouter d'abord la mesure à la ligne courante
+      currentLineMeasures.push(measure);
+      currentLineWidth += measureWidth;
       
-      // 2. Saut de ligne forcé par la mesure précédente (via \n dans le parseur ou flag explicite)
-      const previousMeasure = currentLineMeasures.length > 0 ? currentLineMeasures[currentLineMeasures.length - 1] : null;
-      const forcedBreak = previousMeasure?.isLineBreak;
+      // Détection du saut de ligne (APRÈS avoir ajouté la mesure)
+      let shouldBreak = false;
 
-      if (isOverflowing || forcedBreak) {
+      if (forcedMeasuresPerLine !== undefined) {
+        // MODE 3: measures-per-line:N forcé
+        // On force un saut après N mesures (sauf si isLineBreak le force plus tôt)
+        const currentMeasure = measure;
+        const forcedBreakByFlag = currentMeasure.isLineBreak;
+        const forcedBreakByCount = currentLineMeasures.length >= forcedMeasuresPerLine;
+        
+        shouldBreak = forcedBreakByFlag || forcedBreakByCount;
+      } else {
+        // MODE 1 & 2: Automatique ou retours à la ligne explicites (\n)
+        // 1. Manque de place (sauf si c'est la première mesure de la ligne)
+        const isOverflowing = currentLineMeasures.length > 1 && 
+                             currentLineWidth > maxWidth;
+        
+        // 2. Saut de ligne forcé par la mesure courante (via \n dans le parseur ou flag explicite)
+        const forcedBreak = measure.isLineBreak || false;
+
+        shouldBreak = isOverflowing || forcedBreak;
+      }
+
+      if (shouldBreak) {
         // Finaliser la ligne courante
         lines.push({
           measures: currentLineMeasures,
@@ -149,9 +185,6 @@ export class SVGRenderer {
         currentLineWidth = 0;
         currentY += this.MEASURE_HEIGHT + this.LINE_VERTICAL_SPACING;
       }
-
-      currentLineMeasures.push(measure);
-      currentLineWidth += measureWidth;
     }
 
     // Ajouter la dernière ligne si elle contient des mesures
@@ -164,7 +197,44 @@ export class SVGRenderer {
       });
     }
 
+    // Appliquer l'ajustement dynamique des espacements sur chaque ligne
+    this.applyDynamicSpacing(lines, maxWidth, forcedMeasuresPerLine !== undefined);
+
     return lines;
+  }
+
+  /**
+   * Ajuste dynamiquement les largeurs de mesures sur chaque ligne
+   * en fonction de l'espace disponible, tout en respectant les limites de lisibilité.
+   * 
+   * @param lines - Lignes de rendu à ajuster
+   * @param maxWidth - Largeur maximum disponible
+   * @param isForcedLayout - Si true, supprime les limites pour forcer l'ajustement au cadre
+   */
+  private applyDynamicSpacing(lines: RenderLine[], maxWidth: number, isForcedLayout: boolean = false): void {
+    for (const line of lines) {
+      if (line.measures.length === 0) continue;
+      
+      // Calculer le ratio d'ajustement nécessaire
+      const currentWidth = line.width;
+      let targetRatio = maxWidth / currentWidth;
+      
+      // En mode forcé (measures-per-line), pas de limites - compression/extension complète
+      // En mode automatique, respecter les limites de lisibilité
+      if (!isForcedLayout) {
+        targetRatio = Math.max(this.MIN_SPACING_RATIO, Math.min(this.MAX_SPACING_RATIO, targetRatio));
+      }
+      // Sinon, utiliser le ratio calculé directement, sans limites
+      
+      // Ajuster la largeur de chaque mesure et la largeur totale de la ligne
+      if (Math.abs(targetRatio - 1.0) > 0.01) { // Seuil minimal pour éviter les ajustements inutiles
+        for (const measure of line.measures) {
+          // Stocker le ratio d'ajustement dans la mesure pour utilisation ultérieure
+          (measure as any).__spacingRatio = targetRatio;
+        }
+        line.width = currentWidth * targetRatio;
+      }
+    }
   }
 
   /**
@@ -247,8 +317,17 @@ export class SVGRenderer {
     const dynamicMeasureWidths = grid.measures.map(m => this.calculateMeasureWidth(m));
 
     // Build linear positions honoring line breaks and available line width budget
-    const maxLineWidth = measuresPerLine * baseMeasureWidth; // budget per line (before margins)
-    const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.manualLayout);
+    // En mode forcé (measures-per-line), calculer la largeur disponible pour garantir que tout tient
+    let maxLineWidth: number;
+    if (options.measuresPerLine) {
+      // Largeur SVG cible (typique pour Obsidian) moins les marges
+      const targetSVGWidth = 1000; // Largeur standard d'un bloc Obsidian
+      const availableWidth = targetSVGWidth - dynamicLineStartPadding - 60; // Moins les marges
+      maxLineWidth = availableWidth; // Toute la largeur disponible pour la ligne
+    } else {
+      maxLineWidth = measuresPerLine * baseMeasureWidth; // Mode automatique
+    }
+    const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.measuresPerLine);
     this.resolveCrossLineTies(renderLines);
 
     // Reconstruct measurePositions for compatibility with existing methods
@@ -256,19 +335,9 @@ export class SVGRenderer {
     let globalIndex = 0;
     
     renderLines.forEach((line, lineIndex) => {
-        // Si manualLayout est activé et que la ligne dépasse la largeur max, on compresse
-        let compressionRatio = 1;
-        if (options.manualLayout && line.width > maxLineWidth) {
-            compressionRatio = maxLineWidth / line.width;
-        }
-
         let currentX = dynamicLineStartPadding;
         line.measures.forEach((measure, posInLine) => {
-            // Recalculer la largeur de la mesure si compression
-            let measureWidth = this.calculateMeasureWidth(measure);
-            if (compressionRatio !== 1) {
-                measureWidth = measureWidth * compressionRatio;
-            }
+            const measureWidth = this.getRenderedMeasureWidth(measure);
 
             // Mark line start for MeasureRenderer
             (measure as any).__isLineStart = (posInLine === 0);
@@ -293,9 +362,11 @@ export class SVGRenderer {
     // });
 
     const lines = renderLines.length;
-    // Compute SVG width as max line accumulation plus margins
-    const width = Math.max(...renderLines.map(l => l.width), baseMeasureWidth) + 60;
-    const height = lines * (measureHeight + 20) + 20;
+    // Largeur totale (incluant padding initial) : prendre la ligne la plus large après compression
+    const width = Math.max(...renderLines.map(l => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 60;
+    // Hauteur réelle: maximum des (startY + height) des lignes + marge bas
+    const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
+    const height = layoutBottom + 40; // marge finale
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', '100%');
@@ -422,7 +493,7 @@ export class SVGRenderer {
         const lineMeasurePositions: any[] = [];
         
         line.measures.forEach((measure, posInLine) => {
-            const mWidth = this.calculateMeasureWidth(measure);
+            const mWidth = this.getRenderedMeasureWidth(measure);
             (measure as any).__isLineStart = (posInLine === 0);
             
             lineMeasurePositions.push({

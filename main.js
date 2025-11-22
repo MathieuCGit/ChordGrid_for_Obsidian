@@ -199,6 +199,15 @@ var _ChordGridParser = class _ChordGridParser {
       }
       timeSignatureLine = timeSignatureLine.replace(/picks-(off|auto|8|16)\s*/i, "");
     }
+    let measuresPerLine = void 0;
+    const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(timeSignatureLine);
+    if (measuresPerLineMatch) {
+      const count = parseInt(measuresPerLineMatch[1], 10);
+      if (count > 0) {
+        measuresPerLine = count;
+      }
+      timeSignatureLine = timeSignatureLine.replace(/measures-per-line:\s*\d+\s*/i, "");
+    }
     timeSignatureLine = timeSignatureLine.trim();
     if (timeSignatureLine === "" && lines.length > 1) {
       timeSignatureLine = lines[1];
@@ -290,7 +299,7 @@ var _ChordGridParser = class _ChordGridParser {
         });
       }
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, measuresPerLine };
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -3220,8 +3229,13 @@ var SVGRenderer = class {
     __publicField(this, "HEAD_HALF_MAX", 6);
     __publicField(this, "MEASURE_HEIGHT", 120);
     __publicField(this, "LINE_VERTICAL_SPACING", 20);
+    // Espace entre les lignes
+    // Limites d'espacement dynamique pour la lisibilité
+    __publicField(this, "MIN_SPACING_RATIO", 0.7);
+    // En dessous, illisible (trop serré)
+    __publicField(this, "MAX_SPACING_RATIO", 1.5);
   }
-  // Espace entre les lignes
+  // Au-dessus, illisible (trop espacé)
   /**
    * Calcule l'espacement minimum pour une valeur rythmique donnée.
    */
@@ -3261,18 +3275,43 @@ var SVGRenderer = class {
     return Math.max(this.BASE_MEASURE_WIDTH, Math.ceil(width));
   }
   /**
-   * Calcule la mise en page (layout) des mesures en lignes.
+   * Largeur effective utilisée au rendu, tenant compte du ratio de compression éventuel.
    */
-  calculateLayout(measures, maxWidth) {
+  getRenderedMeasureWidth(measure) {
+    const base = this.calculateMeasureWidth(measure);
+    const ratio = measure.__spacingRatio;
+    return ratio ? base * ratio : base;
+  }
+  /**
+   * Calcule la mise en page (layout) des mesures en lignes.
+   * 
+   * @param measures - Tableau de toutes les mesures
+   * @param maxWidth - Largeur maximum d'une ligne (utilisé en mode auto)
+   * @param forcedMeasuresPerLine - Si défini, force exactement N mesures par ligne
+   * @returns Tableau de lignes de rendu
+   */
+  calculateLayout(measures, maxWidth, forcedMeasuresPerLine) {
     const lines = [];
     let currentLineMeasures = [];
     let currentLineWidth = 0;
     let currentY = 0;
-    for (const measure of measures) {
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
       const measureWidth = this.calculateMeasureWidth(measure);
-      const isOverflowing = currentLineMeasures.length > 0 && currentLineWidth + measureWidth > maxWidth;
-      const forceBreak = false;
-      if (isOverflowing || forceBreak) {
+      currentLineMeasures.push(measure);
+      currentLineWidth += measureWidth;
+      let shouldBreak = false;
+      if (forcedMeasuresPerLine !== void 0) {
+        const currentMeasure = measure;
+        const forcedBreakByFlag = currentMeasure.isLineBreak;
+        const forcedBreakByCount = currentLineMeasures.length >= forcedMeasuresPerLine;
+        shouldBreak = forcedBreakByFlag || forcedBreakByCount;
+      } else {
+        const isOverflowing = currentLineMeasures.length > 1 && currentLineWidth > maxWidth;
+        const forcedBreak = measure.isLineBreak || false;
+        shouldBreak = isOverflowing || forcedBreak;
+      }
+      if (shouldBreak) {
         lines.push({
           measures: currentLineMeasures,
           width: currentLineWidth,
@@ -3283,8 +3322,6 @@ var SVGRenderer = class {
         currentLineWidth = 0;
         currentY += this.MEASURE_HEIGHT + this.LINE_VERTICAL_SPACING;
       }
-      currentLineMeasures.push(measure);
-      currentLineWidth += measureWidth;
     }
     if (currentLineMeasures.length > 0) {
       lines.push({
@@ -3294,7 +3331,32 @@ var SVGRenderer = class {
         startY: currentY
       });
     }
+    this.applyDynamicSpacing(lines, maxWidth, forcedMeasuresPerLine !== void 0);
     return lines;
+  }
+  /**
+   * Ajuste dynamiquement les largeurs de mesures sur chaque ligne
+   * en fonction de l'espace disponible, tout en respectant les limites de lisibilité.
+   * 
+   * @param lines - Lignes de rendu à ajuster
+   * @param maxWidth - Largeur maximum disponible
+   * @param isForcedLayout - Si true, supprime les limites pour forcer l'ajustement au cadre
+   */
+  applyDynamicSpacing(lines, maxWidth, isForcedLayout = false) {
+    for (const line of lines) {
+      if (line.measures.length === 0) continue;
+      const currentWidth = line.width;
+      let targetRatio = maxWidth / currentWidth;
+      if (!isForcedLayout) {
+        targetRatio = Math.max(this.MIN_SPACING_RATIO, Math.min(this.MAX_SPACING_RATIO, targetRatio));
+      }
+      if (Math.abs(targetRatio - 1) > 0.01) {
+        for (const measure of line.measures) {
+          measure.__spacingRatio = targetRatio;
+        }
+        line.width = currentWidth * targetRatio;
+      }
+    }
   }
   /**
    * Rend une grille d'accords en élément SVG.
@@ -3360,26 +3422,41 @@ var SVGRenderer = class {
       return Math.max(baseMeasureWidth, Math.ceil(width2));
     };
     const dynamicMeasureWidths = grid.measures.map((m) => this.calculateMeasureWidth(m));
-    const maxLineWidth = measuresPerLine * baseMeasureWidth;
-    const renderLines = this.calculateLayout(grid.measures, maxLineWidth);
+    let maxLineWidth;
+    if (options.measuresPerLine) {
+      const targetSVGWidth = 1e3;
+      const availableWidth = targetSVGWidth - dynamicLineStartPadding - 60;
+      maxLineWidth = availableWidth;
+    } else {
+      maxLineWidth = measuresPerLine * baseMeasureWidth;
+    }
+    const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.measuresPerLine);
     this.resolveCrossLineTies(renderLines);
     const measurePositions = [];
     let globalIndex = 0;
     renderLines.forEach((line, lineIndex) => {
+      let currentX = dynamicLineStartPadding;
       line.measures.forEach((measure, posInLine) => {
+        const measureWidth = this.getRenderedMeasureWidth(measure);
         measure.__isLineStart = posInLine === 0;
         measurePositions.push({
           measure,
           lineIndex,
           posInLine,
-          globalIndex: globalIndex++,
-          width: this.calculateMeasureWidth(measure)
+          globalIndex,
+          width: measureWidth,
+          x: currentX,
+          y: line.startY + 40
+          // Offset Y pour laisser de la place au titre/signature si besoin
         });
+        currentX += measureWidth;
+        globalIndex++;
       });
     });
     const lines = renderLines.length;
-    const width = Math.max(...renderLines.map((l) => l.width), baseMeasureWidth) + 60;
-    const height = lines * (measureHeight + 20) + 20;
+    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 60;
+    const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
+    const height = layoutBottom + 40;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
     svg.setAttribute("height", "auto");
@@ -3476,7 +3553,7 @@ var SVGRenderer = class {
       let currentX = svg.__dynamicLineStartPadding || 40;
       const lineMeasurePositions = [];
       line.measures.forEach((measure, posInLine) => {
-        const mWidth = this.calculateMeasureWidth(measure);
+        const mWidth = this.getRenderedMeasureWidth(measure);
         measure.__isLineStart = posInLine === 0;
         lineMeasurePositions.push({
           measure,
@@ -4486,7 +4563,8 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
           const svg = renderer.render(grid, {
             stemsDirection: result.stemsDirection,
             displayRepeatSymbol: result.displayRepeatSymbol,
-            pickStrokes: result.picksMode
+            pickStrokes: result.picksMode,
+            measuresPerLine: result.measuresPerLine
           });
           el.appendChild(svg);
         } catch (err) {

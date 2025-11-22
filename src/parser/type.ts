@@ -263,5 +263,5 @@ export interface ParseResult {
   stemsDirection?: 'up' | 'down';
   displayRepeatSymbol?: boolean;
   picksMode?: 'off' | 'auto' | '8' | '16';
-  manualLayout?: boolean;
+  measuresPerLine?: number;
 }

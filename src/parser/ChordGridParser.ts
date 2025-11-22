@@ -154,11 +154,15 @@ export class ChordGridParser {
       timeSignatureLine = timeSignatureLine.replace(/picks-(off|auto|8|16)\s*/i, '');
     }
 
-    // Check for manual-layout keyword
-    let manualLayout = false;
-    if (/manual-layout/i.test(timeSignatureLine)) {
-      manualLayout = true;
-      timeSignatureLine = timeSignatureLine.replace(/manual-layout\s*/i, '');
+    // Check for measures-per-line directive: measures-per-line:4 (or any number)
+    let measuresPerLine: number | undefined = undefined;
+    const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(timeSignatureLine);
+    if (measuresPerLineMatch) {
+      const count = parseInt(measuresPerLineMatch[1], 10);
+      if (count > 0) {
+        measuresPerLine = count;
+      }
+      timeSignatureLine = timeSignatureLine.replace(/measures-per-line:\s*\d+\s*/i, '');
     }
     
     // Remove leading whitespace after removing directives
@@ -316,7 +320,7 @@ export class ChordGridParser {
       }
     }
 
-  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, manualLayout };
+  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, measuresPerLine };
   }
 
   /**
