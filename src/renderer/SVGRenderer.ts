@@ -44,6 +44,8 @@ export interface RenderOptions {
   displayRepeatSymbol?: boolean;
   /** Mode des coups de médiator ('off', 'auto', '8', '16'). Par défaut 'off'. */
   pickStrokes?: 'off' | 'auto' | '8' | '16';
+  /** Mode layout manuel : respecte strictement les retours à la ligne du texte et compresse si nécessaire. */
+  manualLayout?: boolean;
 }
 
 /**
@@ -114,7 +116,7 @@ export class SVGRenderer {
   /**
    * Calcule la mise en page (layout) des mesures en lignes.
    */
-  private calculateLayout(measures: Measure[], maxWidth: number): RenderLine[] {
+  private calculateLayout(measures: Measure[], maxWidth: number, manualLayout: boolean = false): RenderLine[] {
     const lines: RenderLine[] = [];
     let currentLineMeasures: Measure[] = [];
     let currentLineWidth = 0;
@@ -125,13 +127,15 @@ export class SVGRenderer {
       
       // Détection du saut de ligne
       // 1. Manque de place (sauf si c'est la première mesure de la ligne)
-      const isOverflowing = currentLineMeasures.length > 0 && 
+      // Si manualLayout est activé, on ignore le débordement
+      const isOverflowing = !manualLayout && currentLineMeasures.length > 0 && 
                            (currentLineWidth + measureWidth) > maxWidth;
       
-      // 2. Saut de ligne forcé (futur flag utilisateur)
-      const forceBreak = false; // measure.flags?.forceLineBreak;
+      // 2. Saut de ligne forcé par la mesure précédente (via \n dans le parseur ou flag explicite)
+      const previousMeasure = currentLineMeasures.length > 0 ? currentLineMeasures[currentLineMeasures.length - 1] : null;
+      const forcedBreak = previousMeasure?.isLineBreak;
 
-      if (isOverflowing || forceBreak) {
+      if (isOverflowing || forcedBreak) {
         // Finaliser la ligne courante
         lines.push({
           measures: currentLineMeasures,
@@ -244,7 +248,7 @@ export class SVGRenderer {
 
     // Build linear positions honoring line breaks and available line width budget
     const maxLineWidth = measuresPerLine * baseMeasureWidth; // budget per line (before margins)
-    const renderLines = this.calculateLayout(grid.measures, maxLineWidth);
+    const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.manualLayout);
     this.resolveCrossLineTies(renderLines);
 
     // Reconstruct measurePositions for compatibility with existing methods
@@ -252,7 +256,20 @@ export class SVGRenderer {
     let globalIndex = 0;
     
     renderLines.forEach((line, lineIndex) => {
+        // Si manualLayout est activé et que la ligne dépasse la largeur max, on compresse
+        let compressionRatio = 1;
+        if (options.manualLayout && line.width > maxLineWidth) {
+            compressionRatio = maxLineWidth / line.width;
+        }
+
+        let currentX = dynamicLineStartPadding;
         line.measures.forEach((measure, posInLine) => {
+            // Recalculer la largeur de la mesure si compression
+            let measureWidth = this.calculateMeasureWidth(measure);
+            if (compressionRatio !== 1) {
+                measureWidth = measureWidth * compressionRatio;
+            }
+
             // Mark line start for MeasureRenderer
             (measure as any).__isLineStart = (posInLine === 0);
             
@@ -260,9 +277,13 @@ export class SVGRenderer {
                 measure,
                 lineIndex,
                 posInLine,
-                globalIndex: globalIndex++,
-                width: this.calculateMeasureWidth(measure)
+                globalIndex,
+                width: measureWidth,
+                x: currentX,
+                y: line.startY + 40 // Offset Y pour laisser de la place au titre/signature si besoin
             });
+            currentX += measureWidth;
+            globalIndex++;
         });
     });
 
