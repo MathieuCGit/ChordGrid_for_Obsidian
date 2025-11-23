@@ -221,7 +221,7 @@ var _ChordGridParser = class _ChordGridParser {
     const allMeasures = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const measures = this.parseLine(line, lineIndex === 0);
+      const measures = this.parseLine(line, lineIndex === 0, measuresPerLine);
       if (measures.length > 0 && lineIndex < lines.length - 1) {
         measures[measures.length - 1].isLineBreak = true;
       }
@@ -238,6 +238,9 @@ var _ChordGridParser = class _ChordGridParser {
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       if (measure.__isChordOnlyMode) {
+        continue;
+      }
+      if (measure.__isEmpty) {
         continue;
       }
       let foundQuarterNotes = 0;
@@ -355,7 +358,7 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine) {
+  parseLine(line, isFirstLine, measuresPerLine) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
@@ -409,6 +412,7 @@ var _ChordGridParser = class _ChordGridParser {
     let pendingVoltaEndMarker = false;
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
+      const bar = t.bar;
       if (t.content.trim().length === 0 && t.bar === "||:") {
         pendingStartBarline = "||:";
         if (t.volta) {
@@ -420,10 +424,44 @@ var _ChordGridParser = class _ChordGridParser {
         if (t.volta) {
           pendingVolta = t.volta;
         }
+        if (measuresPerLine !== void 0) {
+          const emptyMeasure = {
+            beats: [],
+            chord: "",
+            chordSegments: [],
+            barline: bar,
+            isLineBreak: false,
+            source: "(empty)"
+          };
+          emptyMeasure.__isEmpty = true;
+          if (pendingStartBarline === "||:") {
+            emptyMeasure.isRepeatStart = true;
+            pendingStartBarline = null;
+          }
+          if (pendingVolta) {
+            const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+            const voltaText = pendingVolta;
+            const isClosed = !pendingVoltaIsAfterRepeatEnd;
+            emptyMeasure.voltaStart = {
+              numbers: voltaNumbers,
+              text: voltaText,
+              isClosed
+            };
+            pendingVolta = void 0;
+            pendingVoltaIsAfterRepeatEnd = false;
+          }
+          if (pendingVoltaEndMarker) {
+            emptyMeasure.voltaEnd = true;
+            pendingVoltaEndMarker = false;
+          }
+          if (bar === ":||" && t.repeatCount) {
+            emptyMeasure.repeatEndCount = t.repeatCount;
+          }
+          measures.push(emptyMeasure);
+        }
         continue;
       }
       const text = t.content;
-      const bar = t.bar;
       if (text.trim() === "%") {
         if (!lastExplicitMeasure) {
           console.warn("Cannot use '%' repeat notation on first measure");
@@ -1637,6 +1675,10 @@ var MeasureRenderer = class {
   drawMeasure(svg, measureIndex, notePositions, grid) {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - 2;
+    if (this.measure.__isEmpty) {
+      this.drawEmptyMeasure(svg, measureIndex);
+      return;
+    }
     if (this.measure.__isChordOnlyMode) {
       this.drawChordOnlyMeasure(svg, measureIndex);
       return;
@@ -1949,6 +1991,50 @@ var MeasureRenderer = class {
    * @param svg - SVG container
    * @param measureIndex - Index of the measure
    */
+  /**
+   * Draw an empty measure (only barlines, no content).
+   * Used when measures-per-line is specified to force empty measures to be rendered.
+   */
+  drawEmptyMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, 120, measureIndex, "left");
+    }
+    const staffLineY = this.y + 80;
+    const staffLine = document.createElementNS(SVG_NS, "line");
+    staffLine.setAttribute("x1", (this.x + 10).toString());
+    staffLine.setAttribute("y1", staffLineY.toString());
+    staffLine.setAttribute("x2", (this.x + this.width - 10).toString());
+    staffLine.setAttribute("y2", staffLineY.toString());
+    staffLine.setAttribute("stroke", "#000");
+    staffLine.setAttribute("stroke-width", "1");
+    svg.appendChild(staffLine);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("staff-line", {
+        x: this.x + 10,
+        y: staffLineY - 1,
+        width: this.width - 20,
+        height: 2
+      }, 0, {
+        exactX: this.x + this.width / 2,
+        exactY: staffLineY,
+        measureIndex
+      });
+    }
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
+    }
+  }
   drawChordOnlyMeasure(svg, measureIndex) {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - 2;

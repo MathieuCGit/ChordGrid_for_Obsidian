@@ -192,7 +192,7 @@ export class ChordGridParser {
     
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const measures = this.parseLine(line, lineIndex === 0);
+      const measures = this.parseLine(line, lineIndex === 0, measuresPerLine);
       
       // Mark the last measure of each line
       if (measures.length > 0 && lineIndex < lines.length - 1) {
@@ -220,6 +220,11 @@ export class ChordGridParser {
       
       // Skip validation for chord-only measures (no rhythm notation)
       if ((measure as any).__isChordOnlyMode) {
+        continue;
+      }
+      
+      // Skip validation for empty measures (created with measures-per-line)
+      if ((measure as any).__isEmpty) {
         continue;
       }
       
@@ -382,7 +387,7 @@ export class ChordGridParser {
     return { timeSignature: result.grid.timeSignature, measures };
   }
   
-  private parseLine(line: string, isFirstLine: boolean): Measure[] {
+  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number): Measure[] {
     // Skip time signature on first line
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, '');
@@ -481,6 +486,7 @@ export class ChordGridParser {
 
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
+      const bar = t.bar as BarlineType;
       
       // Check if this is a start repeat marker (||:) with no content
       if (t.content.trim().length === 0 && t.bar === '||:') {
@@ -494,16 +500,66 @@ export class ChordGridParser {
       }
       
       // Skip other empty tokens but don't add them as measures
+      // EXCEPT when measures-per-line is specified: then create empty measures
       if (t.content.trim().length === 0) {
         // But check for volta that should apply to next measure
         if (t.volta) {
           pendingVolta = t.volta;
         }
+        
+        // If measures-per-line is specified, create an empty measure instead of skipping
+        if (measuresPerLine !== undefined) {
+          // Create an empty measure (no chords, no rhythm)
+          const emptyMeasure: Measure = {
+            beats: [],
+            chord: '',
+            chordSegments: [],
+            barline: bar,
+            isLineBreak: false,
+            source: '(empty)'
+          };
+          
+          // Mark it as empty for special rendering
+          (emptyMeasure as any).__isEmpty = true;
+          
+          // Apply pending start barline if any
+          if (pendingStartBarline === '||:') {
+            (emptyMeasure as any).isRepeatStart = true;
+            pendingStartBarline = null;
+          }
+          
+          // Apply pending volta if any
+          if (pendingVolta) {
+            const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+            const voltaText = pendingVolta;
+            const isClosed = !pendingVoltaIsAfterRepeatEnd;
+            (emptyMeasure as any).voltaStart = {
+              numbers: voltaNumbers,
+              text: voltaText,
+              isClosed: isClosed
+            };
+            pendingVolta = undefined;
+            pendingVoltaIsAfterRepeatEnd = false;
+          }
+          
+          // Apply pending volta end marker
+          if (pendingVoltaEndMarker) {
+            (emptyMeasure as any).voltaEnd = true;
+            pendingVoltaEndMarker = false;
+          }
+          
+          // Handle repeat count on the barline (:||x3)
+          if (bar === ':||' && t.repeatCount) {
+            (emptyMeasure as any).repeatEndCount = t.repeatCount;
+          }
+          
+          measures.push(emptyMeasure);
+        }
+        
         continue;
       }
       
       const text = t.content;
-      const bar = t.bar as BarlineType;
 
       // REPEAT NOTATION DETECTION
       // Check for '%' (repeat entire previous measure)

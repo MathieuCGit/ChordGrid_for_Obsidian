@@ -69,6 +69,12 @@ export class MeasureRenderer {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - 2;
 
+        // Check for empty measure (forced by measures-per-line)
+        if ((this.measure as any).__isEmpty) {
+            this.drawEmptyMeasure(svg, measureIndex);
+            return;
+        }
+
         // Check for chord-only mode (no rhythm notation)
         if ((this.measure as any).__isChordOnlyMode) {
             this.drawChordOnlyMeasure(svg, measureIndex);
@@ -478,6 +484,59 @@ export class MeasureRenderer {
      * @param svg - SVG container
      * @param measureIndex - Index of the measure
      */
+    /**
+     * Draw an empty measure (only barlines, no content).
+     * Used when measures-per-line is specified to force empty measures to be rendered.
+     */
+    private drawEmptyMeasure(svg: SVGElement, measureIndex: number): void {
+        const leftBarX = this.x;
+        const rightBarX = this.x + this.width - 2;
+
+        // Draw left barline
+        if ((this.measure as any).isRepeatStart) {
+            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+            this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
+        }
+
+        // Draw staff line
+        const staffLineY = this.y + 80;
+        const staffLine = document.createElementNS(SVG_NS, 'line');
+        staffLine.setAttribute('x1', (this.x + 10).toString());
+        staffLine.setAttribute('y1', staffLineY.toString());
+        staffLine.setAttribute('x2', (this.x + this.width - 10).toString());
+        staffLine.setAttribute('y2', staffLineY.toString());
+        staffLine.setAttribute('stroke', '#000');
+        staffLine.setAttribute('stroke-width', '1');
+        svg.appendChild(staffLine);
+
+        // Register staff line in PlaceAndSizeManager
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement('staff-line', {
+                x: this.x + 10,
+                y: staffLineY - 1,
+                width: this.width - 20,
+                height: 2
+            }, 0, { 
+                exactX: this.x + (this.width / 2),
+                exactY: staffLineY,
+                measureIndex
+            });
+        }
+
+        // Draw right barline
+        if ((this.measure as any).isRepeatEnd) {
+            this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+            if ((this.measure as any).repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            }
+        } else if (this.measure.barline === '||') {
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+        } else {
+            this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
+        }
+    }
+
     private drawChordOnlyMeasure(svg: SVGElement, measureIndex: number): void {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - 2;
