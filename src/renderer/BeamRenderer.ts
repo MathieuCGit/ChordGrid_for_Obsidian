@@ -1,6 +1,12 @@
 /**
- * @file AnalyzerBeamOverlay.ts
- * @description Draws beams using the new analyzer (v2.0.0) on top of existing note rendering.
+ * @file BeamRenderer.ts
+ * @description Rendu SVG des ligatures (beams) entre notes musicales.
+ * 
+ * Ce renderer est responsable de :
+ * - Dessiner les barres de ligature entre notes
+ * - Gérer les ligatures multi-niveaux (8e, 16e, 32e, 64e)
+ * - Gérer les ligatures partielles (beamlets)
+ * - Adapter la position selon la direction des hampes
  */
 import { SVG_NS } from './constants';
 import { BeamGroup, AnalyzedMeasure } from '../analyzer/analyzer-types';
@@ -16,12 +22,21 @@ export interface NotePositionRef {
   stemsDirection?: 'up' | 'down'; // Direction des hampes
 }
 
-export function drawAnalyzerBeams(
+/**
+ * Dessine les ligatures pour une mesure analysée.
+ * 
+ * @param svg - Élément SVG parent
+ * @param analyzed - Mesure analysée avec groupes de ligatures
+ * @param measureIndex - Index de la mesure
+ * @param notePositions - Positions des notes avec métadonnées de hampes
+ * @param stemsDirection - Direction des hampes ('up' ou 'down')
+ */
+export function drawBeams(
   svg: SVGElement,
   analyzed: AnalyzedMeasure,
   measureIndex: number,
   notePositions: NotePositionRef[],
-  stemsDirection: 'up' | 'down' = 'up' // Par défaut hampes vers le haut
+  stemsDirection: 'up' | 'down' = 'up'
 ) {
   const beamGap = 5;
 
@@ -77,7 +92,7 @@ export function drawAnalyzerBeams(
           return; // skip beamlet; flags will be drawn later
         }
       }
-      // Position de la hampe selon la direction (cohérent avec MeasureRenderer)
+      // Position de la hampe selon la direction (cohérent avec NoteRenderer)
       const slashLength = 10;
       const startX = stemsDirection === 'up' ? (p.x + slashLength/2) : (p.x - slashLength/2);
       const beamletLength = 8;
@@ -110,5 +125,5 @@ export function drawAnalyzerBeams(
     }
   }
 
-  // Flags for isolated notes are now drawn by MeasureRenderer when analyzer is active.
+  // Flags for isolated notes are drawn by NoteRenderer.
 }

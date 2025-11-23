@@ -31,7 +31,7 @@ import { SVG_NS } from './constants';
 import { TieManager } from '../utils/TieManager';
 import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
-import { drawAnalyzerBeams } from './AnalyzerBeamOverlay';
+import { drawBeams } from './BeamRenderer';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { ChordRenderer } from './ChordRenderer';
 
@@ -553,9 +553,9 @@ export class SVGRenderer {
             const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir ?? 'up', options.displayRepeatSymbol ?? false);
             mr.drawMeasure(svg, globalIndex, notePositions, grid);
 
-            // Draw analyzer beams overlay
+            // Draw beams
             if (analyzedMeasures[globalIndex]) {
-                drawAnalyzerBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any, stemsDir);
+                drawBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any, stemsDir);
             }
         });
 

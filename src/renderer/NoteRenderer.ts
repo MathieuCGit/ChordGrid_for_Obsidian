@@ -193,7 +193,7 @@ export class NoteRenderer {
 
     /**
      * Dessine une note unique sans ligature (pour path analyzer).
-     * Les ligatures sont gérées par l'overlay analyzer.
+     * Les ligatures sont gérées par BeamRenderer.
      * 
      * @returns Coordonnées de la hampe si elle existe
      */

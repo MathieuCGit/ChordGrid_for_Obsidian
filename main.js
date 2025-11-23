@@ -1407,7 +1407,7 @@ var NoteRenderer = class {
   }
   /**
    * Dessine une note unique sans ligature (pour path analyzer).
-   * Les ligatures sont gérées par l'overlay analyzer.
+   * Les ligatures sont gérées par BeamRenderer.
    * 
    * @returns Coordonnées de la hampe si elle existe
    */
@@ -2568,8 +2568,8 @@ var MusicAnalyzer = class {
   }
 };
 
-// src/renderer/AnalyzerBeamOverlay.ts
-function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions, stemsDirection = "up") {
+// src/renderer/BeamRenderer.ts
+function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection = "up") {
   const beamGap = 5;
   const level1Beamed = /* @__PURE__ */ new Set();
   for (const g of analyzed.beamGroups) {
@@ -3268,18 +3268,7 @@ var ChordRenderer = class {
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
       segments.forEach((segment, segmentIndex) => {
         const chordSymbol = segment.chord;
-        if (chordSymbol === "%") {
-          if (displayRepeatSymbol) {
-            this.renderRepeatSymbol(
-              svg,
-              measureX + mp.width / 2,
-              measureY - verticalOffset,
-              fontSize,
-              placeAndSizeManager,
-              mp.globalIndex,
-              segmentIndex
-            );
-          }
+        if (!chordSymbol || chordSymbol === "") {
           return;
         }
         const firstStemX = this.findFirstStemX(
@@ -3394,6 +3383,7 @@ var ChordRenderer = class {
     symbolText.setAttribute("fill", "#666");
     symbolText.setAttribute("text-anchor", "middle");
     symbolText.setAttribute("class", "repeat-symbol");
+    symbolText.setAttribute("data-repeat-symbol", "true");
     symbolText.textContent = "%";
     svg.appendChild(symbolText);
     const symbolWidth = fontSize * 1.5 * 0.6;
@@ -3801,7 +3791,7 @@ var SVGRenderer = class {
         const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir != null ? stemsDir : "up", (_c = options.displayRepeatSymbol) != null ? _c : false);
         mr.drawMeasure(svg, globalIndex2, notePositions, grid);
         if (analyzedMeasures[globalIndex2]) {
-          drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
+          drawBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
         }
       });
       this.drawVoltaBrackets(svg, lineMeasurePositions, placeAndSizeManager);

@@ -132,25 +132,11 @@ export class ChordRenderer {
             segments.forEach((segment: any, segmentIndex: number) => {
                 const chordSymbol = segment.chord;
 
-                // Cas 1: Mesure répétée (chord: '%')
-                if (chordSymbol === '%') {
-                    if (displayRepeatSymbol) {
-                        // Afficher le symbole % centré dans la mesure
-                        this.renderRepeatSymbol(
-                            svg,
-                            measureX + mp.width / 2,
-                            measureY - verticalOffset,
-                            fontSize,
-                            placeAndSizeManager,
-                            mp.globalIndex,
-                            segmentIndex
-                        );
-                    }
-                    // Sinon, ne rien afficher (comportement par défaut)
+                // Ignorer les segments sans accord (ou avec accord vide)
+                if (!chordSymbol || chordSymbol === '') {
                     return;
                 }
 
-                // Cas 2: Mesure avec rythme explicite
                 // Chercher la position de la première hampe de ce segment
                 const firstStemX = this.findFirstStemX(
                     placeAndSizeManager,
@@ -300,6 +286,7 @@ export class ChordRenderer {
         symbolText.setAttribute('fill', '#666');
         symbolText.setAttribute('text-anchor', 'middle');
         symbolText.setAttribute('class', 'repeat-symbol');
+        symbolText.setAttribute('data-repeat-symbol', 'true');
         symbolText.textContent = '%';
         svg.appendChild(symbolText);
 
