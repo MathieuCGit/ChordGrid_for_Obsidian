@@ -424,7 +424,9 @@ var _ChordGridParser = class _ChordGridParser {
         if (t.volta) {
           pendingVolta = t.volta;
         }
-        if (measuresPerLine !== void 0) {
+        const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
+        const isNotFirstToken = ti > 0;
+        if (measuresPerLine !== void 0 && (isIntentionalEmpty || isNotFirstToken)) {
           const emptyMeasure = {
             beats: [],
             chord: "",
@@ -1992,7 +1994,7 @@ var MeasureRenderer = class {
    * @param measureIndex - Index of the measure
    */
   /**
-   * Draw an empty measure (only barlines, no content).
+   * Draw an empty measure (only barlines, no staff line, no content).
    * Used when measures-per-line is specified to force empty measures to be rendered.
    */
   drawEmptyMeasure(svg, measureIndex) {
@@ -2002,27 +2004,6 @@ var MeasureRenderer = class {
       this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, 120, measureIndex, "left");
-    }
-    const staffLineY = this.y + 80;
-    const staffLine = document.createElementNS(SVG_NS, "line");
-    staffLine.setAttribute("x1", (this.x + 10).toString());
-    staffLine.setAttribute("y1", staffLineY.toString());
-    staffLine.setAttribute("x2", (this.x + this.width - 10).toString());
-    staffLine.setAttribute("y2", staffLineY.toString());
-    staffLine.setAttribute("stroke", "#000");
-    staffLine.setAttribute("stroke-width", "1");
-    svg.appendChild(staffLine);
-    if (this.placeAndSizeManager) {
-      this.placeAndSizeManager.registerElement("staff-line", {
-        x: this.x + 10,
-        y: staffLineY - 1,
-        width: this.width - 20,
-        height: 2
-      }, 0, {
-        exactX: this.x + this.width / 2,
-        exactY: staffLineY,
-        measureIndex
-      });
     }
     if (this.measure.isRepeatEnd) {
       this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
