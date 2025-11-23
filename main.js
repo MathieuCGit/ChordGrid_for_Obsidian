@@ -3678,7 +3678,7 @@ var SVGRenderer = class {
       });
     });
     const lines = renderLines.length;
-    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 60;
+    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 20;
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
     const height = layoutBottom + 40;
     const topMarginForChords = 50;
