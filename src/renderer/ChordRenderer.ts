@@ -40,6 +40,18 @@ export interface ChordRenderOptions {
 }
 
 /**
+ * Options de rendu pour les accords en mode chord-only.
+ */
+interface ChordOnlyRenderOptions {
+    /** Position de la mesure */
+    measureX: number;
+    measureY: number;
+    measureWidth: number;
+    /** Index global de la mesure */
+    measureIndex: number;
+}
+
+/**
  * Classe responsable du rendu des symboles d'accords.
  */
 export class ChordRenderer {
@@ -64,37 +76,39 @@ export class ChordRenderer {
     }
 
     /**
-     * Trouve la position X de la première hampe (stem) d'un segment.
+     * Trouve la position X du début de la première note d'un segment.
      * Utilise les métadonnées enregistrées dans PlaceAndSizeManager.
+     * Retourne headLeftX (début gauche de la tête de note) pour un alignement visuel optimal.
      * 
      * @param placeAndSizeManager - Gestionnaire de placement
      * @param measureIndex - Index de la mesure
      * @param chordIndex - Index du segment/accord
-     * @returns Position X de la première hampe, ou null si non trouvée
+     * @returns Position X du début de la première note, ou null si non trouvée
      */
-    private findFirstStemX(
+    private findFirstNoteX(
         placeAndSizeManager: PlaceAndSizeManager,
         measureIndex: number,
         chordIndex: number
     ): number | null {
-        // Récupérer tous les stems de cette mesure
-        const stems = placeAndSizeManager.getElementsByMeasure(measureIndex)
-            .filter(el => el.type === 'stem' && el.metadata?.stem)
-            .filter(el => el.metadata!.chordIndex === chordIndex)
+        // Récupérer toutes les notes de cette mesure
+        const notes = placeAndSizeManager.getElementsByMeasure(measureIndex)
+            .filter(el => el.type === 'note')
+            .filter(el => el.metadata?.chordIndex === chordIndex)
             .sort((a, b) => {
-                // Trier par beatIndex puis noteIndex pour trouver le premier
+                // Trier par beatIndex puis noteIndex pour trouver la première
                 const beatDiff = (a.metadata!.beatIndex ?? 0) - (b.metadata!.beatIndex ?? 0);
                 if (beatDiff !== 0) return beatDiff;
                 return (a.metadata!.noteIndex ?? 0) - (b.metadata!.noteIndex ?? 0);
             });
 
-        if (stems.length === 0) {
+        if (notes.length === 0) {
             return null;
         }
 
-        // Retourner la position centerX de la première hampe
-        const firstStem = stems[0];
-        return firstStem.metadata!.stem!.centerX;
+        // Retourner la position x (début gauche) de la première note
+        // Le bbox.x correspond à headLeftX de la note
+        const firstNote = notes[0];
+        return firstNote.bbox.x;
     }
 
     /**
@@ -118,6 +132,9 @@ export class ChordRenderer {
         const fontSize = options.fontSize ?? this.DEFAULT_FONT_SIZE;
         const verticalOffset = options.verticalOffset ?? this.DEFAULT_VERTICAL_OFFSET;
         const displayRepeatSymbol = options.displayRepeatSymbol ?? false;
+        
+        // Staff line is at measureY + 80 (see MeasureRenderer.ts line 85)
+        const STAFF_LINE_OFFSET = 80;
 
         measurePositions.forEach(mp => {
             if (!mp.x || !mp.y) return;
@@ -125,6 +142,14 @@ export class ChordRenderer {
             const measure = mp.measure as any;
             const measureX = mp.x;
             const measureY = mp.y;
+            
+            // Handle chord-only measures with special positioning
+            if (measure.__isChordOnlyMode) {
+                this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager);
+                return;
+            }
+            
+            const staffLineY = measureY + STAFF_LINE_OFFSET;
 
             // Vérifier si la mesure a des segments d'accords
             const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
@@ -137,20 +162,20 @@ export class ChordRenderer {
                     return;
                 }
 
-                // Chercher la position de la première hampe de ce segment
-                const firstStemX = this.findFirstStemX(
+                // Chercher la position de la première note de ce segment
+                const firstNoteX = this.findFirstNoteX(
                     placeAndSizeManager,
                     mp.globalIndex,
                     segmentIndex
                 );
 
-                if (firstStemX !== null) {
-                    // Aligner l'accord avec la première hampe (text-anchor='start')
+                if (firstNoteX !== null) {
+                    // Aligner l'accord avec le début de la première note (text-anchor='start')
                     this.renderChordSymbol(
                         svg,
                         chordSymbol,
-                        firstStemX,
-                        measureY - verticalOffset,
+                        firstNoteX,
+                        staffLineY - verticalOffset,
                         fontSize,
                         'start',
                         placeAndSizeManager,
@@ -158,11 +183,11 @@ export class ChordRenderer {
                         segmentIndex
                     );
                 } else {
-                    // Pas de hampe trouvée (mesure sans rythme ou erreur)
+                    // Pas de note trouvée (mesure sans rythme ou erreur)
                     // Comportement de fallback : centrer dans le segment
                     // NOTE: Ce cas ne devrait normalement pas arriver si le rythme est bien défini
                     console.warn(
-                        `[ChordRenderer] No stem found for chord "${chordSymbol}" ` +
+                        `[ChordRenderer] No note found for chord "${chordSymbol}" ` +
                         `in measure ${mp.globalIndex}, segment ${segmentIndex}. ` +
                         `Using fallback centered position.`
                     );
@@ -175,7 +200,7 @@ export class ChordRenderer {
                         svg,
                         chordSymbol,
                         segmentX,
-                        measureY - verticalOffset,
+                        staffLineY - verticalOffset,
                         fontSize,
                         'middle',
                         placeAndSizeManager,
@@ -255,6 +280,114 @@ export class ChordRenderer {
                 fontSize: fontSize
             }
         });
+    }
+
+    /**
+     * Renders chords for a chord-only measure (no rhythm notation).
+     * Uses special positioning logic based on the number of chord segments.
+     * 
+     * @param svg - Parent SVG element
+     * @param measurePosition - Measure position info
+     * @param placeAndSizeManager - Placement manager
+     */
+    private renderChordOnlyMeasure(
+        svg: SVGElement,
+        measurePosition: MeasurePosition,
+        placeAndSizeManager: PlaceAndSizeManager
+    ): void {
+        const measure = measurePosition.measure as any;
+        const measureX = measurePosition.x!;
+        const measureY = measurePosition.y!;
+        const measureWidth = measurePosition.width;
+        const measureIndex = measurePosition.globalIndex;
+
+        const segments = measure.chordSegments || [];
+        const chordCount = segments.length;
+
+        if (chordCount === 0) {
+            // No chords to render
+            return;
+        } else if (chordCount === 1) {
+            // Single chord: center it in the measure
+            const chord = segments[0].chord;
+            const chordX = measureX + measureWidth / 2;
+            const chordY = measureY + 60; // Vertically centered (no staff line)
+            const fontSize = 24; // Larger font for chord-only mode
+            
+            this.renderChordSymbol(
+                svg,
+                chord,
+                chordX,
+                chordY,
+                fontSize,
+                'middle',
+                placeAndSizeManager,
+                measureIndex,
+                0
+            );
+        } else if (chordCount === 2) {
+            // Special case: 2 chords with diagonal positioning
+            const fontSize = 20;
+            
+            // First chord: left side, ABOVE the diagonal line (top-left)
+            const chord1 = segments[0].chord;
+            const chord1X = measureX + measureWidth * 0.25;
+            const chord1Y = measureY + 25;
+            
+            this.renderChordSymbol(
+                svg,
+                chord1,
+                chord1X,
+                chord1Y,
+                fontSize,
+                'middle',
+                placeAndSizeManager,
+                measureIndex,
+                0
+            );
+            
+            // Second chord: right side, BELOW the diagonal line (bottom-right)
+            const chord2 = segments[1].chord;
+            const chord2X = measureX + measureWidth * 0.75;
+            const chord2Y = measureY + 95;
+            
+            this.renderChordSymbol(
+                svg,
+                chord2,
+                chord2X,
+                chord2Y,
+                fontSize,
+                'middle',
+                placeAndSizeManager,
+                measureIndex,
+                1
+            );
+        } else {
+            // Multiple chords (3+): distribute them horizontally
+            const availableWidth = measureWidth - 20; // margins
+            const chordSpacing = availableWidth / chordCount;
+            const fontSize = 20;
+            
+            segments.forEach((segment: any, idx: number) => {
+                const chord = segment.chord;
+                if (!chord) return;
+                
+                const chordX = measureX + 10 + chordSpacing * (idx + 0.5);
+                const chordY = measureY + 60; // Vertically centered
+                
+                this.renderChordSymbol(
+                    svg,
+                    chord,
+                    chordX,
+                    chordY,
+                    fontSize,
+                    'middle',
+                    placeAndSizeManager,
+                    measureIndex,
+                    idx
+                );
+            });
+        }
     }
 
 }

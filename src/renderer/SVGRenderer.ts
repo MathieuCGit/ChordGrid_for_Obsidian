@@ -359,11 +359,15 @@ export class SVGRenderer {
     // Actual height: maximum of (startY + height) of lines + bottom margin
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
     const height = layoutBottom + 40; // final margin
+    
+    // Add space above for chord symbols (they are rendered at measureY - verticalOffset)
+    const topMarginForChords = 50; // Space for chord symbols above staff
+    const totalHeight = height + topMarginForChords;
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', '100%');
   svg.setAttribute('height', 'auto');
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('viewBox', `0 ${-topMarginForChords} ${width} ${totalHeight}`);
   svg.setAttribute('xmlns', SVG_NS);
 
     // Initialize managers
@@ -374,9 +378,9 @@ export class SVGRenderer {
   // white background
   const bg = document.createElementNS(SVG_NS, 'rect');
   bg.setAttribute('x', '0');
-  bg.setAttribute('y', '0');
+  bg.setAttribute('y', String(-topMarginForChords));
   bg.setAttribute('width', String(width));
-  bg.setAttribute('height', String(height));
+  bg.setAttribute('height', String(totalHeight));
   bg.setAttribute('fill', 'white');
   svg.appendChild(bg);
 

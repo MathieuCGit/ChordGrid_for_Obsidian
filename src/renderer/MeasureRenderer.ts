@@ -468,8 +468,9 @@ export class MeasureRenderer {
     }
 
     /**
-     * Draw a chord-only measure (no rhythm notation, just chord symbols centered).
-     * Used for simple lead sheets where only chord changes are indicated.
+     * Draw a chord-only measure (no rhythm notation).
+     * Draws only the visual separators (diagonal slash for 2 chords, small slashes for 3+).
+     * The actual chord rendering is handled by ChordRenderer.
      * 
      * @param svg - SVG container
      * @param measureIndex - Index of the measure
@@ -485,24 +486,11 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
         }
 
-        // Get chord segments
+        // Get chord segments for visual separators
         const segments: ChordSegment[] = this.measure.chordSegments || [];
         const chordCount = segments.length;
         
-        if (chordCount === 0) {
-            // No chords, just draw barlines
-        } else if (chordCount === 1) {
-            // Single chord: center it in the measure
-            const chord = segments[0].chord;
-            const chordX = this.x + this.width / 2;
-            const chordY = this.y + 60; // Vertically centered (no staff line)
-            const fontSize = 24; // Larger font for chord-only mode
-            
-            const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, 'bold');
-            chordText.setAttribute('text-anchor', 'middle');
-            chordText.setAttribute('font-family', 'Arial, sans-serif');
-            svg.appendChild(chordText);
-        } else if (chordCount === 2) {
+        if (chordCount === 2) {
             // Special case: 2 chords with diagonal slash separator
             // Draw diagonal line from bottom-left to top-right
             const slashStartX = leftBarX + 5;
@@ -518,58 +506,22 @@ export class MeasureRenderer {
             diagonalLine.setAttribute('stroke', '#999');
             diagonalLine.setAttribute('stroke-width', '2');
             svg.appendChild(diagonalLine);
-            
-            // Position chords on either side of the diagonal
-            const fontSize = 20;
-            
-            // First chord: left side, ABOVE the diagonal line (top-left)
-            const chord1 = segments[0].chord;
-            const chord1X = this.x + this.width * 0.25; // More to the left
-            const chord1Y = this.y + 25; // Upper position (above diagonal)
-            const chordText1 = this.createText(chord1, chord1X, chord1Y, `${fontSize}px`, 'bold');
-            chordText1.setAttribute('text-anchor', 'middle');
-            chordText1.setAttribute('font-family', 'Arial, sans-serif');
-            svg.appendChild(chordText1);
-            
-            // Second chord: right side, BELOW the diagonal line (bottom-right)
-            const chord2 = segments[1].chord;
-            const chord2X = this.x + this.width * 0.75; // More to the right
-            const chord2Y = this.y + 95; // Lower position (below diagonal)
-            const chordText2 = this.createText(chord2, chord2X, chord2Y, `${fontSize}px`, 'bold');
-            chordText2.setAttribute('text-anchor', 'middle');
-            chordText2.setAttribute('font-family', 'Arial, sans-serif');
-            svg.appendChild(chordText2);
-        } else {
-            // Multiple chords (3+): distribute them horizontally with small slashes
+        } else if (chordCount > 2) {
+            // Multiple chords (3+): draw small slash separators between them
             const availableWidth = this.width - 20; // margins
             const chordSpacing = availableWidth / chordCount;
             
-            segments.forEach((segment, idx) => {
-                const chord = segment.chord;
-                if (!chord) return;
-                
-                const chordX = this.x + 10 + chordSpacing * (idx + 0.5);
-                const chordY = this.y + 60; // Vertically centered
-                const fontSize = 20; // Slightly smaller for multiple chords
-                
-                const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, 'bold');
-                chordText.setAttribute('text-anchor', 'middle');
-                chordText.setAttribute('font-family', 'Arial, sans-serif');
-                svg.appendChild(chordText);
-                
-                // Draw small slash separator between chords (except before first)
-                if (idx > 0) {
-                    const slashX = this.x + 10 + chordSpacing * idx;
-                    const slashLine = document.createElementNS(SVG_NS, 'line');
-                    slashLine.setAttribute('x1', slashX.toString());
-                    slashLine.setAttribute('y1', (this.y + 30).toString());
-                    slashLine.setAttribute('x2', (slashX + 10).toString());
-                    slashLine.setAttribute('y2', (this.y + 90).toString());
-                    slashLine.setAttribute('stroke', '#999');
-                    slashLine.setAttribute('stroke-width', '1.5');
-                    svg.appendChild(slashLine);
-                }
-            });
+            for (let idx = 1; idx < chordCount; idx++) {
+                const slashX = this.x + 10 + chordSpacing * idx;
+                const slashLine = document.createElementNS(SVG_NS, 'line');
+                slashLine.setAttribute('x1', slashX.toString());
+                slashLine.setAttribute('y1', (this.y + 30).toString());
+                slashLine.setAttribute('x2', (slashX + 10).toString());
+                slashLine.setAttribute('y2', (this.y + 90).toString());
+                slashLine.setAttribute('stroke', '#999');
+                slashLine.setAttribute('stroke-width', '1.5');
+                svg.appendChild(slashLine);
+            }
         }
 
         // Draw right barline

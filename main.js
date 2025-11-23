@@ -1935,8 +1935,9 @@ var MeasureRenderer = class {
     }
   }
   /**
-   * Draw a chord-only measure (no rhythm notation, just chord symbols centered).
-   * Used for simple lead sheets where only chord changes are indicated.
+   * Draw a chord-only measure (no rhythm notation).
+   * Draws only the visual separators (diagonal slash for 2 chords, small slashes for 3+).
+   * The actual chord rendering is handled by ChordRenderer.
    * 
    * @param svg - SVG container
    * @param measureIndex - Index of the measure
@@ -1951,17 +1952,7 @@ var MeasureRenderer = class {
     }
     const segments = this.measure.chordSegments || [];
     const chordCount = segments.length;
-    if (chordCount === 0) {
-    } else if (chordCount === 1) {
-      const chord = segments[0].chord;
-      const chordX = this.x + this.width / 2;
-      const chordY = this.y + 60;
-      const fontSize = 24;
-      const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, "bold");
-      chordText.setAttribute("text-anchor", "middle");
-      chordText.setAttribute("font-family", "Arial, sans-serif");
-      svg.appendChild(chordText);
-    } else if (chordCount === 2) {
+    if (chordCount === 2) {
       const slashStartX = leftBarX + 5;
       const slashStartY = this.y + 110;
       const slashEndX = rightBarX - 5;
@@ -1974,46 +1965,20 @@ var MeasureRenderer = class {
       diagonalLine.setAttribute("stroke", "#999");
       diagonalLine.setAttribute("stroke-width", "2");
       svg.appendChild(diagonalLine);
-      const fontSize = 20;
-      const chord1 = segments[0].chord;
-      const chord1X = this.x + this.width * 0.25;
-      const chord1Y = this.y + 25;
-      const chordText1 = this.createText(chord1, chord1X, chord1Y, `${fontSize}px`, "bold");
-      chordText1.setAttribute("text-anchor", "middle");
-      chordText1.setAttribute("font-family", "Arial, sans-serif");
-      svg.appendChild(chordText1);
-      const chord2 = segments[1].chord;
-      const chord2X = this.x + this.width * 0.75;
-      const chord2Y = this.y + 95;
-      const chordText2 = this.createText(chord2, chord2X, chord2Y, `${fontSize}px`, "bold");
-      chordText2.setAttribute("text-anchor", "middle");
-      chordText2.setAttribute("font-family", "Arial, sans-serif");
-      svg.appendChild(chordText2);
-    } else {
+    } else if (chordCount > 2) {
       const availableWidth = this.width - 20;
       const chordSpacing = availableWidth / chordCount;
-      segments.forEach((segment, idx) => {
-        const chord = segment.chord;
-        if (!chord) return;
-        const chordX = this.x + 10 + chordSpacing * (idx + 0.5);
-        const chordY = this.y + 60;
-        const fontSize = 20;
-        const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, "bold");
-        chordText.setAttribute("text-anchor", "middle");
-        chordText.setAttribute("font-family", "Arial, sans-serif");
-        svg.appendChild(chordText);
-        if (idx > 0) {
-          const slashX = this.x + 10 + chordSpacing * idx;
-          const slashLine = document.createElementNS(SVG_NS, "line");
-          slashLine.setAttribute("x1", slashX.toString());
-          slashLine.setAttribute("y1", (this.y + 30).toString());
-          slashLine.setAttribute("x2", (slashX + 10).toString());
-          slashLine.setAttribute("y2", (this.y + 90).toString());
-          slashLine.setAttribute("stroke", "#999");
-          slashLine.setAttribute("stroke-width", "1.5");
-          svg.appendChild(slashLine);
-        }
-      });
+      for (let idx = 1; idx < chordCount; idx++) {
+        const slashX = this.x + 10 + chordSpacing * idx;
+        const slashLine = document.createElementNS(SVG_NS, "line");
+        slashLine.setAttribute("x1", slashX.toString());
+        slashLine.setAttribute("y1", (this.y + 30).toString());
+        slashLine.setAttribute("x2", (slashX + 10).toString());
+        slashLine.setAttribute("y2", (this.y + 90).toString());
+        slashLine.setAttribute("stroke", "#999");
+        slashLine.setAttribute("stroke-width", "1.5");
+        svg.appendChild(slashLine);
+      }
     }
     if (this.measure.isRepeatEnd) {
       this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
@@ -3205,29 +3170,30 @@ var ChordRenderer = class {
     return Math.ceil(text.length * fontSize * this.CHAR_WIDTH_RATIO);
   }
   /**
-   * Trouve la position X de la première hampe (stem) d'un segment.
+   * Trouve la position X du début de la première note d'un segment.
    * Utilise les métadonnées enregistrées dans PlaceAndSizeManager.
+   * Retourne headLeftX (début gauche de la tête de note) pour un alignement visuel optimal.
    * 
    * @param placeAndSizeManager - Gestionnaire de placement
    * @param measureIndex - Index de la mesure
    * @param chordIndex - Index du segment/accord
-   * @returns Position X de la première hampe, ou null si non trouvée
+   * @returns Position X du début de la première note, ou null si non trouvée
    */
-  findFirstStemX(placeAndSizeManager, measureIndex, chordIndex) {
-    const stems = placeAndSizeManager.getElementsByMeasure(measureIndex).filter((el) => {
+  findFirstNoteX(placeAndSizeManager, measureIndex, chordIndex) {
+    const notes = placeAndSizeManager.getElementsByMeasure(measureIndex).filter((el) => el.type === "note").filter((el) => {
       var _a;
-      return el.type === "stem" && ((_a = el.metadata) == null ? void 0 : _a.stem);
-    }).filter((el) => el.metadata.chordIndex === chordIndex).sort((a, b) => {
+      return ((_a = el.metadata) == null ? void 0 : _a.chordIndex) === chordIndex;
+    }).sort((a, b) => {
       var _a, _b, _c, _d;
       const beatDiff = ((_a = a.metadata.beatIndex) != null ? _a : 0) - ((_b = b.metadata.beatIndex) != null ? _b : 0);
       if (beatDiff !== 0) return beatDiff;
       return ((_c = a.metadata.noteIndex) != null ? _c : 0) - ((_d = b.metadata.noteIndex) != null ? _d : 0);
     });
-    if (stems.length === 0) {
+    if (notes.length === 0) {
       return null;
     }
-    const firstStem = stems[0];
-    return firstStem.metadata.stem.centerX;
+    const firstNote = notes[0];
+    return firstNote.bbox.x;
   }
   /**
    * Rend tous les accords pour les mesures données.
@@ -3246,28 +3212,34 @@ var ChordRenderer = class {
     const fontSize = (_a = options.fontSize) != null ? _a : this.DEFAULT_FONT_SIZE;
     const verticalOffset = (_b = options.verticalOffset) != null ? _b : this.DEFAULT_VERTICAL_OFFSET;
     const displayRepeatSymbol = (_c = options.displayRepeatSymbol) != null ? _c : false;
+    const STAFF_LINE_OFFSET = 80;
     measurePositions.forEach((mp) => {
       if (!mp.x || !mp.y) return;
       const measure = mp.measure;
       const measureX = mp.x;
       const measureY = mp.y;
+      if (measure.__isChordOnlyMode) {
+        this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager);
+        return;
+      }
+      const staffLineY = measureY + STAFF_LINE_OFFSET;
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
       segments.forEach((segment, segmentIndex) => {
         const chordSymbol = segment.chord;
         if (!chordSymbol || chordSymbol === "") {
           return;
         }
-        const firstStemX = this.findFirstStemX(
+        const firstNoteX = this.findFirstNoteX(
           placeAndSizeManager,
           mp.globalIndex,
           segmentIndex
         );
-        if (firstStemX !== null) {
+        if (firstNoteX !== null) {
           this.renderChordSymbol(
             svg,
             chordSymbol,
-            firstStemX,
-            measureY - verticalOffset,
+            firstNoteX,
+            staffLineY - verticalOffset,
             fontSize,
             "start",
             placeAndSizeManager,
@@ -3276,7 +3248,7 @@ var ChordRenderer = class {
           );
         } else {
           console.warn(
-            `[ChordRenderer] No stem found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`
+            `[ChordRenderer] No note found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`
           );
           const segmentWidth = mp.width / segments.length;
           const segmentX = measureX + segmentIndex * segmentWidth + segmentWidth / 2;
@@ -3284,7 +3256,7 @@ var ChordRenderer = class {
             svg,
             chordSymbol,
             segmentX,
-            measureY - verticalOffset,
+            staffLineY - verticalOffset,
             fontSize,
             "middle",
             placeAndSizeManager,
@@ -3347,6 +3319,93 @@ var ChordRenderer = class {
         fontSize
       }
     });
+  }
+  /**
+   * Renders chords for a chord-only measure (no rhythm notation).
+   * Uses special positioning logic based on the number of chord segments.
+   * 
+   * @param svg - Parent SVG element
+   * @param measurePosition - Measure position info
+   * @param placeAndSizeManager - Placement manager
+   */
+  renderChordOnlyMeasure(svg, measurePosition, placeAndSizeManager) {
+    const measure = measurePosition.measure;
+    const measureX = measurePosition.x;
+    const measureY = measurePosition.y;
+    const measureWidth = measurePosition.width;
+    const measureIndex = measurePosition.globalIndex;
+    const segments = measure.chordSegments || [];
+    const chordCount = segments.length;
+    if (chordCount === 0) {
+      return;
+    } else if (chordCount === 1) {
+      const chord = segments[0].chord;
+      const chordX = measureX + measureWidth / 2;
+      const chordY = measureY + 60;
+      const fontSize = 24;
+      this.renderChordSymbol(
+        svg,
+        chord,
+        chordX,
+        chordY,
+        fontSize,
+        "middle",
+        placeAndSizeManager,
+        measureIndex,
+        0
+      );
+    } else if (chordCount === 2) {
+      const fontSize = 20;
+      const chord1 = segments[0].chord;
+      const chord1X = measureX + measureWidth * 0.25;
+      const chord1Y = measureY + 25;
+      this.renderChordSymbol(
+        svg,
+        chord1,
+        chord1X,
+        chord1Y,
+        fontSize,
+        "middle",
+        placeAndSizeManager,
+        measureIndex,
+        0
+      );
+      const chord2 = segments[1].chord;
+      const chord2X = measureX + measureWidth * 0.75;
+      const chord2Y = measureY + 95;
+      this.renderChordSymbol(
+        svg,
+        chord2,
+        chord2X,
+        chord2Y,
+        fontSize,
+        "middle",
+        placeAndSizeManager,
+        measureIndex,
+        1
+      );
+    } else {
+      const availableWidth = measureWidth - 20;
+      const chordSpacing = availableWidth / chordCount;
+      const fontSize = 20;
+      segments.forEach((segment, idx) => {
+        const chord = segment.chord;
+        if (!chord) return;
+        const chordX = measureX + 10 + chordSpacing * (idx + 0.5);
+        const chordY = measureY + 60;
+        this.renderChordSymbol(
+          svg,
+          chord,
+          chordX,
+          chordY,
+          fontSize,
+          "middle",
+          placeAndSizeManager,
+          measureIndex,
+          idx
+        );
+      });
+    }
   }
 };
 
@@ -3588,19 +3647,21 @@ var SVGRenderer = class {
     const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 60;
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
     const height = layoutBottom + 40;
+    const topMarginForChords = 50;
+    const totalHeight = height + topMarginForChords;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
     svg.setAttribute("height", "auto");
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("viewBox", `0 ${-topMarginForChords} ${width} ${totalHeight}`);
     svg.setAttribute("xmlns", SVG_NS);
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
     const tieManager = new TieManager();
     const notePositions = [];
     const bg = document.createElementNS(SVG_NS, "rect");
     bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
+    bg.setAttribute("y", String(-topMarginForChords));
     bg.setAttribute("width", String(width));
-    bg.setAttribute("height", String(height));
+    bg.setAttribute("height", String(totalHeight));
     bg.setAttribute("fill", "white");
     svg.appendChild(bg);
     const timeSigBaselineY = 40;
