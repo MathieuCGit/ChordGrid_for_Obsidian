@@ -1829,7 +1829,7 @@ var MeasureRenderer = class {
       const dotX = x + dotOffset;
       circle.setAttribute("cx", dotX.toString());
       circle.setAttribute("cy", dotY.toString());
-      circle.setAttribute("r", "2");
+      circle.setAttribute("r", "3");
       circle.setAttribute("fill", "#000");
       svg.appendChild(circle);
     });
@@ -3162,7 +3162,7 @@ var ChordRenderer = class {
    * Constructeur du ChordRenderer.
    */
   constructor() {
-    __publicField(this, "DEFAULT_FONT_SIZE", 16);
+    __publicField(this, "DEFAULT_FONT_SIZE", 24);
     __publicField(this, "DEFAULT_VERTICAL_OFFSET", 30);
     __publicField(this, "CHAR_WIDTH_RATIO", 0.53);
   }
@@ -3353,10 +3353,36 @@ var ChordRenderer = class {
     chordText.appendChild(mainNode);
     const qualityAndSuper = quality + superstructures;
     if (qualityAndSuper.length > 0) {
-      const superSpan = document.createElementNS(SVG_NS2, "tspan");
-      superSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
-      superSpan.textContent = qualityAndSuper;
-      chordText.appendChild(superSpan);
+      const parenGroups = qualityAndSuper.match(/\([^)]+\)/g);
+      if (parenGroups && parenGroups.length > 1) {
+        const firstParenIndex = qualityAndSuper.indexOf("(");
+        const beforeParens = qualityAndSuper.substring(0, firstParenIndex);
+        if (beforeParens.length > 0) {
+          const beforeSpan = document.createElementNS(SVG_NS2, "tspan");
+          beforeSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
+          beforeSpan.textContent = beforeParens;
+          chordText.appendChild(beforeSpan);
+        }
+        const mainTextWidth = this.estimateTextWidth(root + beforeParens, fontSize * 0.75);
+        const stackX = x + mainTextWidth + 12;
+        parenGroups.forEach((group, index) => {
+          const parenSpan = document.createElementNS(SVG_NS2, "tspan");
+          parenSpan.setAttribute("font-size", `${Math.round(fontSize * 0.65)}px`);
+          parenSpan.setAttribute("x", stackX.toString());
+          if (index === 0) {
+            parenSpan.setAttribute("dy", "-0.5em");
+          } else {
+            parenSpan.setAttribute("dy", "1.2em");
+          }
+          parenSpan.textContent = group;
+          chordText.appendChild(parenSpan);
+        });
+      } else {
+        const superSpan = document.createElementNS(SVG_NS2, "tspan");
+        superSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
+        superSpan.textContent = qualityAndSuper;
+        chordText.appendChild(superSpan);
+      }
     }
     if (bass.length > 0) {
       const bassSpan = document.createElementNS(SVG_NS2, "tspan");
@@ -3421,7 +3447,7 @@ var ChordRenderer = class {
       const chord = segments[0].chord;
       const chordX = measureX + measureWidth / 2;
       const chordY = measureY + 60;
-      const fontSize = 24;
+      const fontSize = 28;
       this.renderChordSymbol(
         svg,
         chord,
@@ -3434,9 +3460,9 @@ var ChordRenderer = class {
         0
       );
     } else if (chordCount === 2) {
-      const fontSize = 24;
+      const fontSize = 28;
       const chord1 = segments[0].chord;
-      const chord1X = measureX + measureWidth * 0.25;
+      const chord1X = measureX + measureWidth * 0.35;
       const chord1Y = measureY + 25;
       this.renderChordSymbol(
         svg,
@@ -3450,7 +3476,7 @@ var ChordRenderer = class {
         0
       );
       const chord2 = segments[1].chord;
-      const chord2X = measureX + measureWidth * 0.75;
+      const chord2X = measureX + measureWidth * 0.65;
       const chord2Y = measureY + 95;
       this.renderChordSymbol(
         svg,
@@ -3466,7 +3492,7 @@ var ChordRenderer = class {
     } else {
       const availableWidth = measureWidth - 20;
       const chordSpacing = availableWidth / chordCount;
-      const fontSize = 24;
+      const fontSize = 28;
       segments.forEach((segment, idx) => {
         const chord = segment.chord;
         if (!chord) return;

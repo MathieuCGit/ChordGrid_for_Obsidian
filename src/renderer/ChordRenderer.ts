@@ -55,7 +55,7 @@ interface ChordOnlyRenderOptions {
  * Classe responsable du rendu des symboles d'accords.
  */
 export class ChordRenderer {
-    private readonly DEFAULT_FONT_SIZE = 16;
+    private readonly DEFAULT_FONT_SIZE = 24;
     private readonly DEFAULT_VERTICAL_OFFSET = 30;
     private readonly CHAR_WIDTH_RATIO = 0.53; // Estimation largeur char/fontSize
 
@@ -331,12 +331,53 @@ export class ChordRenderer {
         chordText.appendChild(mainNode);
         
         // Render: quality + superstructures (smaller, 75% of main size)
+        // Special handling: if multiple parentheses groups exist, stack them vertically
         const qualityAndSuper = quality + superstructures;
         if (qualityAndSuper.length > 0) {
-            const superSpan = document.createElementNS(SVG_NS, 'tspan');
-            superSpan.setAttribute('font-size', `${Math.round(fontSize * 0.75)}px`);
-            superSpan.textContent = qualityAndSuper;
-            chordText.appendChild(superSpan);
+            // Check if there are multiple parentheses groups: (xxx)(yyy)
+            const parenGroups = qualityAndSuper.match(/\([^)]+\)/g);
+            
+            if (parenGroups && parenGroups.length > 1) {
+                // Multiple parentheses: stack them vertically to the right
+                // Extract the part before first parenthesis (quality + base extensions like "7")
+                const firstParenIndex = qualityAndSuper.indexOf('(');
+                const beforeParens = qualityAndSuper.substring(0, firstParenIndex);
+                
+                // Render: quality + base extensions (before parentheses) - normal superstructure size
+                if (beforeParens.length > 0) {
+                    const beforeSpan = document.createElementNS(SVG_NS, 'tspan');
+                    beforeSpan.setAttribute('font-size', `${Math.round(fontSize * 0.75)}px`);
+                    beforeSpan.textContent = beforeParens;
+                    chordText.appendChild(beforeSpan);
+                }
+                
+                // Calculate x position for stacked parentheses (to the right of main chord with spacing)
+                const mainTextWidth = this.estimateTextWidth(root + beforeParens, fontSize * 0.75);
+                const stackX = x + mainTextWidth + 12; // Add 12px spacing to avoid collision with extensions
+                
+                // Render each parenthesis group stacked vertically, small but readable
+                parenGroups.forEach((group, index) => {
+                    const parenSpan = document.createElementNS(SVG_NS, 'tspan');
+                    parenSpan.setAttribute('font-size', `${Math.round(fontSize * 0.65)}px`); // 65% for better readability
+                    parenSpan.setAttribute('x', stackX.toString()); // Align all at same x
+                    
+                    // Vertical positioning: first one slightly above baseline, second below
+                    if (index === 0) {
+                        parenSpan.setAttribute('dy', '-0.5em'); // First parenthesis goes up
+                    } else {
+                        parenSpan.setAttribute('dy', '1.2em'); // Next ones go down relative to previous
+                    }
+                    
+                    parenSpan.textContent = group;
+                    chordText.appendChild(parenSpan);
+                });
+            } else {
+                // Single or no parentheses: render normally
+                const superSpan = document.createElementNS(SVG_NS, 'tspan');
+                superSpan.setAttribute('font-size', `${Math.round(fontSize * 0.75)}px`);
+                superSpan.textContent = qualityAndSuper;
+                chordText.appendChild(superSpan);
+            }
         }
         
         // Render: bass note (smaller, 83% of main size)
@@ -430,7 +471,7 @@ export class ChordRenderer {
             const chord = segments[0].chord;
             const chordX = measureX + measureWidth / 2;
             const chordY = measureY + 60; // Vertically centered (no staff line)
-            const fontSize = 24; // Larger font for chord-only mode
+            const fontSize = 28; // Larger font for chord-only mode
             
             this.renderChordSymbol(
                 svg,
@@ -445,11 +486,12 @@ export class ChordRenderer {
             );
         } else if (chordCount === 2) {
             // Special case: 2 chords with diagonal positioning
-            const fontSize = 24; // Same size as single chord for consistency
+            const fontSize = 28; // Same size as single chord for consistency
             
             // First chord: left side, ABOVE the diagonal line (top-left)
+            // Use 0.35 instead of 0.25 to avoid collision with left barline for complex chords
             const chord1 = segments[0].chord;
-            const chord1X = measureX + measureWidth * 0.25;
+            const chord1X = measureX + measureWidth * 0.35;
             const chord1Y = measureY + 25;
             
             this.renderChordSymbol(
@@ -465,8 +507,9 @@ export class ChordRenderer {
             );
             
             // Second chord: right side, BELOW the diagonal line (bottom-right)
+            // Use 0.65 instead of 0.75 to avoid collision with right barline for complex chords
             const chord2 = segments[1].chord;
-            const chord2X = measureX + measureWidth * 0.75;
+            const chord2X = measureX + measureWidth * 0.65;
             const chord2Y = measureY + 95;
             
             this.renderChordSymbol(
@@ -484,7 +527,7 @@ export class ChordRenderer {
             // Multiple chords (3+): distribute them horizontally
             const availableWidth = measureWidth - 20; // margins
             const chordSpacing = availableWidth / chordCount;
-            const fontSize = 24; // Same size as single chord for consistency
+            const fontSize = 28; // Same size as single chord for consistency
             
             segments.forEach((segment: any, idx: number) => {
                 const chord = segment.chord;

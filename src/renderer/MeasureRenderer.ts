@@ -330,7 +330,7 @@ export class MeasureRenderer {
             const dotX = x + dotOffset;
             circle.setAttribute('cx', dotX.toString());
             circle.setAttribute('cy', dotY.toString());
-            circle.setAttribute('r', '2');
+            circle.setAttribute('r', '3');
             circle.setAttribute('fill', '#000');
             svg.appendChild(circle);
             
