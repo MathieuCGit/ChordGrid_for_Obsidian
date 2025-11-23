@@ -1,31 +1,31 @@
 /**
  * @file type.ts
- * @description Définitions de types et interfaces pour le parsing et le rendu de grilles d'accords.
+ * @description Type definitions and interfaces for chord grid parsing and rendering.
  * 
- * Ce fichier centralise tous les types utilisés dans le projet :
- * - Types de notes et silences
- * - Structures de beats et mesures
- * - Informations de ligatures et liaisons
- * - Types de barres de mesure
- * - Résultats de parsing et erreurs de validation
+ * This file centralizes all types used in the project:
+ * - Note and rest types
+ * - Beat and measure structures
+ * - Beam and tie information
+ * - Barline types
+ * - Parse results and validation errors
  * 
- * Ces interfaces assurent la cohérence entre le parser et le renderer.
+ * These interfaces ensure consistency between parser and renderer.
  */
 
 /**
- * Valeurs rythmiques supportées.
- * - 1 = ronde (whole note)
- * - 2 = blanche (half note)
- * - 4 = noire (quarter note)
- * - 8 = croche (eighth note)
- * - 16 = double-croche (sixteenth note)
- * - 32 = triple-croche (thirty-second note)
- * - 64 = quadruple-croche (sixty-fourth note)
+ * Supported rhythmic values.
+ * - 1 = whole note
+ * - 2 = half note
+ * - 4 = quarter note
+ * - 8 = eighth note
+ * - 16 = sixteenth note
+ * - 32 = thirty-second note
+ * - 64 = sixty-fourth note
  */
 export type NoteValue = 1 | 2 | 4 | 8 | 16 | 32 | 64;
 
 /**
- * Informations de liaison entre notes de différentes mesures.
+ * Tie information between notes in different measures.
  */
 export interface TieInfo {
   fromMeasure: number;
@@ -37,45 +37,45 @@ export interface TieInfo {
 }
 
 /**
- * Informations de volta (endings pour les répétitions).
- * Les voltas permettent de jouer différentes mesures selon le numéro de répétition.
+ * Volta information (endings for repeats).
+ * Voltas allow playing different measures depending on the repeat number.
  * 
- * Exemples :
- * - |.1 : volta simple (première fois)
- * - |.1-3 : volta range (fois 1, 2, 3)
- * - |.1,2,3 : volta list (fois 1, 2, 3)
+ * Examples:
+ * - |.1 : simple volta (first time)
+ * - |.1-3 : volta range (times 1, 2, 3)
+ * - |.1,2,3 : volta list (times 1, 2, 3)
  * 
- * La propriété isClosed détermine le rendu visuel :
- * - true : bracket fermé avec crochet droit ┌─1,2,3────┐ (avant :||, on reboucle)
- * - false : bracket ouvert sans crochet droit ┌─4───── (après :||, on continue)
+ * The isClosed property determines the visual rendering:
+ * - true : closed bracket with right hook ┌─1,2,3────┐ (before :||, loop back)
+ * - false : open bracket without right hook ┌─4───── (after :||, continue)
  */
 export interface VoltaInfo {
-  /** Numéros des répétitions concernées (ex: [1, 2, 3] ou [4]) */
+  /** Repeat numbers concerned (e.g., [1, 2, 3] or [4]) */
   numbers: number[];
-  /** Texte affiché (ex: "1-3", "4", "1,2,3") */
+  /** Displayed text (e.g., "1-3", "4", "1,2,3") */
   text: string;
-  /** true si bracket fermé (avant :||), false si ouvert (après :||) */
+  /** true if bracket closed (before :||), false if open (after :||) */
   isClosed: boolean;
 }
 
 /**
- * Élément note ou silence avec toutes ses propriétés rythmiques.
+ * Note or rest element with all its rhythmic properties.
  * 
- * Propriétés de base :
- * - value : valeur rythmique (1, 2, 4, 8, 16, 32, 64)
- * - dotted : note pointée (durée × 1.5)
- * - isRest : silence plutôt que note
+ * Base properties:
+ * - value: rhythmic value (1, 2, 4, 8, 16, 32, 64)
+ * - dotted: dotted note (duration × 1.5)
+ * - isRest: rest rather than note
  * 
- * Propriétés de liaison :
- * - tieStart : début d'une liaison vers la note suivante
- * - tieEnd : fin d'une liaison depuis la note précédente
- * - tieToVoid : liaison vers note virtuelle (fin de ligne)
- * - tieFromVoid : liaison depuis note virtuelle (début de ligne)
- * - tieInfo : informations détaillées de liaison entre mesures
+ * Tie properties:
+ * - tieStart: beginning of a tie to the next note
+ * - tieEnd: end of a tie from the previous note
+ * - tieToVoid: tie to virtual note (end of line)
+ * - tieFromVoid: tie from virtual note (beginning of line)
+ * - tieInfo: detailed tie information between measures
  * 
- * Propriétés de parsing :
- * - position : position dans le texte source
- * - length : longueur dans le texte source
+ * Parse properties:
+ * - position: position in source text
+ * - length: length in source text
  */
 export interface NoteElement {
   value: NoteValue;
@@ -91,12 +91,12 @@ export interface NoteElement {
   position?: number;
   length?: number;
   /**
-   * Informations de tuplet si la note appartient à un groupe de tuplet.
-   * - count : nombre de notes dans le tuplet (ex: 3 pour triolet, 5 pour quintolet)
-   * - groupId : identifiant unique du groupe tuplet
-   * - position : 'start' | 'middle' | 'end' (facilite le rendu du bracket et des ligatures)
-   * - ratio : ratio explicite numerator:denominator (ex: {8 8 8}3:2 → {numerator: 3, denominator: 2})
-   *           Si non fourni, le ratio par défaut ou automatique sera utilisé
+   * Tuplet information if the note belongs to a tuplet group.
+   * - count: number of notes in the tuplet (e.g., 3 for triplet, 5 for quintuplet)
+   * - groupId: unique identifier for the tuplet group
+   * - position: 'start' | 'middle' | 'end' (facilitates bracket and beam rendering)
+   * - ratio: explicit numerator:denominator ratio (e.g., {8 8 8}3:2 → {numerator: 3, denominator: 2})
+   *          If not provided, the default or automatic ratio will be used
    */
   tuplet?: {
     count: number;
@@ -108,23 +108,23 @@ export interface NoteElement {
     };
   };
   /**
-   * Flag indiquant qu'il y avait un espace lexical avant cette note dans le texte source.
-   * Utilisé pour casser les ligatures de niveau supérieur dans les tuplets.
-   * Ex: {161616 161616}6 → l'espace entre les groupes casse la ligature niveau 2 mais garde niveau 1
+   * Flag indicating there was a lexical space before this note in the source text.
+   * Used to break higher-level beams in tuplets.
+   * E.g., {161616 161616}6 → space between groups breaks level 2 beam but keeps level 1
    */
   hasLeadingSpace?: boolean;
   /**
-   * Flag indiquant que la liaison doit forcer la continuation de la ligature.
-   * Activé avec la syntaxe [_] (ex: 888[_]88 = liaison + ligature forcée)
-   * Permet de surpasser la règle normale "espace casse ligature" pour des cas spéciaux.
+   * Flag indicating the tie should force beam continuation.
+   * Activated with [_] syntax (e.g., 888[_]88 = tie + forced beam)
+   * Allows overriding the normal "space breaks beam" rule for special cases.
    */
   forcedBeamThroughTie?: boolean;
 }
 
 /**
- * Groupe de notes liées par une ligature (beam).
+ * Group of notes connected by a beam.
  * 
- * Définit les indices de début et fin des notes à relier visuellement.
+ * Defines the start and end indices of notes to be visually connected.
  */
 export interface BeamGroup {
   startIndex: number;
@@ -133,10 +133,10 @@ export interface BeamGroup {
 }
 
 /**
- * Beat (temps) contenant une ou plusieurs notes/silences.
+ * Beat (time unit) containing one or more notes/rests.
  * 
- * Un beat représente une unité de temps dans une mesure.
- * Les notes d'un même beat peuvent être groupées par des ligatures.
+ * A beat represents a time unit within a measure.
+ * Notes within the same beat can be grouped by beams.
  */
 export interface Beat {
   notes: NoteElement[];
@@ -146,11 +146,11 @@ export interface Beat {
 }
 
 /**
- * Types de barres de mesure.
- * - Single (|) : barre simple
- * - Double (||) : double barre (fin de section)
- * - RepeatStart (||:) : début de reprise
- * - RepeatEnd (:||) : fin de reprise
+ * Barline types.
+ * - Single (|) : single barline
+ * - Double (||) : double barline (end of section)
+ * - RepeatStart (||:) : repeat start
+ * - RepeatEnd (:||) : repeat end
  */
 export enum BarlineType {
   Single = '|',
@@ -160,10 +160,10 @@ export enum BarlineType {
 }
 
 /**
- * Segment d'accord dans une mesure.
+ * Chord segment within a measure.
  * 
- * Une mesure peut contenir plusieurs changements d'accords.
- * Chaque segment représente un accord et les beats associés.
+ * A measure can contain multiple chord changes.
+ * Each segment represents a chord and its associated beats.
  */
 export interface ChordSegment {
   chord: string;
@@ -173,14 +173,14 @@ export interface ChordSegment {
 }
 
 /**
- * Mesure musicale complète.
+ * Complete musical measure.
  * 
- * Contient tous les beats de la mesure, l'accord principal,
- * les segments d'accords multiples, et le type de barre de mesure.
+ * Contains all beats in the measure, the main chord,
+ * multiple chord segments, and the barline type.
  * 
- * Propriétés de volta :
- * - voltaStart : Indique le début d'un volta (avec numéros, texte, type ouvert/fermé)
- * - voltaEnd : Indique la fin d'un volta (associé au voltaStart d'une mesure précédente)
+ * Volta properties:
+ * - voltaStart: Indicates the start of a volta (with numbers, text, open/closed type)
+ * - voltaEnd: Indicates the end of a volta (associated with voltaStart of a previous measure)
  */
 export interface Measure {
   beats: Beat[];
@@ -190,29 +190,29 @@ export interface Measure {
   chordSegments: ChordSegment[];
   source?: string;
   isRepeat?: boolean;  // true if this measure was created from % notation
-  voltaStart?: VoltaInfo;  // Debut d'un volta bracket
-  voltaEnd?: VoltaInfo;    // Fin d'un volta bracket (même volta que voltaStart)
+  voltaStart?: VoltaInfo;  // Start of a volta bracket
+  voltaEnd?: VoltaInfo;    // End of a volta bracket (same volta as voltaStart)
 }
 
 /**
- * Mode de groupement des notes pour les ligatures.
- * - 'binary': groupement par 2 (temps binaire) - ex: 88 88
- * - 'ternary': groupement par 3 (temps composé) - ex: 888 888
- * - 'noauto': pas d'auto-groupement, l'utilisateur contrôle via les espaces
- * - 'auto': détection automatique basée sur la signature temporelle
+ * Grouping mode for note beaming.
+ * - 'binary': group by 2 (binary time) - e.g., 88 88
+ * - 'ternary': group by 3 (compound time) - e.g., 888 888
+ * - 'noauto': no auto-grouping, user controls via spaces
+ * - 'auto': automatic detection based on time signature
  */
 export type GroupingMode = 'binary' | 'ternary' | 'noauto' | 'auto';
 
 /**
- * Signature temporelle (time signature).
+ * Time signature.
  * 
- * Définit le nombre de temps par mesure, la valeur de note par temps,
- * et le mode de groupement des ligatures.
+ * Defines the number of beats per measure, note value per beat,
+ * and beam grouping mode.
  * 
- * Exemples :
- * - 4/4 = 4 temps de noire par mesure (binaire par défaut)
- * - 6/8 = 6 croches par mesure en 2 groupes de 3 (ternaire par défaut)
- * - Peut être explicité : "4/4 binary" ou "6/8 ternary"
+ * Examples:
+ * - 4/4 = 4 quarter beats per measure (binary by default)
+ * - 6/8 = 6 eighth notes per measure in 2 groups of 3 (ternary by default)
+ * - Can be explicit: "4/4 binary" or "6/8 ternary"
  */
 export interface TimeSignature {
   numerator: number;
@@ -223,12 +223,12 @@ export interface TimeSignature {
 }
 
 /**
- * Grille d'accords complète parsée.
+ * Complete parsed chord grid.
  * 
- * Structure principale retournée par le parser, contenant :
- * - La signature temporelle
- * - Toutes les mesures de la grille
- * - Les mesures regroupées en lignes pour le rendu
+ * Main structure returned by the parser, containing:
+ * - The time signature
+ * - All measures of the grid
+ * - Measures grouped into lines for rendering
  */
 export interface ChordGrid {
   timeSignature: TimeSignature;
@@ -237,10 +237,10 @@ export interface ChordGrid {
 }
 
 /**
- * Erreur de validation de mesure.
+ * Measure validation error.
  * 
- * Générée lorsque la durée totale d'une mesure ne correspond pas
- * à la signature temporelle déclarée.
+ * Generated when the total duration of a measure doesn't match
+ * the declared time signature.
  */
 export interface ValidationError {
   measureIndex: number; // 0-based
@@ -251,10 +251,10 @@ export interface ValidationError {
 }
 
 /**
- * Résultat complet du parsing d'une grille d'accords.
+ * Complete parse result of a chord grid.
  * 
- * Contient la grille parsée, les erreurs de validation éventuelles,
- * et la liste brute des mesures.
+ * Contains the parsed grid, any validation errors,
+ * and the raw list of measures.
  */
 export interface ParseResult {
   grid: ChordGrid;

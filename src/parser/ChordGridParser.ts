@@ -1,81 +1,81 @@
 /**
  * @file ChordGridParser.ts
- * @description Parser pour la notation textuelle des grilles d'accords.
+ * @description Parser for textual chord grid notation.
  *
- * Ce parser transforme une grille d'accords en notation textuelle en une structure
- * d'objets ChordGrid contenant des mesures, des beats et des notes.
+ * This parser transforms a chord grid in textual notation into a ChordGrid
+ * object structure containing measures, beats, and notes.
  *
- * Responsabilités :
- * - Lecture de la signature temporelle (placée au début de la première ligne, ex: "4/4")
- * - Parsing des mesures et des groupes rythmiques en structures Measure/Beat/Note
- * - Marquage des sauts de ligne et regroupement des mesures en lignes de rendu
- * - Gestion des ligatures (beams) entre notes selon les espaces et les beats
- * - Gestion des liaisons (ties) entre notes, y compris entre mesures
- * - Validation de la durée totale de chaque mesure par rapport à la signature temporelle
+ * Responsibilities:
+ * - Reading time signature (placed at the beginning of first line, e.g., "4/4")
+ * - Parsing measures and rhythmic groups into Measure/Beat/Note structures
+ * - Marking line breaks and grouping measures into render lines
+ * - Managing beams between notes according to spaces and beats
+ * - Managing ties between notes, including cross-measure ties
+ * - Validating total duration of each measure against time signature
  *
- * Syntaxe supportée :
- * - Signature temporelle : `4/4`, `3/4`, `6/8`, etc.
- * - Barres de mesure : `|` (simple), `||` (double), `||:` (début de reprise), `:||` (fin de reprise)
- * - Accords : notation standard (Am, C, Gmaj7, F#m, Bb7, etc.)
- * - Notes : 1 (ronde), 2 (blanche), 4 (noire), 8 (croche), 16 (double-croche), 32, 64
- * - Notes pointées : ajout d'un point après le chiffre (ex: `4.`, `8.`)
- * - Silences : préfixe `-` devant la valeur (ex: `-4` pour un soupir)
- * - Liaisons : underscore `_` pour lier des notes (ex: `4_88_` ou `[_8]`)
- * - Ligatures : notes groupées sans espace sont liées par une ligature (ex: `88` = 2 croches liées)
- * - Ligature forcée avec liaison : `[_]` force la ligature à continuer malgré la liaison
- *   (ex: `888[_]88` = liaison ET ligature, vs `888 _88` = liaison SANS ligature)
+ * Supported syntax:
+ * - Time signature: `4/4`, `3/4`, `6/8`, etc.
+ * - Barlines: `|` (single), `||` (double), `||:` (repeat start), `:||` (repeat end)
+ * - Chords: standard notation (Am, C, Gmaj7, F#m, Bb7, etc.)
+ * - Notes: 1 (whole), 2 (half), 4 (quarter), 8 (eighth), 16 (sixteenth), 32, 64
+ * - Dotted notes: add a dot after the number (e.g., `4.`, `8.`)
+ * - Rests: prefix `-` before the value (e.g., `-4` for quarter rest)
+ * - Ties: underscore `_` to tie notes (e.g., `4_88_` or `[_8]`)
+ * - Beams: notes grouped without space are beamed (e.g., `88` = 2 eighths beamed)
+ * - Forced beam with tie: `[_]` forces beam to continue despite tie
+ *   (e.g., `888[_]88` = tie AND beam, vs `888 _88` = tie WITHOUT beam)
  *
  * @example
  * ```typescript
  * const parser = new ChordGridParser();
  * const result = parser.parse("4/4 ||: Am[88 4 4 88] | C[2 4 4] :||");
- * // result.grid contient la structure parsée
- * // result.errors contient les erreurs de validation éventuelles
+ * // result.grid contains the parsed structure
+ * // result.errors contains any validation errors
  * ```
  *
- * @see {@link BeamAndTieAnalyzer} pour l'analyse des ligatures et liaisons
- * @see {@link Measure} pour la structure d'une mesure
- * @see {@link Beat} pour la structure d'un beat
- * @see {@link Note} pour la structure d'une note
+ * @see {@link BeamAndTieAnalyzer} for beam and tie analysis
+ * @see {@link Measure} for measure structure
+ * @see {@link Beat} for beat structure
+ * @see {@link Note} for note structure
  */
 export class ChordGridParser {
 
   /**
-   * Table des ratios par défaut pour les tuplets courants.
+   * Default ratio table for common tuplets.
    * 
-   * Convention musicale (compatible MuseScore) :
-   * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+   * Musical convention (compatible with MuseScore):
+   * N:M means "N units of baseLen in the time of M units of same value"
    * 
-   * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+   * baseLen = smallest rhythmic value in the tuplet (reference unit)
    * 
-   * Exemples :
-   * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
-   * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
-   * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+   * Examples:
+   * - {8 8 8}3:2 → 3 eighths in the time of 2 eighths (baseLen = 1/8)
+   * - {816-16 1616 8 8}5:4 → content equivalent to 5 eighths in the time of 4 eighths (baseLen = 1/16)
+   * - {16 16 16}3:2 → 3 sixteenths in the time of 2 sixteenths (baseLen = 1/16)
    * 
-   * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
-   * où durée_cumulative est exprimée en unités de baseLen
+   * Applied ratio: actual_duration = cumulative_duration × (M/N)
+   * where cumulative_duration is expressed in baseLen units
    * 
-   * Cette table peut être étendue selon les besoins musicaux.
-   * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+   * This table can be extended according to musical needs.
+   * To enforce a specific ratio, use syntax {...}N:M
    */
   private static readonly DEFAULT_TUPLET_RATIOS: Record<number, { numerator: number, denominator: number }> = {
-    // Tuplets en temps simple (les plus courants)
-    3: { numerator: 3, denominator: 2 },   // Triplet : 3 notes dans le temps de 2
-    5: { numerator: 5, denominator: 4 },   // Quintuplet : 5 notes dans le temps de 4
-    6: { numerator: 6, denominator: 4 },   // Sextuplet : 6 notes dans le temps de 4
-    7: { numerator: 7, denominator: 4 },   // Septuplet : 7 notes dans le temps de 4
-    9: { numerator: 9, denominator: 8 },   // Nonuplet : 9 notes dans le temps de 8
-    10: { numerator: 10, denominator: 8 }, // Décuplet : 10 notes dans le temps de 8
-    11: { numerator: 11, denominator: 8 }, // 11-uplet : 11 notes dans le temps de 8
-    12: { numerator: 12, denominator: 8 }, // 12-uplet : 12 notes dans le temps de 8
-    13: { numerator: 13, denominator: 8 }, // 13-uplet : 13 notes dans le temps de 8
-    15: { numerator: 15, denominator: 8 }, // 15-uplet : 15 notes dans le temps de 8
+    // Tuplets in simple time (most common)
+    3: { numerator: 3, denominator: 2 },   // Triplet: 3 notes in the time of 2
+    5: { numerator: 5, denominator: 4 },   // Quintuplet: 5 notes in the time of 4
+    6: { numerator: 6, denominator: 4 },   // Sextuplet: 6 notes in the time of 4
+    7: { numerator: 7, denominator: 4 },   // Septuplet: 7 notes in the time of 4
+    9: { numerator: 9, denominator: 8 },   // Nonuplet: 9 notes in the time of 8
+    10: { numerator: 10, denominator: 8 }, // Decuplet: 10 notes in the time of 8
+    11: { numerator: 11, denominator: 8 }, // 11-tuplet: 11 notes in the time of 8
+    12: { numerator: 12, denominator: 8 }, // 12-tuplet: 12 notes in the time of 8
+    13: { numerator: 13, denominator: 8 }, // 13-tuplet: 13 notes in the time of 8
+    15: { numerator: 15, denominator: 8 }, // 15-tuplet: 15 notes in the time of 8
     
-    // Tuplets en temps composé (moins courants, mais nécessaires)
-    2: { numerator: 2, denominator: 3 },   // Duplet : 2 notes dans le temps de 3
-    4: { numerator: 4, denominator: 3 },   // Quadruplet : 4 notes dans le temps de 3
-    8: { numerator: 8, denominator: 6 },   // Octuplet : 8 notes dans le temps de 6
+    // Tuplets in compound time (less common but necessary)
+    2: { numerator: 2, denominator: 3 },   // Duplet: 2 notes in the time of 3
+    4: { numerator: 4, denominator: 3 },   // Quadruplet: 4 notes in the time of 3
+    8: { numerator: 8, denominator: 6 },   // Octuplet: 8 notes in the time of 6
   };
 
   /**
@@ -112,18 +112,18 @@ export class ChordGridParser {
   }
 
   /**
-   * Parse une grille d'accords en notation textuelle.
+   * Parse a chord grid in textual notation.
    * 
-   * @param input - Chaîne contenant la grille d'accords en notation textuelle
-   * @returns Objet ParseResult contenant :
-   *   - grid : la structure ChordGrid parsée
-   *   - errors : tableau d'erreurs de validation (mesures mal formées)
-   *   - measures : tableau de toutes les mesures
+   * @param input - String containing the chord grid in textual notation
+   * @returns ParseResult object containing:
+   *   - grid: the parsed ChordGrid structure
+   *   - errors: array of validation errors (malformed measures)
+   *   - measures: array of all measures
    */
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
     
-    // Détection des mots-clés stems-up/down et show% sur la première ligne (dans n'importe quel ordre)
+    // Detect stems-up/down and show% keywords on the first line (in any order)
     let stemsDirection: 'up' | 'down' = 'up';
     let displayRepeatSymbol = false;
     let picksMode: 'off' | 'auto' | '8' | '16' | undefined = undefined;
@@ -168,33 +168,33 @@ export class ChordGridParser {
     // Remove leading whitespace after removing directives
     timeSignatureLine = timeSignatureLine.trim();
     
-    // Si après avoir retiré les directives la ligne est vide, utiliser la ligne suivante pour la signature
+    // If after removing directives the line is empty, use the next line for the time signature
     if (timeSignatureLine === '' && lines.length > 1) {
       timeSignatureLine = lines[1];
-      // Reconstruire lines en supprimant la première ligne vide et en utilisant la deuxième
+      // Rebuild lines by removing the first empty line and using the second
       lines.splice(0, 2, timeSignatureLine);
     } else {
-      // Mettre à jour la première ligne
+      // Update the first line
       lines[0] = timeSignatureLine;
     }
 
-    // Parser la signature temporelle
+    // Parse the time signature
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
 
-    // Retirer le motif "N/M" ou "N/M binary/ternary/noauto" de la première ligne
-    // pour éviter qu'il soit parsé comme mesure
-    // Ne consomme PAS les barlines pour permettre leur parsing correct
+    // Remove the "N/M" or "N/M binary/ternary/noauto" pattern from the first line
+    // to avoid parsing it as a measure
+    // Does NOT consume barlines to allow proper barline parsing
     timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*/, '');
     lines[0] = timeSignatureLine;
     
-  // Parser toutes les mesures
+  // Parse all measures
   const allMeasures: Measure[] = [];
     
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
       const measures = this.parseLine(line, lineIndex === 0);
       
-      // Marquer la dernière mesure de chaque ligne
+      // Mark the last measure of each line
       if (measures.length > 0 && lineIndex < lines.length - 1) {
         measures[measures.length - 1].isLineBreak = true;
       }
@@ -266,11 +266,11 @@ export class ChordGridParser {
             //           2) default ratio from table for common cases
             //           3) automatic calculation as fallback
             //
-            // Convention musicale (compatible MuseScore) :
-            // N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
-            // Exemple : {816-16 1616 8 8}5:4 = 5 croches dans le temps de 4 croches
-            //           où N=5 représente la durée cumulative normalisée (10 doubles-croches = 5 croches)
-            // Calcul : durée_réelle = (cumulativeDuration / N) × M
+            // Musical convention (MuseScore-compatible):
+            // N:M means "N units of baseLen in the time of M units of the same value"
+            // Example: {816-16 1616 8 8}5:4 = 5 eighths in the time of 4 eighths
+            //          where N=5 represents the normalized cumulative duration (10 sixteenths = 5 eighths)
+            // Calculation: actual_duration = (cumulativeDuration / N) × M
             let tupletRatio: number;
             
             if (n.tuplet.ratio) {
@@ -639,14 +639,14 @@ export class ChordGridParser {
 
             const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment);
             
-            // Créer un segment pour chaque groupe accord/rythme
+            // Create a segment for each chord/rhythm group
             chordSegments.push({
-              chord: chord,  // utiliser l'accord actuel
+              chord: chord,  // use the current chord
               beats: parsedBeats,
               leadingSpace: hasSignificantSpace
             });
             
-            beats.push(...parsedBeats); // garder la compatibilité avec le reste du code
+            beats.push(...parsedBeats); // keep compatibility with the rest of the code
           }
           segmentIndex++;
         }
@@ -670,8 +670,8 @@ export class ChordGridParser {
 
       const newMeasure: Measure = {
         beats,
-        chord: firstChord,  // garder pour compatibilité
-        chordSegments,     // nouvelle propriété pour tous les accords
+        chord: firstChord,  // keep for compatibility
+        chordSegments,     // new property for all chords
         barline: bar,
         isLineBreak: false,
         source: anySource || text
@@ -801,19 +801,19 @@ export class ChordGridParser {
   }
 
   /**
-   * Parse la signature temporelle depuis la première ligne.
+   * Parse the time signature from the first line.
    * 
-   * @param line - Première ligne contenant la signature temporelle (ex: "4/4 ||: C[4 4 4 4]")
-   * @returns Objet TimeSignature avec numérateur et dénominateur
-   * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
+   * @param line - First line containing the time signature (e.g., "4/4 ||: C[4 4 4 4]")
+   * @returns TimeSignature object with numerator and denominator
+   * @default { numerator: 4, denominator: 4 } if no signature is found
    */
   /**
-   * Parse la signature temporelle et le mode de groupement optionnel.
+   * Parse the time signature and optional grouping mode.
    * 
-   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary"
    * 
-   * @param line - Première ligne contenant la signature temporelle
-   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   * @param line - First line containing the time signature
+   * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   private parseTimeSignature(line: string): TimeSignature {
     // Match: "4/4" optionally followed by "binary", "ternary", or "noauto"
@@ -967,11 +967,11 @@ export class ChordGridParser {
   }
 
   /**
-   * Regroupe les mesures en lignes pour le rendu.
+   * Group measures into lines for rendering.
    * 
-   * @param measures - Tableau de toutes les mesures
-   * @param perLine - Nombre de mesures par ligne (généralement 4)
-   * @returns Tableau de lignes, chaque ligne contenant un tableau de mesures
+   * @param measures - Array of all measures
+   * @param perLine - Number of measures per line (typically 4)
+   * @returns Array of lines, each line containing an array of measures
    */
   private groupIntoLines(measures: Measure[], perLine: number): Measure[][] {
     const lines: Measure[][] = [];
@@ -984,25 +984,25 @@ export class ChordGridParser {
 
 /**
  * @class BeamAndTieAnalyzer
- * @description Analyseur de ligatures (beams) et de liaisons (ties) pour la notation rythmique.
+ * @description Analyzer for beams and ties in rhythmic notation.
  * 
- * Cette classe est responsable de :
- * - Analyser les groupes rythmiques et déterminer quelles notes doivent être liées par des ligatures
- * - Gérer les liaisons entre notes (ties), y compris entre mesures et lignes
- * - Parser les valeurs de notes individuelles (avec points et silences)
- * - Créer les structures Beat avec les informations de ligature appropriées
+ * This class is responsible for:
+ * - Analyzing rhythmic groups and determining which notes should be beamed together
+ * - Managing ties between notes (ties), including cross-measure and cross-line ties
+ * - Parsing individual note values (with dots and rests)
+ * - Creating Beat structures with appropriate beam information
  * 
- * Règles de ligature :
- * - Les notes sans espace entre elles sont groupées dans le même beat et liées
- * - Un espace sépare les beats et donc les groupes de ligature
- * - Les silences brisent les ligatures
- * - Un espace avant un accord peut briser la ligature entre segments
+ * Beam rules:
+ * - Notes without space between them are grouped in the same beat and beamed
+ * - A space separates beats and therefore beam groups
+ * - Rests break beams
+ * - A space before a chord can break the beam between segments
  * 
- * Règles de liaison :
- * - L'underscore `_` marque le début d'une liaison
- * - Une liaison peut traverser les limites de mesure
- * - Une liaison "to void" marque une note qui se lie à une note virtuelle en fin de ligne
- * - Une liaison "from void" marque une note qui reçoit une liaison depuis une note virtuelle
+ * Tie rules:
+ * - The underscore `_` marks the start of a tie
+ * - A tie can cross measure boundaries
+ * - A "to void" tie marks a note that ties to a virtual note at end of line
+ * - A "from void" tie marks a note that receives a tie from a virtual note
  */
 class BeamAndTieAnalyzer {
   
@@ -1013,8 +1013,8 @@ class BeamAndTieAnalyzer {
     pendingTieToVoid: boolean; // NEW
   };
 
-  // Garder le contexte du dernier groupe de notes pour détecter
-  // si deux segments doivent être liés ou séparés
+  // Keep context of the last note group to detect
+  // whether two segments should be beamed or separated
   private rhythmContext: {
     lastGroupTime: number;
     lastGroupHasSpace: boolean;
@@ -1057,13 +1057,13 @@ class BeamAndTieAnalyzer {
     let pendingTieFromVoid = false;
     
     while (i < rhythmStr.length) {
-      // Détection d'un tuplet : { ... }N
+      // Tuplet detection: { ... }N
       if (rhythmStr[i] === '{') {
-        // Chercher la fermeture '}'
+        // Find the closing '}'
         const closeIdx = rhythmStr.indexOf('}', i);
         if (closeIdx > i) {
-          // Chercher le chiffre du tuplet et le ratio optionnel après '}'
-          // Format: }N ou }N:M
+          // Find the tuplet number and optional ratio after '}'
+          // Format: }N or }N:M
           let numStr = '';
           let j = closeIdx + 1;
           while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
@@ -1071,10 +1071,10 @@ class BeamAndTieAnalyzer {
             j++;
           }
           
-          // Vérifier si un ratio explicite est fourni (:M)
+          // Check if an explicit ratio is provided (:M)
           let explicitRatio: { numerator: number, denominator: number } | undefined;
           if (j < rhythmStr.length && rhythmStr[j] === ':') {
-            j++; // Passer le ':'
+            j++; // Skip the ':'
             let ratioStr = '';
             while (j < rhythmStr.length && /\d/.test(rhythmStr[j])) {
               ratioStr += rhythmStr[j];
@@ -1091,9 +1091,9 @@ class BeamAndTieAnalyzer {
           
           const tupletCount = parseInt(numStr, 10);
           if (tupletCount > 0) {
-            // Extraire le contenu entre { }
+            // Extract the content between { }
             const inner = rhythmStr.slice(i + 1, closeIdx);
-            // Split par espace pour gérer les sous-groupes
+            // Split by space to handle sub-groups
             const subGroups = inner.split(' ');
             let tupletNoteIndex = 0;
             
@@ -1104,14 +1104,14 @@ class BeamAndTieAnalyzer {
               let pendingTieFromPrevious = false;
               
               while (k < group.length) {
-                // Gestion des underscores (liaisons) dans les tuplets
+                // Handle underscores (ties) in tuplets
                 if (group[k] === '_') {
                   if (k === 0) {
-                    // Underscore au début du sous-groupe
-                    // La note précédente doit être liée à la suivante
+                    // Underscore at the start of the sub-group
+                    // The previous note must be tied to the next one
                     pendingTieFromPrevious = true;
                   } else {
-                    // Underscore après une note : marquer la liaison
+                    // Underscore after a note: mark the tie
                     if (currentBeat.length > 0) {
                       this.markTieStart(currentBeat);
                     }
@@ -1131,7 +1131,7 @@ class BeamAndTieAnalyzer {
                   k += (note.length ?? 0);
                 }
                 
-                // Si un underscore précédait cette note
+                // If an underscore preceded this note
                 if (pendingTieFromPrevious) {
                   note.tieEnd = true;
                   pendingTieFromPrevious = false;
@@ -1143,7 +1143,7 @@ class BeamAndTieAnalyzer {
                   this.tieContext.lastNote = null;
                 }
                 
-                // Ajout propriété tuplet (use tupletCount from annotation)
+                // Add tuplet property (use tupletCount from annotation)
                 note.tuplet = {
                   count: tupletCount,
                   groupId: `T${i}_${closeIdx}`,
@@ -1167,7 +1167,7 @@ class BeamAndTieAnalyzer {
         }
       }
       
-      // Gestion des [_] forced beam syntax (checked BEFORE standalone _)
+      // Handle [_] forced beam syntax (checked BEFORE standalone _)
       if (rhythmStr[i] === '[' && i + 2 < rhythmStr.length && 
           rhythmStr[i + 1] === '_' && rhythmStr[i + 2] === ']') {
         // Mark last note with forced beam through tie
@@ -1181,7 +1181,7 @@ class BeamAndTieAnalyzer {
         continue;
       }
       
-      // Gestion des underscores (liaisons)
+      // Handle underscores (ties)
       if (rhythmStr[i] === '_') {
         if (i === rhythmStr.length - 1) {
           // Underscore at end of rhythmStr segment.
@@ -1215,7 +1215,7 @@ class BeamAndTieAnalyzer {
         i++;
         continue;
       }
-      // Gestion des espaces
+      // Handle spaces
       if (rhythmStr[i] === ' ') {
         if (currentBeat.length > 0) {
           // Close current beat and remember a reference to its cloned last note for cross-space ties
@@ -1227,7 +1227,7 @@ class BeamAndTieAnalyzer {
         i++;
         continue;
       }
-      // Gestion des silences (-)
+      // Handle rests (-)
       if (rhythmStr[i] === '-') {
         i++;
         const note = this.parseNote(rhythmStr, i);
@@ -1236,7 +1236,7 @@ class BeamAndTieAnalyzer {
         i += (note.length ?? 0);
         continue;
       }
-      // Lecture d'une valeur de note
+      // Read a note value
       const note = this.parseNote(rhythmStr, i);
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
@@ -1334,24 +1334,24 @@ class BeamAndTieAnalyzer {
     // Copier les notes
     const beatNotes = notes.map(n => ({ ...n }));
     
-    // Analyser les notes pour la création de groupes de ligature
+    // Analyze notes for beam group creation
     const beamGroups: BeamGroup[] = [];
     let hasBeam = false;
     
-    // Identifier les notes qui peuvent être liées (croches et plus courtes)
+    // Identify notes that can be beamed (eighths and shorter)
     const beamableNotes = beatNotes.filter(n => n.value >= 8 && !n.isRest);
     
     if (beamableNotes.length > 0) {
-      // Si ce groupe commence par une liaison entrante
+      // If this group starts with an incoming tie
       const hasIncomingTie = beamableNotes[0].tieEnd || beamableNotes[0].tieFromVoid;
       
-      // Les espaces significatifs forcent une rupture de groupe
-      // Si le groupe courant est collé au précédent (lastGroupHasSpace === false)
-      // et que le précédent contenait des notes beameables, on doit continuer la ligature
-      // même sans underscore explicite (règle: si pas d'espace avant une note, liaisons s'appliquent pour notes >4).
+      // Significant spaces force a group break
+      // If the current group is attached to the previous one (lastGroupHasSpace === false)
+      // and the previous contained beamable notes, we must continue the beam
+      // even without an explicit underscore (rule: if no space before a note, beams apply for notes >4).
       const prevBeamableCount = this.rhythmContext.lastBeamableNotes.length;
       if (!this.rhythmContext.lastGroupHasSpace && (hasIncomingTie || prevBeamableCount > 0)) {
-        // Continuer le groupe précédent
+        // Continue the previous group
         beamGroups.push({
           startIndex: 0,
           endIndex: beamableNotes.length - 1,
@@ -1359,7 +1359,7 @@ class BeamAndTieAnalyzer {
         });
         hasBeam = true;
       } else {
-        // Nouveau groupe indépendant
+        // New independent group
         beamGroups.push({
           startIndex: 0,
           endIndex: beamableNotes.length - 1,
@@ -1369,7 +1369,7 @@ class BeamAndTieAnalyzer {
       }
     }
     
-    // Mettre à jour le contexte pour le prochain groupe
+    // Update context for the next group
     this.rhythmContext.lastBeamableNotes = beamableNotes;
     
     return {

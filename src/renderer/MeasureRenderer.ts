@@ -1,5 +1,5 @@
 /**
- * Position d'une note dans le SVG avec métadonnées pour les liaisons.
+ * Note position in SVG with metadata for ties.
  */
 interface NotePosition {
     x: number;
@@ -27,23 +27,23 @@ import { SVG_NS } from './constants';
 
 /**
  * @file MeasureRenderer.ts
- * @description Rendu SVG d'une mesure musicale individuelle.
+ * @description SVG rendering of an individual musical measure.
  *
- * Cette classe est responsable du rendu graphique d'une mesure complète :
- * barres, portée, accords, notes et ligatures.
+ * This class is responsible for the graphical rendering of a complete measure:
+ * barlines, staff, chords, notes and beams.
  */
 export class MeasureRenderer {
     /**
-     * Constructeur du renderer de mesure.
+     * Measure renderer constructor.
      * 
-     * @param measure - Mesure à rendre
-     * @param x - Position X de départ de la mesure dans le SVG
-     * @param y - Position Y de départ de la mesure dans le SVG
-     * @param width - Largeur allouée à la mesure
+     * @param measure - Measure to render
+     * @param x - Starting X position of the measure in the SVG
+     * @param y - Starting Y position of the measure in the SVG
+     * @param width - Width allocated to the measure
      * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
-     * @param placeAndSizeManager - Gestionnaire de position et taille pour éviter les chevauchements
-     * @param stemsDirection - Direction des hampes ('up' ou 'down')
-     * @param displayRepeatSymbol - Afficher le symbole % pour les mesures répétées
+     * @param placeAndSizeManager - Position and size manager to avoid overlaps
+     * @param stemsDirection - Stem direction ('up' or 'down')
+     * @param displayRepeatSymbol - Display the % symbol for repeated measures
      */
     private readonly restRenderer: RestRenderer;
     private readonly stemsDirection: 'up' | 'down';
@@ -332,11 +332,7 @@ export class MeasureRenderer {
     ): number | null {
         if (!beat || beat.notes.length === 0) return null;
 
-        // DebugLogger supprimé : Drawing beat
-
         const hasBeamableNotes = beat.notes.some(n => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
-
-        // DebugLogger supprimé : Beam detection
 
         // Draw notes without beams; analyzer overlay will handle beams later
         // Position notes left-aligned within the beat area but clamp spacing to avoid overflow

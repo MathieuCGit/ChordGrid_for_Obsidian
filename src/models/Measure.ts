@@ -3,23 +3,23 @@ import { Beat } from './Beat';
 
 /**
  * @file Measure.ts
- * @description Représentation d'une mesure musicale.
+ * @description Representation of a musical measure.
  * 
- * Une mesure est une unité structurelle de la musique qui contient un certain
- * nombre de beats selon la signature temporelle. Elle est délimitée par des
- * barres de mesure qui peuvent être simples, doubles, ou indiquer des reprises.
+ * A measure is a structural unit of music that contains a certain number
+ * of beats according to the time signature. It is delimited by barlines
+ * which can be single, double, or indicate repeats.
  * 
- * Propriétés :
- * - beats : Tableau de beats contenus dans la mesure
- * - chord : Accord principal de la mesure (pour compatibilité)
- * - chordSegments : Segments d'accords multiples dans la mesure
- * - barline : Type de barre de mesure (simple, double, reprise début/fin)
- * - isLineBreak : Indique si un saut de ligne doit suivre cette mesure
- * - source : Texte source ayant généré cette mesure (pour débogage)
+ * Properties:
+ * - beats: Array of beats contained in the measure
+ * - chord: Main chord of the measure (for compatibility)
+ * - chordSegments: Multiple chord segments within the measure
+ * - barline: Type of barline (single, double, repeat start/end)
+ * - isLineBreak: Indicates if a line break should follow this measure
+ * - source: Source text that generated this measure (for debugging)
  * 
  * @example
  * ```typescript
- * // Mesure 4/4 avec quatre noires sur Am
+ * // 4/4 measure with four quarter notes on Am
  * const measure = new Measure({
  *   beats: [beat1, beat2, beat3, beat4],
  *   chord: "Am",
@@ -36,9 +36,9 @@ export class Measure implements IMeasure {
   source?: string;
 
   /**
-   * Constructeur d'une mesure.
+   * Constructor for a measure.
    * 
-   * @param data - Données partielles pour initialiser la mesure
+   * @param data - Partial data to initialize the measure
    */
   constructor(data: Partial<IMeasure> = {}) {
     this.beats = (data.beats || []).map(b => new Beat(b.notes, (b as any).chord)) as unknown as IBeat[];
@@ -50,17 +50,17 @@ export class Measure implements IMeasure {
   }
 
   /**
-   * Calcule la durée totale de la mesure en unités de noires (quarter-notes).
+   * Calculate the total duration of the measure in quarter-note units.
    * 
-   * Additionne les durées de tous les beats de la mesure.
-   * Utile pour valider que la mesure respecte la signature temporelle.
+   * Sums the durations of all beats in the measure.
+   * Useful to validate that the measure respects the time signature.
    * 
-   * @returns Durée totale en quarter-notes
+   * @returns Total duration in quarter-notes
    * 
    * @example
-   * // Mesure 4/4 avec 4 noires = 4 quarter-notes
-   * // Mesure 3/4 avec 3 noires = 3 quarter-notes
-   * // Mesure 6/8 avec 6 croches = 3 quarter-notes
+   * // 4/4 measure with 4 quarter notes = 4 quarter-notes
+   * // 3/4 measure with 3 quarter notes = 3 quarter-notes
+   * // 6/8 measure with 6 eighth notes = 3 quarter-notes
    */
   totalQuarterNotes(): number {
     return this.beats.reduce((s, b) => {

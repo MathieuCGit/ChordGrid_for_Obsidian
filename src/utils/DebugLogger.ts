@@ -1,28 +1,28 @@
 /**
  * @file DebugLogger.ts
- * @description Système de logging pour le débogage dans Obsidian.
+ * @description Logging system for debugging in Obsidian.
  * 
- * Comme les console.log() ne sont pas facilement accessibles dans Obsidian,
- * ce logger affiche les messages directement dans l'interface utilisateur.
- * Les logs peuvent être activés/désactivés et s'affichent dans un panneau
- * dédié au-dessus du rendu SVG.
+ * Since console.log() is not easily accessible in Obsidian,
+ * this logger displays messages directly in the user interface.
+ * Logs can be enabled/disabled and appear in a dedicated panel
+ * above the SVG rendering.
  */
 
 export class DebugLogger {
   private static enabled = true;
   private static logContainer: HTMLElement | null = null;
   private static logs: string[] = [];
-  private static maxLogs = 50; // Limite pour éviter trop de logs
+  private static maxLogs = 50; // Limit to avoid too many logs
 
   /**
-   * Active ou désactive le logging.
+   * Enables or disables logging.
    */
   static setEnabled(enabled: boolean) {
     this.enabled = enabled;
   }
 
   /**
-   * Initialise le conteneur de logs pour un bloc de code donné.
+   * Initializes the log container for a given code block.
    */
   static init(parentElement: HTMLElement): HTMLElement {
     this.logs = [];
@@ -50,7 +50,7 @@ export class DebugLogger {
   }
 
   /**
-   * Enregistre un message de log.
+   * Records a log message.
    */
   static log(message: string, data?: any) {
     if (!this.enabled) return;
@@ -62,19 +62,19 @@ export class DebugLogger {
     
     this.logs.push(logMessage);
     
-    // Limite le nombre de logs
+    // Limit the number of logs
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
     
-    // Console log pour les DevTools si ouvert
+    // Console log for DevTools if open
     console.log(`[ChordGrid] ${message}`, data);
     
     this.render();
   }
 
   /**
-   * Enregistre un message d'erreur.
+   * Records an error message.
    */
   static error(message: string, error?: any) {
     if (!this.enabled) return;
@@ -92,7 +92,7 @@ export class DebugLogger {
   }
 
   /**
-   * Enregistre un message d'avertissement.
+   * Records a warning message.
    */
   static warn(message: string, data?: any) {
     if (!this.enabled) return;
@@ -110,7 +110,7 @@ export class DebugLogger {
   }
 
   /**
-   * Met à jour l'affichage des logs.
+   * Updates the log display.
    */
   private static render() {
     if (!this.logContainer) return;

@@ -1,85 +1,77 @@
 /**
  * @file TieManager.ts
- * @description Gestionnaire de liaisons (ties) entre mesures et lignes.
+ * @description Manager for ties between measures and lines.
  * 
- * Cette classe gère les liaisons qui traversent les limites de mesure
- * ou de ligne. Elle maintient une liste de liaisons "en attente" (pending)
- * qui seront résolues lorsque la note de destination sera rendue.
+ * This class manages ties that cross measure or line boundaries.
+ * It maintains a list of "pending" ties that will be resolved
+ * when the destination note is rendered.
  * 
- * Cas d'usage :
- * - Liaison se terminant en fin de ligne (tieToVoid)
- * - Liaison démarrant en début de ligne (tieFromVoid)
- * - Liaisons traversant plusieurs mesures
+ * Use cases:
+ * - Tie ending at the end of a line (tieToVoid)
+ * - Tie starting at the beginning of a line (tieFromVoid)
+ * - Ties crossing multiple measures
  * 
- * Le TieManager permet au SVGRenderer de dessiner les courbes de liaison
- * même lorsque les notes liées ne sont pas adjacentes visuellement.
+ * The TieManager allows SVGRenderer to draw tie curves
+ * even when tied notes are not visually adjacent.
  * 
  * @example
  * ```typescript
  * const tieManager = new TieManager();
- * // En fin de ligne
+ * // At end of line
  * tieManager.addPendingTie(measureIndex, x, y);
- * // Au début de la ligne suivante
+ * // At beginning of next line
  * const pending = tieManager.resolvePendingFor(measureIndex + 1);
  * if (pending) {
- *   // Dessiner la liaison de pending vers la nouvelle note
+ *   // Draw tie from pending to new note
  * }
  * ```
  */
 
-// DebugLogger supprimé pour release utilisateur
-
 /**
- * Gestionnaire de liaisons entre mesures et lignes.
+ * Manager for ties between measures and lines.
  */
 export class TieManager {
   // pending ties saved when a tie continues beyond the rendered area (e.g. line break)
   private pending: Array<{ measureIndex: number; x: number; y: number }> = [];
 
   /**
-   * Ajoute une liaison en attente de résolution.
+   * Adds a tie awaiting resolution.
    * 
-   * Utilisé lorsqu'une note se termine par une liaison "to void" en fin de ligne.
+   * Used when a note ends with a "to void" tie at the end of a line.
    * 
-   * @param measureIndex - Index de la mesure contenant la note de départ
-   * @param x - Position X de la fin de la liaison
-   * @param y - Position Y de la fin de la liaison
+   * @param measureIndex - Index of the measure containing the start note
+   * @param x - X position of the tie end
+   * @param y - Y position of the tie end
    */
   addPendingTie(measureIndex: number, x: number, y: number) {
-  // DebugLogger supprimé : Adding pending tie
     this.pending.push({ measureIndex, x, y });
-  // DebugLogger supprimé : Current pending ties
   }
 
   /**
-   * Tente de résoudre une liaison en attente pour une note commençant par "from void".
+   * Attempts to resolve a pending tie for a note starting with "from void".
    * 
-   * Recherche une liaison en attente dont l'index de mesure est strictement inférieur
-   * à celui donné (car la liaison vient d'une mesure précédente).
+   * Searches for a pending tie whose measure index is strictly less than
+   * the given one (since the tie comes from a previous measure).
    * 
-   * @param measureIndex - Index de la mesure contenant la note d'arrivée
-   * @returns La liaison en attente (et la retire de la liste) ou null si aucune
+   * @param measureIndex - Index of the measure containing the destination note
+   * @returns The pending tie (and removes it from the list) or null if none
    */
   resolvePendingFor(measureIndex: number) {
-  // DebugLogger supprimé : Resolving pending tie for measure
-    
     // find the earliest pending tie whose measureIndex is strictly less than the given one
     for (let i = 0; i < this.pending.length; i++) {
       if (this.pending[i].measureIndex < measureIndex) {
         const p = this.pending.splice(i, 1)[0];
-  // DebugLogger supprimé : Resolved pending tie
         return p;
       }
     }
     
-  // DebugLogger supprimé : No pending tie found for measure
     return null;
   }
 
   /**
-   * Efface toutes les liaisons en attente.
+   * Clears all pending ties.
    * 
-   * Utilisé pour réinitialiser le gestionnaire entre différents rendus.
+   * Used to reset the manager between different renders.
    */
   clearPending() {
     this.pending = [];

@@ -35,15 +35,15 @@ var DebugLogger;
 var init_DebugLogger = __esm({
   "src/utils/DebugLogger.ts"() {
     DebugLogger = class {
-      // Limite pour éviter trop de logs
+      // Limit to avoid too many logs
       /**
-       * Active ou désactive le logging.
+       * Enables or disables logging.
        */
       static setEnabled(enabled) {
         this.enabled = enabled;
       }
       /**
-       * Initialise le conteneur de logs pour un bloc de code donné.
+       * Initializes the log container for a given code block.
        */
       static init(parentElement) {
         this.logs = [];
@@ -67,7 +67,7 @@ var init_DebugLogger = __esm({
         return this.logContainer;
       }
       /**
-       * Enregistre un message de log.
+       * Records a log message.
        */
       static log(message, data) {
         if (!this.enabled) return;
@@ -81,7 +81,7 @@ var init_DebugLogger = __esm({
         this.render();
       }
       /**
-       * Enregistre un message d'erreur.
+       * Records an error message.
        */
       static error(message, error) {
         if (!this.enabled) return;
@@ -92,7 +92,7 @@ var init_DebugLogger = __esm({
         this.render();
       }
       /**
-       * Enregistre un message d'avertissement.
+       * Records a warning message.
        */
       static warn(message, data) {
         if (!this.enabled) return;
@@ -103,7 +103,7 @@ var init_DebugLogger = __esm({
         this.render();
       }
       /**
-       * Met à jour l'affichage des logs.
+       * Updates the log display.
        */
       static render() {
         if (!this.logContainer) return;
@@ -166,13 +166,13 @@ var _ChordGridParser = class _ChordGridParser {
     return isNaN(num) ? [] : [num];
   }
   /**
-   * Parse une grille d'accords en notation textuelle.
+   * Parse a chord grid in textual notation.
    * 
-   * @param input - Chaîne contenant la grille d'accords en notation textuelle
-   * @returns Objet ParseResult contenant :
-   *   - grid : la structure ChordGrid parsée
-   *   - errors : tableau d'erreurs de validation (mesures mal formées)
-   *   - measures : tableau de toutes les mesures
+   * @param input - String containing the chord grid in textual notation
+   * @returns ParseResult object containing:
+   *   - grid: the parsed ChordGrid structure
+   *   - errors: array of validation errors (malformed measures)
+   *   - measures: array of all measures
    */
   parse(input) {
     const lines = input.trim().split("\n");
@@ -519,7 +519,7 @@ var _ChordGridParser = class _ChordGridParser {
             const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment);
             chordSegments.push({
               chord,
-              // utiliser l'accord actuel
+              // use the current chord
               beats: parsedBeats,
               leadingSpace: hasSignificantSpace
             });
@@ -543,9 +543,9 @@ var _ChordGridParser = class _ChordGridParser {
       const newMeasure = {
         beats,
         chord: firstChord,
-        // garder pour compatibilité
+        // keep for compatibility
         chordSegments,
-        // nouvelle propriété pour tous les accords
+        // new property for all chords
         barline: bar,
         isLineBreak: false,
         source: anySource || text
@@ -621,19 +621,19 @@ var _ChordGridParser = class _ChordGridParser {
     return measures;
   }
   /**
-   * Parse la signature temporelle depuis la première ligne.
+   * Parse the time signature from the first line.
    * 
-   * @param line - Première ligne contenant la signature temporelle (ex: "4/4 ||: C[4 4 4 4]")
-   * @returns Objet TimeSignature avec numérateur et dénominateur
-   * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
+   * @param line - First line containing the time signature (e.g., "4/4 ||: C[4 4 4 4]")
+   * @returns TimeSignature object with numerator and denominator
+   * @default { numerator: 4, denominator: 4 } if no signature is found
    */
   /**
-   * Parse la signature temporelle et le mode de groupement optionnel.
+   * Parse the time signature and optional grouping mode.
    * 
-   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary"
    * 
-   * @param line - Première ligne contenant la signature temporelle
-   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   * @param line - First line containing the time signature
+   * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   parseTimeSignature(line) {
     const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
@@ -758,11 +758,11 @@ var _ChordGridParser = class _ChordGridParser {
     }
   }
   /**
-   * Regroupe les mesures en lignes pour le rendu.
+   * Group measures into lines for rendering.
    * 
-   * @param measures - Tableau de toutes les mesures
-   * @param perLine - Nombre de mesures par ligne (généralement 4)
-   * @returns Tableau de lignes, chaque ligne contenant un tableau de mesures
+   * @param measures - Array of all measures
+   * @param perLine - Number of measures per line (typically 4)
+   * @returns Array of lines, each line containing an array of measures
    */
   groupIntoLines(measures, perLine) {
     const lines = [];
@@ -773,60 +773,60 @@ var _ChordGridParser = class _ChordGridParser {
   }
 };
 /**
- * Table des ratios par défaut pour les tuplets courants.
+ * Default ratio table for common tuplets.
  * 
- * Convention musicale (compatible MuseScore) :
- * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+ * Musical convention (compatible with MuseScore):
+ * N:M means "N units of baseLen in the time of M units of same value"
  * 
- * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+ * baseLen = smallest rhythmic value in the tuplet (reference unit)
  * 
- * Exemples :
- * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
- * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
- * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+ * Examples:
+ * - {8 8 8}3:2 → 3 eighths in the time of 2 eighths (baseLen = 1/8)
+ * - {816-16 1616 8 8}5:4 → content equivalent to 5 eighths in the time of 4 eighths (baseLen = 1/16)
+ * - {16 16 16}3:2 → 3 sixteenths in the time of 2 sixteenths (baseLen = 1/16)
  * 
- * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
- * où durée_cumulative est exprimée en unités de baseLen
+ * Applied ratio: actual_duration = cumulative_duration × (M/N)
+ * where cumulative_duration is expressed in baseLen units
  * 
- * Cette table peut être étendue selon les besoins musicaux.
- * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+ * This table can be extended according to musical needs.
+ * To enforce a specific ratio, use syntax {...}N:M
  */
 __publicField(_ChordGridParser, "DEFAULT_TUPLET_RATIOS", {
-  // Tuplets en temps simple (les plus courants)
+  // Tuplets in simple time (most common)
   3: { numerator: 3, denominator: 2 },
-  // Triplet : 3 notes dans le temps de 2
+  // Triplet: 3 notes in the time of 2
   5: { numerator: 5, denominator: 4 },
-  // Quintuplet : 5 notes dans le temps de 4
+  // Quintuplet: 5 notes in the time of 4
   6: { numerator: 6, denominator: 4 },
-  // Sextuplet : 6 notes dans le temps de 4
+  // Sextuplet: 6 notes in the time of 4
   7: { numerator: 7, denominator: 4 },
-  // Septuplet : 7 notes dans le temps de 4
+  // Septuplet: 7 notes in the time of 4
   9: { numerator: 9, denominator: 8 },
-  // Nonuplet : 9 notes dans le temps de 8
+  // Nonuplet: 9 notes in the time of 8
   10: { numerator: 10, denominator: 8 },
-  // Décuplet : 10 notes dans le temps de 8
+  // Decuplet: 10 notes in the time of 8
   11: { numerator: 11, denominator: 8 },
-  // 11-uplet : 11 notes dans le temps de 8
+  // 11-tuplet: 11 notes in the time of 8
   12: { numerator: 12, denominator: 8 },
-  // 12-uplet : 12 notes dans le temps de 8
+  // 12-tuplet: 12 notes in the time of 8
   13: { numerator: 13, denominator: 8 },
-  // 13-uplet : 13 notes dans le temps de 8
+  // 13-tuplet: 13 notes in the time of 8
   15: { numerator: 15, denominator: 8 },
-  // 15-uplet : 15 notes dans le temps de 8
-  // Tuplets en temps composé (moins courants, mais nécessaires)
+  // 15-tuplet: 15 notes in the time of 8
+  // Tuplets in compound time (less common but necessary)
   2: { numerator: 2, denominator: 3 },
-  // Duplet : 2 notes dans le temps de 3
+  // Duplet: 2 notes in the time of 3
   4: { numerator: 4, denominator: 3 },
-  // Quadruplet : 4 notes dans le temps de 3
+  // Quadruplet: 4 notes in the time of 3
   8: { numerator: 8, denominator: 6 }
-  // Octuplet : 8 notes dans le temps de 6
+  // Octuplet: 8 notes in the time of 6
 });
 var ChordGridParser = _ChordGridParser;
 var BeamAndTieAnalyzer = class {
   constructor() {
     __publicField(this, "tieContext");
-    // Garder le contexte du dernier groupe de notes pour détecter
-    // si deux segments doivent être liés ou séparés
+    // Keep context of the last note group to detect
+    // whether two segments should be beamed or separated
     __publicField(this, "rhythmContext");
     this.tieContext = {
       lastNote: null,
@@ -1267,16 +1267,16 @@ var MeasureRenderer = class {
     this.beamedAtLevel1 = beamedAtLevel1;
     this.placeAndSizeManager = placeAndSizeManager;
     /**
-     * Constructeur du renderer de mesure.
+     * Measure renderer constructor.
      * 
-     * @param measure - Mesure à rendre
-     * @param x - Position X de départ de la mesure dans le SVG
-     * @param y - Position Y de départ de la mesure dans le SVG
-     * @param width - Largeur allouée à la mesure
+     * @param measure - Measure to render
+     * @param x - Starting X position of the measure in the SVG
+     * @param y - Starting Y position of the measure in the SVG
+     * @param width - Width allocated to the measure
      * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
-     * @param placeAndSizeManager - Gestionnaire de position et taille pour éviter les chevauchements
-     * @param stemsDirection - Direction des hampes ('up' ou 'down')
-     * @param displayRepeatSymbol - Afficher le symbole % pour les mesures répétées
+     * @param placeAndSizeManager - Position and size manager to avoid overlaps
+     * @param stemsDirection - Stem direction ('up' or 'down')
+     * @param displayRepeatSymbol - Display the % symbol for repeated measures
      */
     __publicField(this, "restRenderer");
     __publicField(this, "stemsDirection");
@@ -2184,25 +2184,25 @@ var TieManager = class {
     __publicField(this, "pending", []);
   }
   /**
-   * Ajoute une liaison en attente de résolution.
+   * Adds a tie awaiting resolution.
    * 
-   * Utilisé lorsqu'une note se termine par une liaison "to void" en fin de ligne.
+   * Used when a note ends with a "to void" tie at the end of a line.
    * 
-   * @param measureIndex - Index de la mesure contenant la note de départ
-   * @param x - Position X de la fin de la liaison
-   * @param y - Position Y de la fin de la liaison
+   * @param measureIndex - Index of the measure containing the start note
+   * @param x - X position of the tie end
+   * @param y - Y position of the tie end
    */
   addPendingTie(measureIndex, x, y) {
     this.pending.push({ measureIndex, x, y });
   }
   /**
-   * Tente de résoudre une liaison en attente pour une note commençant par "from void".
+   * Attempts to resolve a pending tie for a note starting with "from void".
    * 
-   * Recherche une liaison en attente dont l'index de mesure est strictement inférieur
-   * à celui donné (car la liaison vient d'une mesure précédente).
+   * Searches for a pending tie whose measure index is strictly less than
+   * the given one (since the tie comes from a previous measure).
    * 
-   * @param measureIndex - Index de la mesure contenant la note d'arrivée
-   * @returns La liaison en attente (et la retire de la liste) ou null si aucune
+   * @param measureIndex - Index of the measure containing the destination note
+   * @returns The pending tie (and removes it from the list) or null if none
    */
   resolvePendingFor(measureIndex) {
     for (let i = 0; i < this.pending.length; i++) {
@@ -2214,9 +2214,9 @@ var TieManager = class {
     return null;
   }
   /**
-   * Efface toutes les liaisons en attente.
+   * Clears all pending ties.
    * 
-   * Utilisé pour réinitialiser le gestionnaire entre différents rendus.
+   * Used to reset the manager between different renders.
    */
   clearPending() {
     this.pending = [];
@@ -2724,7 +2724,6 @@ var PlaceAndSizeManager = class {
    */
   constructor(config) {
     __publicField(this, "elements", []);
-    __publicField(this, "plannedElements", []);
     __publicField(this, "config");
     this.config = {
       minSpacing: 2,
@@ -2774,6 +2773,7 @@ var PlaceAndSizeManager = class {
       case "time-signature":
       case "double-bar":
       case "repeat-symbol":
+      case "measure":
         return "structure";
       default:
         return "staff";
@@ -3154,93 +3154,34 @@ var PlaceAndSizeManager = class {
     };
     return !(aExpanded.x + aExpanded.width < bExpanded.x || bExpanded.x + bExpanded.width < aExpanded.x || aExpanded.y + aExpanded.height < bExpanded.y || bExpanded.y + bExpanded.height < aExpanded.y);
   }
-  // ========== MÉTHODES DE PLANIFICATION (2-PHASE ARCHITECTURE) ==========
   /**
-   * PHASE 1 (CALCUL): Planifie un élément pour le rendu.
-   * Enregistre la position initiale souhaitée sans dessiner.
-   * 
-   * @param type - Type d'élément
-   * @param initialBBox - Position/dimensions souhaitées initiales
-   * @param priority - Priorité (éléments à priorité élevée fixés en premier)
-   * @param renderData - Données nécessaires au rendu (texte, couleur, style, etc.)
-   * @param metadata - Métadonnées optionnelles
-   */
-  planElement(type, initialBBox, priority, renderData, metadata) {
-    this.plannedElements.push({
-      type,
-      initialBBox,
-      priority,
-      renderData,
-      metadata
-    });
-  }
-  /**
-   * PHASE 2 (RÉSOLUTION): Résout toutes les collisions entre éléments planifiés.
-   * Ajuste les positions selon les priorités et les règles de collision.
-   * Doit être appelé après avoir planifié tous les éléments, avant le rendu.
-   */
-  resolveAllCollisions() {
-    const sorted = [...this.plannedElements].sort((a, b) => b.priority - a.priority);
-    for (const planned of sorted) {
-      const layer = this.getCollisionLayer(planned.type);
-      const margin = this.getHorizontalMargin(planned.type);
-      const alreadyPlaced = this.plannedElements.filter((p) => p.adjustedBBox && this.canCollide(p.type, planned.type)).map((p) => p.type);
-      const adjustedBBox = this.findFreePosition(
-        planned.initialBBox,
-        planned.type,
-        "horizontal",
-        alreadyPlaced,
-        10
-      );
-      planned.adjustedBBox = adjustedBBox || planned.initialBBox;
-      this.registerElement(planned.type, planned.adjustedBBox, planned.priority, planned.metadata);
-    }
-  }
-  /**
-   * PHASE 3 (RENDU): Récupère tous les éléments planifiés avec leurs positions ajustées.
-   * À utiliser dans la phase de rendu pour dessiner les éléments.
-   * 
-   * @returns Tableau des éléments planifiés avec positions finales
-   */
-  getPlannedElements() {
-    return this.plannedElements;
-  }
-  /**
-   * Efface tous les éléments planifiés.
-   * À appeler au début d'un nouveau cycle de rendu.
-   */
-  clearPlannedElements() {
-    this.plannedElements = [];
-  }
-  /**
-   * Efface à la fois les éléments enregistrés et planifiés.
-   * Réinitialisation complète du gestionnaire.
+   * Clears all registered elements.
+   * Resets the manager to initial state.
    */
   clearAll() {
     this.clear();
-    this.clearPlannedElements();
   }
 };
 
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
   constructor() {
-    // Constantes pour le calcul de layout
+    // Layout calculation constants
     __publicField(this, "BASE_MEASURE_WIDTH", 240);
     __publicField(this, "SEPARATOR_WIDTH", 12);
     __publicField(this, "INNER_PADDING_PER_SEGMENT", 20);
     __publicField(this, "HEAD_HALF_MAX", 6);
     __publicField(this, "MEASURE_HEIGHT", 120);
     __publicField(this, "LINE_VERTICAL_SPACING", 20);
-    // Espace entre les lignes
-    // Limites d'espacement dynamique pour la lisibilité
+    // Space between lines
+    // Dynamic spacing limits for readability
     __publicField(this, "MIN_SPACING_RATIO", 0.7);
-    // En dessous, illisible (trop serré)
+    // Below this: illegible (too tight)
     __publicField(this, "MAX_SPACING_RATIO", 1.5);
   }
-  // Au-dessus, illisible (trop espacé)
+  // Above this: illegible (too spread out)
   /**
-   * Calcule l'espacement minimum pour une valeur rythmique donnée.
+   * Calculate the minimum spacing for a given rhythmic value.
    */
   getMinSpacingForValue(v) {
     if (v >= 64) return 16;
@@ -3278,7 +3219,7 @@ var SVGRenderer = class {
     return Math.max(this.BASE_MEASURE_WIDTH, Math.ceil(width));
   }
   /**
-   * Largeur effective utilisée au rendu, tenant compte du ratio de compression éventuel.
+   * Effective width used for rendering, accounting for the potential compression ratio.
    */
   getRenderedMeasureWidth(measure) {
     const base = this.calculateMeasureWidth(measure);
@@ -3286,12 +3227,12 @@ var SVGRenderer = class {
     return ratio ? base * ratio : base;
   }
   /**
-   * Calcule la mise en page (layout) des mesures en lignes.
+   * Calculates the layout of measures into lines.
    * 
-   * @param measures - Tableau de toutes les mesures
-   * @param maxWidth - Largeur maximum d'une ligne (utilisé en mode auto)
-   * @param forcedMeasuresPerLine - Si défini, force exactement N mesures par ligne
-   * @returns Tableau de lignes de rendu
+   * @param measures - Array of all measures
+   * @param maxWidth - Maximum width of a line (used in auto mode)
+   * @param forcedMeasuresPerLine - If defined, forces exactly N measures per line
+   * @returns Array of render lines
    */
   calculateLayout(measures, maxWidth, forcedMeasuresPerLine) {
     const lines = [];
@@ -3338,12 +3279,12 @@ var SVGRenderer = class {
     return lines;
   }
   /**
-   * Ajuste dynamiquement les largeurs de mesures sur chaque ligne
-   * en fonction de l'espace disponible, tout en respectant les limites de lisibilité.
+   * Dynamically adjusts measure widths on each line
+   * based on available space, while respecting readability limits.
    * 
-   * @param lines - Lignes de rendu à ajuster
-   * @param maxWidth - Largeur maximum disponible
-   * @param isForcedLayout - Si true, supprime les limites pour forcer l'ajustement au cadre
+   * @param lines - Render lines to adjust
+   * @param maxWidth - Maximum available width
+   * @param isForcedLayout - If true, removes limits to force adjustment to frame
    */
   applyDynamicSpacing(lines, maxWidth, isForcedLayout = false) {
     for (const line of lines) {
@@ -3362,15 +3303,15 @@ var SVGRenderer = class {
     }
   }
   /**
-   * Rend une grille d'accords en élément SVG.
+   * Renders a chord grid as an SVG element.
    * 
-   * @param grid - Structure ChordGrid contenant les mesures à rendre
-   * @returns Élément SVG prêt à être inséré dans le DOM
+   * @param grid - ChordGrid structure containing measures to render
+   * @returns SVG element ready to be inserted into the DOM
    */
   /**
-   * Rend une grille d'accords en élément SVG.
-   * @param grid - Structure ChordGrid contenant les mesures à rendre
-   * @param optionsOrStemsDirection - Options de rendu ou direction des hampes (rétro-compatibilité)
+   * Renders a chord grid as an SVG element.
+   * @param grid - ChordGrid structure containing measures to render
+   * @param optionsOrStemsDirection - Render options or stem direction (backward compatibility)
    */
   render(grid, optionsOrStemsDirection) {
     let options;
@@ -3450,7 +3391,7 @@ var SVGRenderer = class {
           width: measureWidth,
           x: currentX,
           y: line.startY + 40
-          // Offset Y pour laisser de la place au titre/signature si besoin
+          // Y offset to leave space for title/signature if needed
         });
         currentX += measureWidth;
         globalIndex++;
@@ -3569,9 +3510,32 @@ var SVGRenderer = class {
         });
         currentX += mWidth;
       });
-      this.planBarlines(lineMeasurePositions, placeAndSizeManager);
-      this.planVoltaText(lineMeasurePositions, placeAndSizeManager);
-      placeAndSizeManager.resolveAllCollisions();
+      this.preRegisterBarlines(lineMeasurePositions, placeAndSizeManager);
+      this.preRegisterVoltaTextPositions(lineMeasurePositions, placeAndSizeManager);
+      lineMeasurePositions.forEach((mp) => {
+        const measure = mp.measure;
+        const measureHeight2 = 120;
+        placeAndSizeManager.registerElement("measure", {
+          x: mp.x,
+          y: mp.y,
+          width: mp.width,
+          height: measureHeight2
+        }, 0, {
+          measureIndex: mp.globalIndex,
+          lineIndex: mp.lineIndex,
+          posInLine: mp.posInLine,
+          visualStartX: mp.x,
+          visualEndX: mp.x + mp.width,
+          visualTopY: mp.y,
+          visualBottomY: mp.y + measureHeight2,
+          timeSignature: measure.timeSignature ? `${measure.timeSignature.beats}/${measure.timeSignature.beatValue}` : void 0,
+          isLineStart: measure.__isLineStart,
+          isRepeatStart: measure.isRepeatStart,
+          barlineType: measure.barline,
+          hasVoltaStart: !!measure.voltaStart,
+          hasVoltaEnd: !!measure.voltaEnd
+        });
+      });
       const stemsDir = stemsDirection === "down" ? "down" : "up";
       lineMeasurePositions.forEach((mp) => {
         var _a, _b, _c;
@@ -3605,14 +3569,14 @@ var SVGRenderer = class {
     return svg;
   }
   /**
-   * Crée un élément texte SVG avec les propriétés spécifiées.
+   * Creates an SVG text element with specified properties.
    * 
-   * @param text - Contenu du texte
-   * @param x - Position X
-   * @param y - Position Y
-   * @param size - Taille de la police
-   * @param weight - Poids de la police (normal, bold, etc.)
-   * @returns Élément SVG text
+   * @param text - Text content
+   * @param x - X position
+   * @param y - Y position
+   * @param size - Font size
+   * @param weight - Font weight (normal, bold, etc.)
+   * @returns SVG text element
    */
   createText(text, x, y, size, weight = "normal") {
     const textEl = document.createElementNS(SVG_NS, "text");
@@ -3626,20 +3590,20 @@ var SVGRenderer = class {
     return textEl;
   }
   /**
-   * Détecte et dessine les liaisons (ties) entre notes.
+   * Detects and draws ties between notes.
    * 
-   * Cette méthode gère trois types de liaisons :
-   * 1. Liaisons normales entre notes adjacentes
-   * 2. Liaisons "to void" (vers une note virtuelle en fin de ligne)
-   * 3. Liaisons "from void" (depuis une note virtuelle en début de ligne)
+   * This method handles three types of ties:
+   * 1. Normal ties between adjacent notes
+   * 2. "to void" ties (to a virtual note at the end of a line)
+   * 3. "from void" ties (from a virtual note at the start of a line)
    * 
-   * Les liaisons entre lignes sont gérées par le TieManager.
+   * Cross-line ties are managed by the TieManager.
    * 
-   * @param svg - Élément SVG parent
-   * @param notePositions - Tableau des positions de toutes les notes
-   * @param svgWidth - Largeur totale du SVG
-   * @param tieManager - Gestionnaire de liaisons entre lignes
-   * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
+   * @param svg - Parent SVG element
+   * @param notePositions - Array of all note positions
+   * @param svgWidth - Total SVG width
+   * @param tieManager - Cross-line tie manager
+   * @param measurePositions - Measure positions and lines (to detect line changes)
    */
   detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices) {
     var _a;
@@ -3769,9 +3733,9 @@ var SVGRenderer = class {
           exactX: (startX + endX) / 2,
           exactY: controlY,
           midCurveY,
-          // Point médian réel de la courbe de Bézier
+          // Actual midpoint of the Bézier curve
           orientation
-          // 'up' ou 'down' pour savoir où est la courbe
+          // 'up' or 'down' to know where the curve is
         });
       }
     };
@@ -3893,109 +3857,8 @@ var SVGRenderer = class {
     }
   }
   /**
-   * PHASE 1: Planifie les positions des barlines sans les dessiner.
-   * 
-   * @param measurePositions - Array of measure positions
-   * @param placeAndSizeManager - Collision detection manager
-   */
-  planBarlines(measurePositions, placeAndSizeManager) {
-    measurePositions.forEach((mp, i) => {
-      if (mp.x === void 0 || mp.y === void 0) return;
-      const measure = mp.measure;
-      const leftBarX = mp.x;
-      const rightBarX = mp.x + mp.width - 2;
-      const y = mp.y;
-      const height = 120;
-      if (i === 0 || measure.__isLineStart || measure.isRepeatStart) {
-        const barlineType2 = measure.isRepeatStart ? "repeat-start" : "normal";
-        placeAndSizeManager.planElement(
-          "barline",
-          {
-            x: leftBarX - 3,
-            y,
-            width: 6,
-            height
-          },
-          100,
-          // High priority - barlines are fixed
-          { exactX: leftBarX, measureIndex: mp.globalIndex, side: "left", type: barlineType2 },
-          { exactX: leftBarX, measureIndex: mp.globalIndex, side: "left", type: barlineType2 }
-        );
-      }
-      let barlineType = "normal";
-      if (measure.barline === ":||" || measure.barline === "repeat-end") {
-        barlineType = "repeat-end";
-      } else if (measure.barline === "||") {
-        barlineType = "final-double";
-      }
-      placeAndSizeManager.planElement(
-        "barline",
-        {
-          x: rightBarX - 3,
-          y,
-          width: 6,
-          height
-        },
-        100,
-        // High priority - barlines are fixed
-        { exactX: rightBarX, measureIndex: mp.globalIndex, side: "right", type: barlineType },
-        { exactX: rightBarX, measureIndex: mp.globalIndex, side: "right", type: barlineType }
-      );
-    });
-  }
-  /**
-   * PHASE 1: Planifie les positions des volta text sans les dessiner.
-   * 
-   * @param measurePositions - Array of measure positions with x, y coordinates
-   * @param placeAndSizeManager - Collision detection manager
-   */
-  planVoltaText(measurePositions, placeAndSizeManager) {
-    for (let i = 0; i < measurePositions.length; i++) {
-      const mp = measurePositions[i];
-      const measure = mp.measure;
-      if (measure.voltaStart) {
-        const startMP = measurePositions[i];
-        if (startMP.x !== void 0 && startMP.y !== void 0) {
-          let startX;
-          if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
-            startX = measurePositions[i - 1].x + measurePositions[i - 1].width - 2;
-          } else {
-            startX = startMP.x;
-          }
-          const y = startMP.y;
-          const textSize = 14;
-          const textOffset = 5;
-          const voltaInfo = measure.voltaStart;
-          const initialTextX = startX + textOffset;
-          const textY = y + textSize + 2;
-          const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
-          const initialBBox = {
-            x: initialTextX,
-            y: textY - textSize,
-            width: estimatedTextWidth,
-            height: textSize
-          };
-          placeAndSizeManager.planElement(
-            "volta-text",
-            initialBBox,
-            50,
-            // Medium priority - can be adjusted
-            {
-              text: voltaInfo.text,
-              x: initialTextX,
-              y: textY,
-              fontSize: textSize,
-              measureIndex: i
-            },
-            { voltaInfo, measureIndex: i }
-          );
-        }
-      }
-    }
-  }
-  /**
-   * Pré-enregistre les positions des barlines dans PlaceAndSizeManager.
-   * Cela permet aux volta text de détecter et éviter les collisions avec les barlines.
+   * Pre-registers barline positions in PlaceAndSizeManager with enriched metadata.
+   * This allows volta text and other elements to detect and avoid collisions with barlines.
    * 
    * @param measurePositions - Array of measure positions
    * @param placeAndSizeManager - Collision detection manager
@@ -4010,58 +3873,118 @@ var SVGRenderer = class {
       const height = 120;
       if (i === 0 || measure.__isLineStart || measure.isRepeatStart) {
         const barlineType2 = measure.isRepeatStart ? "repeat-start" : "normal";
+        let barlineWidth2 = 6;
+        let visualStartX2 = leftBarX;
+        let visualEndX2 = leftBarX;
+        if (barlineType2 === "repeat-start") {
+          barlineWidth2 = 10;
+          visualStartX2 = leftBarX - 1.5;
+          visualEndX2 = leftBarX + 6.75;
+        }
         placeAndSizeManager.registerElement("barline", {
           x: leftBarX - 3,
           y,
-          width: 6,
+          width: barlineWidth2,
           height
-        }, 0, { exactX: leftBarX, measureIndex: mp.globalIndex, side: "left", type: barlineType2 });
+        }, 0, {
+          exactX: leftBarX,
+          measureIndex: mp.globalIndex,
+          side: "left",
+          type: barlineType2,
+          visualStartX: visualStartX2,
+          visualEndX: visualEndX2,
+          thinLineX: barlineType2 === "repeat-start" ? leftBarX + 6 : leftBarX,
+          thickLineX: barlineType2 === "repeat-start" ? leftBarX : void 0,
+          dotsX: barlineType2 === "repeat-start" ? leftBarX + 12 : void 0
+        });
       }
       let barlineType = "normal";
+      let barlineWidth = 6;
+      let visualStartX = rightBarX;
+      let visualEndX = rightBarX;
+      let thinLineX = rightBarX;
+      let thickLineX = void 0;
+      let dotsX = void 0;
       if (measure.barline === ":||" || measure.barline === "repeat-end") {
         barlineType = "repeat-end";
+        barlineWidth = 10;
+        visualStartX = rightBarX - 0.75;
+        visualEndX = rightBarX + 7.5;
+        thinLineX = rightBarX;
+        thickLineX = rightBarX + 6;
+        dotsX = rightBarX - 12;
       } else if (measure.barline === "||") {
         barlineType = "final-double";
+        barlineWidth = 10;
+        visualStartX = rightBarX - 2.5;
+        visualEndX = rightBarX + 8.5;
+        thinLineX = rightBarX;
+        thickLineX = rightBarX + 6;
       }
       placeAndSizeManager.registerElement("barline", {
         x: rightBarX - 3,
         y,
-        width: 6,
+        width: barlineWidth,
         height
-      }, 0, { exactX: rightBarX, measureIndex: mp.globalIndex, side: "right", type: barlineType });
+      }, 0, {
+        exactX: rightBarX,
+        measureIndex: mp.globalIndex,
+        side: "right",
+        type: barlineType,
+        visualStartX,
+        visualEndX,
+        thinLineX,
+        thickLineX,
+        dotsX
+      });
     });
   }
   /**
-   * PHASE 1: Planifie les positions des volta text sans les dessiner.
+   * Pre-registers volta text positions in PlaceAndSizeManager with enriched metadata.
+   * Uses barline visual end positions to avoid collisions.
    * 
    * @param measurePositions - Array of measure positions with x, y coordinates
    * @param placeAndSizeManager - Collision detection manager
    */
   preRegisterVoltaTextPositions(measurePositions, placeAndSizeManager) {
+    var _a, _b, _c;
     for (let i = 0; i < measurePositions.length; i++) {
       const mp = measurePositions[i];
       const measure = mp.measure;
       if (measure.voltaStart) {
         const startMP = measurePositions[i];
         if (startMP.x !== void 0 && startMP.y !== void 0) {
-          let startX;
+          let startBarline;
           if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
-            startX = measurePositions[i - 1].x + measurePositions[i - 1].width - 2;
+            const prevMeasureIndex = measurePositions[i - 1].globalIndex;
+            startBarline = placeAndSizeManager.getElements().find(
+              (el) => {
+                var _a2, _b2;
+                return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === prevMeasureIndex && ((_b2 = el.metadata) == null ? void 0 : _b2.side) === "right";
+              }
+            );
           } else {
-            startX = startMP.x;
+            startBarline = placeAndSizeManager.getElements().find(
+              (el) => {
+                var _a2, _b2;
+                return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === startMP.globalIndex && ((_b2 = el.metadata) == null ? void 0 : _b2.side) === "left";
+              }
+            );
           }
+          const startX = (_c = (_b = (_a = startBarline == null ? void 0 : startBarline.metadata) == null ? void 0 : _a.visualEndX) != null ? _b : startBarline ? startBarline.bbox.x + startBarline.bbox.width : void 0) != null ? _c : i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex ? measurePositions[i - 1].x + measurePositions[i - 1].width : startMP.x;
           const y = startMP.y;
           const textSize = 14;
-          const textOffset = 5;
+          const textOffset = 3;
+          const textMargin = 5;
           const voltaInfo = measure.voltaStart;
           const initialTextX = startX + textOffset;
           const textY = y + textSize + 2;
           const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
           const initialBBox = {
-            x: initialTextX,
-            y: textY - textSize,
-            width: estimatedTextWidth,
-            height: textSize
+            x: initialTextX - textMargin,
+            y: textY - textSize - textMargin,
+            width: estimatedTextWidth + 2 * textMargin,
+            height: textSize + 2 * textMargin
           };
           const adjustedBBox = placeAndSizeManager.findFreePosition(
             initialBBox,
@@ -4077,8 +4000,9 @@ var SVGRenderer = class {
           const finalBBox = adjustedBBox || initialBBox;
           placeAndSizeManager.registerElement("volta-text", finalBBox, 5, {
             text: voltaInfo.text,
-            exactX: finalBBox.x + estimatedTextWidth / 2,
-            exactY: textY - textSize / 2
+            exactX: finalBBox.x + textMargin + estimatedTextWidth / 2,
+            exactY: textY - textSize / 2,
+            textMargin
           });
         }
       }
@@ -4095,12 +4019,14 @@ var SVGRenderer = class {
    * @param placeAndSizeManager - Manager for registering collision boxes
    */
   drawVoltaBrackets(svg, measurePositions, placeAndSizeManager) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e;
     const allBarlines = placeAndSizeManager.getElements().filter((el) => {
       var _a2;
       return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.exactX) !== void 0;
     }).map((el) => ({
       exactX: el.metadata.exactX,
+      visualStartX: el.metadata.visualStartX,
+      visualEndX: el.metadata.visualEndX,
       y: el.bbox.y,
       measureIndex: el.metadata.measureIndex,
       side: el.metadata.side,
@@ -4138,13 +4064,8 @@ var SVGRenderer = class {
           const endRightBarline = allBarlines.find(
             (bl) => bl.measureIndex === endMP.globalIndex && bl.side === "right"
           );
-          let endX = (_c = endRightBarline == null ? void 0 : endRightBarline.exactX) != null ? _c : endMP.x + endMP.width - 2;
-          if ((endRightBarline == null ? void 0 : endRightBarline.type) === "repeat-end") {
-            endX += 7.5;
-          } else if ((endRightBarline == null ? void 0 : endRightBarline.type) === "final-double") {
-            endX += 8.5;
-          }
-          const y = (_d = startBarline == null ? void 0 : startBarline.y) != null ? _d : startMP.y;
+          let endX = (_d = (_c = endRightBarline == null ? void 0 : endRightBarline.visualEndX) != null ? _c : endRightBarline == null ? void 0 : endRightBarline.exactX) != null ? _d : endMP.x + endMP.width - 2;
+          const y = (_e = startBarline == null ? void 0 : startBarline.y) != null ? _e : startMP.y;
           const hookHeight = 15;
           const textSize = 14;
           const voltaInfo = measure.voltaStart;
@@ -4175,14 +4096,15 @@ var SVGRenderer = class {
             svg.appendChild(rightHook);
           }
           const textY = y + textSize + 2;
-          const plannedTexts = placeAndSizeManager.getPlannedElements().filter(
+          const registeredVoltaTexts = placeAndSizeManager.getElements().filter(
             (el) => {
               var _a2;
-              return el.type === "volta-text" && ((_a2 = el.renderData) == null ? void 0 : _a2.measureIndex) === i;
+              return el.type === "volta-text" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === i;
             }
           );
-          const plannedText = plannedTexts[0];
-          const textX = (_f = (_e = plannedText == null ? void 0 : plannedText.adjustedBBox) == null ? void 0 : _e.x) != null ? _f : startX + 5;
+          const registeredText = registeredVoltaTexts[0];
+          const textMargin = 5;
+          const textX = registeredText ? registeredText.bbox.x + textMargin : startX + 8;
           const voltaText = document.createElementNS(SVG_NS, "text");
           voltaText.setAttribute("x", textX.toString());
           voltaText.setAttribute("y", textY.toString());
@@ -4193,39 +4115,49 @@ var SVGRenderer = class {
           voltaText.setAttribute("text-anchor", "start");
           voltaText.textContent = voltaInfo.text;
           svg.appendChild(voltaText);
-          if (plannedText == null ? void 0 : plannedText.adjustedBBox) {
-            placeAndSizeManager.registerElement("volta-text", plannedText.adjustedBBox, 5, {
-              text: voltaInfo.text,
-              exactX: plannedText.adjustedBBox.x,
-              exactY: textY
-            });
+          let realTextWidth = voltaInfo.text.length * (textSize * 0.6);
+          let realTextHeight = textSize;
+          try {
+            const textBBox = voltaText.getBBox();
+            realTextWidth = textBBox.width;
+            realTextHeight = textBBox.height;
+          } catch (e) {
           }
-          const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
-          const estimatedTextHeight = textSize + 4;
           placeAndSizeManager.registerElement("volta-bracket", {
             x: startX,
             y,
             // Top is the horizontal line
             width: endX - startX,
-            height: hookHeight + estimatedTextHeight
-            // hooks + text below
+            height: hookHeight + realTextHeight + 4
+            // hooks + text below + spacing
           }, 1, {
             text: voltaInfo.text,
             isClosed: voltaInfo.isClosed,
             exactX: (startX + endX) / 2,
-            exactY: y + hookHeight / 2
+            exactY: y + hookHeight / 2,
+            // Complete geometry for precise collision detection
+            horizontalLineY: y,
+            leftHookX: startX,
+            rightHookX: endX,
+            hookHeight,
+            visualStartX: startX,
+            visualEndX: endX,
+            visualTopY: y,
+            visualBottomY: y + hookHeight + realTextHeight + 4,
+            measureStartIndex: i,
+            measureEndIndex: endMeasureIndex
           });
         }
       }
     }
   }
   /**
-   * Pré-enregistrement des pick-strokes dans PlaceAndSizeManager SANS les dessiner.
-   * Cette méthode doit être appelée AVANT detectAndDrawTies() pour que les ties
-   * puissent détecter et éviter les pick-strokes via le système de layers.
+   * Pre-registration of pick-strokes in PlaceAndSizeManager WITHOUT drawing them.
+   * This method must be called BEFORE detectAndDrawTies() so that ties
+   * can detect and avoid pick-strokes via the layer system.
    * 
-   * Calcule les mêmes positions que drawPickStrokes mais enregistre uniquement
-   * les bounding boxes dans PlaceAndSizeManager.
+   * Calculates the same positions as drawPickStrokes but only registers
+   * bounding boxes in PlaceAndSizeManager.
    */
   preRegisterPickStrokes(grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices) {
     const mode = options.pickStrokes;
@@ -4312,11 +4244,11 @@ var SVGRenderer = class {
     });
   }
   /**
-   * Rendu des coups de médiator (down/up) utilisant les paths fournis par l'utilisateur.
-   * - Alternance stricte globale (Down, Up, Down, ...)
-   * - Débit détecté sur l'ENSEMBLE du bloc (auto) ou forcé (8/16)
-   * - Placement relatif aux hampes: stems-down => AU-DESSUS; stems-up => AU-DESSOUS
-   * - Collisions gérées via PlaceAndSizeManager (vertical d'abord)
+   * Rendering of pick-strokes (down/up) using user-provided paths.
+   * - Global strict alternation (Down, Up, Down, ...)
+   * - Subdivision detected on the ENTIRE block (auto) or forced (8/16)
+   * - Placement relative to stems: stems-down => ABOVE; stems-up => BELOW
+   * - Collisions managed via PlaceAndSizeManager (vertical first)
    */
   drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices) {
     const mode = options.pickStrokes;
@@ -4460,8 +4392,8 @@ var SVGRenderer = class {
     });
   }
   /**
-   * Détection de la subdivision minimale sur l'ensemble du bloc.
-   * Règle: si la moindre attaque effective correspond à 16 (ou plus court), retourner 16; sinon 8.
+   * Detection of minimum subdivision across the entire block.
+   * Rule: if the slightest effective attack corresponds to 16 (or shorter), return 16; otherwise 8.
    */
   detectGlobalSubdivision(grid) {
     var _a;

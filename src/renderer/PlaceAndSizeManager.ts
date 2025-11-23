@@ -48,19 +48,6 @@ interface RegisteredElement {
 }
 
 /**
- * Élément planifié (phase de calcul, avant rendu).
- * Contient toutes les infos nécessaires pour le dessin ultérieur.
- */
-export interface PlannedElement {
-    type: ElementType;
-    initialBBox: BoundingBox;  // Position souhaitée initiale
-    adjustedBBox?: BoundingBox; // Position après ajustement pour collisions (calculée)
-    priority: number;
-    renderData: any; // Données spécifiques pour le rendu (texte, couleur, stroke, etc.)
-    metadata?: any;
-}
-
-/**
  * Couches de collision verticale - définit quels groupes d'éléments peuvent entrer en collision verticalement.
  * 
  * Les éléments d'une même couche peuvent entrer en collision entre eux.
@@ -107,7 +94,8 @@ export type ElementType =
     | 'slash'           // Barre de slash
     | 'double-bar'      // Double barre finale (||)
     | 'dot'             // Points des notes pointées
-    | 'pick-stroke';    // Indications de médiator (down/up)
+    | 'pick-stroke'     // Indications de médiator (down/up)
+    | 'measure';        // Mesure entière (géométrie globale)
 
 /**
  * Direction d'ajustement pour résoudre une collision.
@@ -133,7 +121,6 @@ interface PlaceAndSizeConfig {
  */
 export class PlaceAndSizeManager {
     private elements: RegisteredElement[] = [];
-    private plannedElements: PlannedElement[] = [];
     private config: PlaceAndSizeConfig;
 
     /**
@@ -196,6 +183,7 @@ export class PlaceAndSizeManager {
             case 'time-signature':
             case 'double-bar':
             case 'repeat-symbol':
+            case 'measure':
                 return 'structure';
             
             default:
@@ -708,93 +696,11 @@ export class PlaceAndSizeManager {
         );
     }
 
-    // ========== MÉTHODES DE PLANIFICATION (2-PHASE ARCHITECTURE) ==========
-
     /**
-     * PHASE 1 (CALCUL): Planifie un élément pour le rendu.
-     * Enregistre la position initiale souhaitée sans dessiner.
-     * 
-     * @param type - Type d'élément
-     * @param initialBBox - Position/dimensions souhaitées initiales
-     * @param priority - Priorité (éléments à priorité élevée fixés en premier)
-     * @param renderData - Données nécessaires au rendu (texte, couleur, style, etc.)
-     * @param metadata - Métadonnées optionnelles
-     */
-    public planElement(
-        type: ElementType,
-        initialBBox: BoundingBox,
-        priority: number,
-        renderData: any,
-        metadata?: any
-    ): void {
-        this.plannedElements.push({
-            type,
-            initialBBox,
-            priority,
-            renderData,
-            metadata
-        });
-    }
-
-    /**
-     * PHASE 2 (RÉSOLUTION): Résout toutes les collisions entre éléments planifiés.
-     * Ajuste les positions selon les priorités et les règles de collision.
-     * Doit être appelé après avoir planifié tous les éléments, avant le rendu.
-     */
-    public resolveAllCollisions(): void {
-        // Trier par priorité décroissante (les éléments à haute priorité sont fixés en premier)
-        const sorted = [...this.plannedElements].sort((a, b) => b.priority - a.priority);
-
-        // Résoudre les collisions en ordre de priorité
-        for (const planned of sorted) {
-            const layer = this.getCollisionLayer(planned.type);
-            const margin = this.getHorizontalMargin(planned.type);
-
-            // Trouver les éléments déjà placés avec lesquels on peut entrer en collision
-            const alreadyPlaced = this.plannedElements
-                .filter(p => p.adjustedBBox && this.canCollide(p.type, planned.type))
-                .map(p => p.type);
-
-            // Chercher une position libre
-            const adjustedBBox = this.findFreePosition(
-                planned.initialBBox,
-                planned.type,
-                'horizontal',
-                alreadyPlaced,
-                10
-            );
-
-            planned.adjustedBBox = adjustedBBox || planned.initialBBox;
-
-            // Enregistrer temporairement pour la détection de collision avec les éléments suivants
-            this.registerElement(planned.type, planned.adjustedBBox, planned.priority, planned.metadata);
-        }
-    }
-
-    /**
-     * PHASE 3 (RENDU): Récupère tous les éléments planifiés avec leurs positions ajustées.
-     * À utiliser dans la phase de rendu pour dessiner les éléments.
-     * 
-     * @returns Tableau des éléments planifiés avec positions finales
-     */
-    public getPlannedElements(): PlannedElement[] {
-        return this.plannedElements;
-    }
-
-    /**
-     * Efface tous les éléments planifiés.
-     * À appeler au début d'un nouveau cycle de rendu.
-     */
-    public clearPlannedElements(): void {
-        this.plannedElements = [];
-    }
-
-    /**
-     * Efface à la fois les éléments enregistrés et planifiés.
-     * Réinitialisation complète du gestionnaire.
+     * Clears all registered elements.
+     * Resets the manager to initial state.
      */
     public clearAll(): void {
         this.clear();
-        this.clearPlannedElements();
     }
 }

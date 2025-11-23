@@ -2,28 +2,28 @@ import { NoteElement, NoteValue } from '../parser/type';
 
 /**
  * @file Note.ts
- * @description Représentation d'une note ou d'un silence musical.
+ * @description Representation of a note or musical rest.
  * 
- * Cette classe implémente l'interface `NoteElement` et représente une note
- * individuelle avec toutes ses propriétés rythmiques et de liaison.
+ * This class implements the `NoteElement` interface and represents an
+ * individual note with all its rhythmic and tie properties.
  * 
- * Propriétés principales :
- * - value : Valeur rythmique (1=ronde, 2=blanche, 4=noire, 8=croche, etc.)
- * - dotted : Indique si la note est pointée (durée × 1.5)
- * - isRest : Indique s'il s'agit d'un silence plutôt qu'une note
- * - tieStart/tieEnd : Marque le début/fin d'une liaison
- * - tieToVoid/tieFromVoid : Liaisons vers/depuis une note virtuelle (fin/début de ligne)
- * - position/length : Position dans le texte source (pour débogage)
+ * Main properties:
+ * - value: Rhythmic value (1=whole, 2=half, 4=quarter, 8=eighth, etc.)
+ * - dotted: Indicates if the note is dotted (duration × 1.5)
+ * - isRest: Indicates if this is a rest rather than a note
+ * - tieStart/tieEnd: Marks the start/end of a tie
+ * - tieToVoid/tieFromVoid: Ties to/from a virtual note (end/start of line)
+ * - position/length: Position in source text (for debugging)
  * 
  * @example
  * ```typescript
- * // Croche pointée
+ * // Dotted eighth note
  * const note = new Note({ value: 8, dotted: true, isRest: false });
  * 
- * // Silence (soupir = noire de silence)
+ * // Rest (quarter rest)
  * const rest = new Note({ value: 4, isRest: true });
  * 
- * // Note avec liaison
+ * // Note with tie
  * const tiedNote = new Note({ value: 4, tieStart: true });
  * ```
  */
@@ -39,10 +39,10 @@ export class Note implements NoteElement {
   length?: number;
 
   /**
-   * Constructeur d'une note.
+   * Constructor for a note.
    * 
-   * @param data - Données partielles pour initialiser la note
-   *               Par défaut : value=4 (noire), dotted=false, isRest=false
+   * @param data - Partial data to initialize the note
+   *               Default: value=4 (quarter), dotted=false, isRest=false
    */
   constructor(data: Partial<NoteElement> = {}) {
     this.value = (data.value ?? 4) as NoteValue;
@@ -57,25 +57,25 @@ export class Note implements NoteElement {
   }
 
   /**
-   * Calcule la durée de la note en unités de noires (quarter-notes).
+   * Calculate the note duration in quarter-note units.
    * 
-   * Formule :
-   * - Durée de base = 4 / value (ex: noire=1, croche=0.5, blanche=2)
-   * - Si pointée : durée × 1.5
+   * Formula:
+   * - Base duration = 4 / value (e.g., quarter=1, eighth=0.5, half=2)
+   * - If dotted: duration × 1.5
    * 
-   * @returns Durée en quarter-notes
+   * @returns Duration in quarter-notes
    * 
    * @example
-   * // Noire = 1 quarter-note
+   * // Quarter note = 1 quarter-note
    * new Note({ value: 4 }).durationInQuarterNotes() // 1
    * 
-   * // Croche = 0.5 quarter-note
+   * // Eighth note = 0.5 quarter-note
    * new Note({ value: 8 }).durationInQuarterNotes() // 0.5
    * 
-   * // Noire pointée = 1.5 quarter-notes
+   * // Dotted quarter = 1.5 quarter-notes
    * new Note({ value: 4, dotted: true }).durationInQuarterNotes() // 1.5
    * 
-   * // Blanche = 2 quarter-notes
+   * // Half note = 2 quarter-notes
    * new Note({ value: 2 }).durationInQuarterNotes() // 2
    */
   durationInQuarterNotes(): number {
