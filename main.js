@@ -1664,7 +1664,6 @@ var MeasureRenderer = class {
     }
     if (this.displayRepeatSymbol && this.measure.isRepeat) {
       this.drawRepeatSymbol(svg);
-      this.drawChordName(svg, this.measure.chord, this.x + 30);
       if (this.measure.isRepeatEnd) {
         this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
         if (this.measure.repeatCount !== void 0) {
@@ -2063,19 +2062,6 @@ var MeasureRenderer = class {
         // Will be set by caller if needed
       });
     }
-  }
-  /**
-   * Draw chord name above the measure.
-   */
-  drawChordName(svg, chord, xPosition) {
-    if (!chord) return;
-    const chordX = xPosition !== void 0 ? xPosition : this.x + this.width / 2;
-    const chordY = this.y + 40;
-    const fontSize = 22;
-    const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, "bold");
-    chordText.setAttribute("text-anchor", "middle");
-    chordText.setAttribute("font-family", "Arial, sans-serif");
-    svg.appendChild(chordText);
   }
   /**
    * Draw the right barline of the measure.
@@ -3360,42 +3346,6 @@ var ChordRenderer = class {
         textWidth,
         fontSize
       }
-    });
-  }
-  /**
-   * Rend le symbole % pour une mesure répétée.
-   * 
-   * @param svg - Élément SVG parent
-   * @param x - Position X (centre)
-   * @param y - Position Y (baseline)
-   * @param fontSize - Taille de police
-   * @param placeAndSizeManager - Gestionnaire de placement
-   * @param measureIndex - Index de la mesure
-   * @param chordIndex - Index du segment
-   */
-  renderRepeatSymbol(svg, x, y, fontSize, placeAndSizeManager, measureIndex, chordIndex) {
-    const symbolText = document.createElementNS(SVG_NS2, "text");
-    symbolText.setAttribute("x", x.toString());
-    symbolText.setAttribute("y", y.toString());
-    symbolText.setAttribute("font-family", "Arial, sans-serif");
-    symbolText.setAttribute("font-size", `${fontSize * 1.5}px`);
-    symbolText.setAttribute("font-weight", "bold");
-    symbolText.setAttribute("fill", "#666");
-    symbolText.setAttribute("text-anchor", "middle");
-    symbolText.setAttribute("class", "repeat-symbol");
-    symbolText.setAttribute("data-repeat-symbol", "true");
-    symbolText.textContent = "%";
-    svg.appendChild(symbolText);
-    const symbolWidth = fontSize * 1.5 * 0.6;
-    placeAndSizeManager.registerElement("repeat-symbol", {
-      x: x - symbolWidth / 2,
-      y: y - fontSize * 1.5,
-      width: symbolWidth,
-      height: fontSize * 1.5 + 4
-    }, 5, {
-      measureIndex,
-      chordIndex,
-      canCollide: true
     });
   }
 };

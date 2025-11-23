@@ -109,8 +109,7 @@ export class MeasureRenderer {
         // Check if we should display repeat symbol instead of full rhythm
         if (this.displayRepeatSymbol && this.measure.isRepeat) {
             this.drawRepeatSymbol(svg);
-            // Draw chord name at the start of the measure (like normal measures)
-            this.drawChordName(svg, this.measure.chord, this.x + 30); // Position at start like first note
+            // Chord names are now handled by ChordRenderer
             // Draw right barline with ALL barline types (repeat, double bar, simple)
             if ((this.measure as any).isRepeatEnd) {
                 this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
@@ -628,23 +627,6 @@ export class MeasureRenderer {
                 measureIndex: -1 // Will be set by caller if needed
             });
         }
-    }
-
-    /**
-     * Draw chord name above the measure.
-     */
-    private drawChordName(svg: SVGElement, chord: string, xPosition?: number): void {
-        if (!chord) return;
-        
-        // Use provided position or center of measure
-        const chordX = xPosition !== undefined ? xPosition : this.x + this.width / 2;
-        const chordY = this.y + 40;
-        const fontSize = 22;
-        
-        const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, 'bold');
-        chordText.setAttribute('text-anchor', 'middle');
-        chordText.setAttribute('font-family', 'Arial, sans-serif');
-        svg.appendChild(chordText);
     }
 
     /**

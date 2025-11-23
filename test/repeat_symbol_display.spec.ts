@@ -52,14 +52,23 @@ describe('Repeat symbol display option', () => {
     const options: RenderOptions = { displayRepeatSymbol: true };
     const svg = renderer.render(result.grid, options);
 
+    // DEBUG: Log all text elements
+    const allTexts = Array.from(svg.querySelectorAll('text'));
+    console.log('ALL TEXT ELEMENTS:', allTexts.map(t => ({
+      content: t.textContent,
+      class: t.getAttribute('class')
+    })));
+
     // Should have both C and G chord labels
     const chordTexts = Array.from(svg.querySelectorAll('text')).filter(t => 
       t.textContent === 'C' || t.textContent === 'G'
     );
+    console.log('CHORD TEXTS (C or G):', chordTexts.length, chordTexts.map(t => t.textContent));
     expect(chordTexts.length).toBe(2);
     
     // Should have % symbol (SVG path group)
     const repeatSymbol = svg.querySelector('[data-repeat-symbol]');
+    console.log('REPEAT SYMBOL:', repeatSymbol?.tagName, 'hasPath:', repeatSymbol?.querySelector('path') ? 'YES' : 'NO');
     expect(repeatSymbol).toBeTruthy();
   });
 
