@@ -1,0 +1,86 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Chord Grid Visualization</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    svg { border: 1px solid #ccc; }
+    .info { margin: 20px 0; }
+    table { border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f0f0f0; }
+    .aligned { color: green; }
+    .misaligned { color: red; }
+  </style>
+</head>
+<body>
+  <h1>Chord Grid Visualization</h1>
+  <div class="info">
+    <strong>Input:</strong> <code>picks-auto
+4/4 ||: C[4 88_4 4] | % | G[%] | % :||</code>
+  </div>
+  
+  <svg width="100%" height="auto" viewBox="0 0 1063 160" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="1063" height="160" fill="white"></rect><text x="10" y="40" font-family="Arial, sans-serif" font-size="18px" font-weight="bold" fill="#000">4/4</text><line x1="43" y1="20" x2="43" y2="140" stroke="#000" stroke-width="3"></line><line x1="49" y1="20" x2="49" y2="140" stroke="#000" stroke-width="1.5"></line><circle cx="55" cy="88" r="2" fill="#000"></circle><circle cx="55" cy="112" r="2" fill="#000"></circle><line x1="53" y1="100" x2="273" y2="100" stroke="#000" stroke-width="1"></line><line x1="83" y1="95" x2="73" y2="105" stroke="#000" stroke-width="3"></line><line x1="83" y1="95" x2="83" y2="70" stroke="#000" stroke-width="2"></line><text x="83" y="60" font-family="Arial, sans-serif" font-size="22px" font-weight="bold" fill="#000" class="chord-symbol" text-anchor="start">C</text><line x1="139.94117647058823" y1="95" x2="129.94117647058823" y2="105" stroke="#000" stroke-width="3"></line><line x1="139.94117647058823" y1="95" x2="139.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="163.94117647058823" y1="95" x2="153.94117647058823" y2="105" stroke="#000" stroke-width="3"></line><line x1="163.94117647058823" y1="95" x2="163.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="187.94117647058823" y1="95" x2="177.94117647058823" y2="105" stroke="#000" stroke-width="3"></line><line x1="187.94117647058823" y1="95" x2="187.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="246.05882352941177" y1="95" x2="236.05882352941177" y2="105" stroke="#000" stroke-width="3"></line><line x1="246.05882352941177" y1="95" x2="246.05882352941177" y2="70" stroke="#000" stroke-width="2"></line><line x1="281" y1="20" x2="281" y2="140" stroke="#000" stroke-width="1.5"></line><line x1="139.94117647058823" y1="70" x2="163.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="293" y1="100" x2="513" y2="100" stroke="#000" stroke-width="1"></line><line x1="308" y1="95" x2="298" y2="105" stroke="#000" stroke-width="3"></line><line x1="308" y1="95" x2="308" y2="70" stroke="#000" stroke-width="2"></line><text x="308" y="60" font-family="Arial, sans-serif" font-size="22px" font-weight="bold" fill="#000" class="chord-symbol" text-anchor="start">C</text><line x1="364.94117647058823" y1="95" x2="354.94117647058823" y2="105" stroke="#000" stroke-width="3"></line><line x1="364.94117647058823" y1="95" x2="364.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="388.94117647058823" y1="95" x2="378.94117647058823" y2="105" stroke="#000" stroke-width="3"></line><line x1="388.94117647058823" y1="95" x2="388.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="412.94117647058823" y1="95" x2="402.94117647058823" y2="105" stroke="#000" stroke-width="3"></line><line x1="412.94117647058823" y1="95" x2="412.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="471.05882352941177" y1="95" x2="461.05882352941177" y2="105" stroke="#000" stroke-width="3"></line><line x1="471.05882352941177" y1="95" x2="471.05882352941177" y2="70" stroke="#000" stroke-width="2"></line><line x1="521" y1="20" x2="521" y2="140" stroke="#000" stroke-width="1.5"></line><line x1="364.94117647058823" y1="70" x2="388.94117647058823" y2="70" stroke="#000" stroke-width="2"></line><line x1="533" y1="100" x2="753" y2="100" stroke="#000" stroke-width="1"></line><line x1="548" y1="95" x2="538" y2="105" stroke="#000" stroke-width="3"></line><line x1="548" y1="95" x2="548" y2="70" stroke="#000" stroke-width="2"></line><text x="548" y="60" font-family="Arial, sans-serif" font-size="22px" font-weight="bold" fill="#000" class="chord-symbol" text-anchor="start">G</text><line x1="604.9411764705883" y1="95" x2="594.9411764705883" y2="105" stroke="#000" stroke-width="3"></line><line x1="604.9411764705883" y1="95" x2="604.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="628.9411764705883" y1="95" x2="618.9411764705883" y2="105" stroke="#000" stroke-width="3"></line><line x1="628.9411764705883" y1="95" x2="628.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="652.9411764705883" y1="95" x2="642.9411764705883" y2="105" stroke="#000" stroke-width="3"></line><line x1="652.9411764705883" y1="95" x2="652.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="711.0588235294118" y1="95" x2="701.0588235294118" y2="105" stroke="#000" stroke-width="3"></line><line x1="711.0588235294118" y1="95" x2="711.0588235294118" y2="70" stroke="#000" stroke-width="2"></line><line x1="761" y1="20" x2="761" y2="140" stroke="#000" stroke-width="1.5"></line><line x1="604.9411764705883" y1="70" x2="628.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="773" y1="100" x2="993" y2="100" stroke="#000" stroke-width="1"></line><line x1="788" y1="95" x2="778" y2="105" stroke="#000" stroke-width="3"></line><line x1="788" y1="95" x2="788" y2="70" stroke="#000" stroke-width="2"></line><text x="788" y="60" font-family="Arial, sans-serif" font-size="22px" font-weight="bold" fill="#000" class="chord-symbol" text-anchor="start">G</text><line x1="844.9411764705883" y1="95" x2="834.9411764705883" y2="105" stroke="#000" stroke-width="3"></line><line x1="844.9411764705883" y1="95" x2="844.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="868.9411764705883" y1="95" x2="858.9411764705883" y2="105" stroke="#000" stroke-width="3"></line><line x1="868.9411764705883" y1="95" x2="868.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="892.9411764705883" y1="95" x2="882.9411764705883" y2="105" stroke="#000" stroke-width="3"></line><line x1="892.9411764705883" y1="95" x2="892.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><line x1="951.0588235294118" y1="95" x2="941.0588235294118" y2="105" stroke="#000" stroke-width="3"></line><line x1="951.0588235294118" y1="95" x2="951.0588235294118" y2="70" stroke="#000" stroke-width="2"></line><line x1="1001" y1="20" x2="1001" y2="140" stroke="#000" stroke-width="1.5"></line><line x1="1007" y1="20" x2="1007" y2="140" stroke="#000" stroke-width="3"></line><circle cx="989" cy="88" r="2" fill="#000"></circle><circle cx="989" cy="112" r="2" fill="#000"></circle><line x1="844.9411764705883" y1="70" x2="868.9411764705883" y2="70" stroke="#000" stroke-width="2"></line><path d="M 153.94117647058823 106.5 Q 165.94117647058823 114.5 177.94117647058823 106.5" stroke="#000" stroke-width="1.5" fill="none" data-start="0:0:1:1" data-end="0:0:1:2"></path><path d="M 378.94117647058823 106.5 Q 390.94117647058823 114.5 402.94117647058823 106.5" stroke="#000" stroke-width="1.5" fill="none" data-start="1:0:1:1" data-end="1:0:1:2"></path><path d="M 618.9411764705883 106.5 Q 630.9411764705883 114.5 642.9411764705883 106.5" stroke="#000" stroke-width="1.5" fill="none" data-start="2:0:1:1" data-end="2:0:1:2"></path><path d="M 858.9411764705883 106.5 Q 870.9411764705883 114.5 882.9411764705883 106.5" stroke="#000" stroke-width="1.5" fill="none" data-start="3:0:1:1" data-end="3:0:1:2"></path></svg>
+  
+  <h2>Alignment Analysis</h2>
+  <table>
+    <tr>
+      <th>Measure</th>
+      <th>Chord</th>
+      <th>Chord X</th>
+      <th>First Note X</th>
+      <th>First Stem X</th>
+      <th>Note→Stem</th>
+      <th>Chord→Stem</th>
+      <th>Status</th>
+    </tr>
+    
+          <tr class="aligned">
+            <td>1</td>
+            <td>C</td>
+            <td>83.00</td>
+            <td>78.00</td>
+            <td>83.00</td>
+            <td>5.00px</td>
+            <td>0.00px</td>
+            <td>✅ Aligned</td>
+          </tr>
+        
+          <tr class="misaligned">
+            <td>1</td>
+            <td>C</td>
+            <td>308.00</td>
+            <td>78.00</td>
+            <td>83.00</td>
+            <td>5.00px</td>
+            <td>225.00px</td>
+            <td>❌ Misaligned</td>
+          </tr>
+        
+          <tr class="misaligned">
+            <td>1</td>
+            <td>G</td>
+            <td>548.00</td>
+            <td>78.00</td>
+            <td>83.00</td>
+            <td>5.00px</td>
+            <td>465.00px</td>
+            <td>❌ Misaligned</td>
+          </tr>
+        
+          <tr class="misaligned">
+            <td>1</td>
+            <td>G</td>
+            <td>788.00</td>
+            <td>78.00</td>
+            <td>83.00</td>
+            <td>5.00px</td>
+            <td>705.00px</td>
+            <td>❌ Misaligned</td>
+          </tr>
+        
+  </table>
+</body>
+</html>

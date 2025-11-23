@@ -36,6 +36,165 @@ export interface BoundingBox {
 }
 
 /**
+ * Métadonnées géométriques visuelles d'un élément.
+ * Décrit la géométrie réelle de l'élément rendu (peut différer de la bbox).
+ */
+export interface VisualGeometry {
+    /** Position X réelle du début visuel (ex: bord gauche du texte, début de la ligne) */
+    visualStartX?: number;
+    /** Position Y réelle du début visuel (ex: haut de la hampe, baseline du texte) */
+    visualStartY?: number;
+    /** Position X réelle de la fin visuelle (ex: bord droit du texte, fin de la ligne) */
+    visualEndX?: number;
+    /** Position Y réelle de la fin visuelle (ex: bas de la hampe, bas du texte) */
+    visualEndY?: number;
+    /** Centre X de l'élément (ex: centre de la tête de note) */
+    centerX?: number;
+    /** Centre Y de l'élément */
+    centerY?: number;
+}
+
+/**
+ * Métadonnées spécifiques pour une hampe (stem).
+ */
+export interface StemMetadata {
+    /** Direction de la hampe */
+    direction: 'up' | 'down';
+    /** Position X exacte de la ligne de hampe */
+    stemX?: number;
+    /** Centre X de la hampe (identique à stemX pour une ligne verticale) */
+    centerX: number;
+    /** Centre Y de la hampe */
+    centerY: number;
+    /** Position Y du haut de la hampe */
+    topY: number;
+    /** Position Y du bas de la hampe */
+    bottomY: number;
+    /** Valeur de note associée */
+    noteValue?: number;
+}
+
+/**
+ * Métadonnées spécifiques pour une tête de note.
+ */
+export interface NoteHeadMetadata {
+    /** Type de tête de note */
+    headType: 'diamond' | 'slash' | 'whole' | 'half';
+    /** Centre X de la tête de note */
+    centerX: number;
+    /** Centre Y de la tête de note */
+    centerY: number;
+    /** Bord gauche X de la tête de note */
+    leftX: number;
+    /** Bord droit X de la tête de note */
+    rightX: number;
+    /** Valeur de note (1=ronde, 2=blanche, 4=noire, 8=croche, etc.) */
+    noteValue: number;
+    /** Est un silence ? */
+    isRest?: boolean;
+    /** Est pointée ? */
+    isDotted?: boolean;
+}
+
+/**
+ * Métadonnées spécifiques pour un accord.
+ */
+export interface ChordMetadata {
+    /** Symbole de l'accord */
+    symbol: string;
+    /** Position X du texte (début pour anchor=start, centre pour anchor=middle) */
+    textX: number;
+    /** Position Y du texte (baseline) */
+    textY: number;
+    /** Mode d'ancrage du texte */
+    textAnchor: 'start' | 'middle' | 'end';
+    /** Largeur estimée du texte */
+    textWidth: number;
+    /** Taille de police */
+    fontSize: number;
+}
+
+/**
+ * Métadonnées spécifiques pour une liaison (tie).
+ */
+export interface TieMetadata {
+    /** Position X de départ */
+    startX: number;
+    /** Position Y de départ */
+    startY: number;
+    /** Position X de fin */
+    endX: number;
+    /** Position Y de fin */
+    endY: number;
+    /** Point de contrôle X (courbe de Bézier) */
+    controlX: number;
+    /** Point de contrôle Y (courbe de Bézier) */
+    controlY: number;
+    /** Position Y du milieu de la courbe */
+    midCurveY: number;
+    /** Orientation */
+    orientation: 'up' | 'down';
+    /** Liaison entre lignes ? */
+    isCrossLine?: boolean;
+    /** Liaison vers le vide (demi-liaison) ? */
+    isHalfTie?: boolean;
+}
+
+/**
+ * Métadonnées spécifiques pour une barre de mesure.
+ */
+export interface BarlineMetadata {
+    /** Type de barre */
+    type: 'normal' | 'final-double' | 'repeat-start' | 'repeat-end';
+    /** Côté de la mesure */
+    side: 'left' | 'right';
+    /** Position X de la ligne principale */
+    primaryX: number;
+    /** Position X de la ligne fine (barres doubles) */
+    thinLineX?: number;
+    /** Position X de la ligne épaisse (barres doubles) */
+    thickLineX?: number;
+    /** Position X des points de reprise */
+    dotsX?: number;
+}
+
+/**
+ * Métadonnées enrichies d'un élément enregistré.
+ * Contient toutes les informations nécessaires pour le débogage et la détection de collisions.
+ */
+export interface EnrichedMetadata {
+    /** Type d'élément pour typage fort */
+    elementType?: ElementType;
+    
+    /** Géométrie visuelle réelle */
+    visual?: VisualGeometry;
+    
+    /** Peut entrer en collision ? */
+    canCollide?: boolean;
+    
+    /** Index de mesure */
+    measureIndex?: number;
+    /** Index de segment/accord */
+    chordIndex?: number;
+    /** Index de temps/beat */
+    beatIndex?: number;
+    /** Index de note */
+    noteIndex?: number;
+    /** Index dans la séquence aplatie */
+    segmentNoteIndex?: number;
+    
+    /** Métadonnées spécifiques par type */
+    stem?: StemMetadata;
+    noteHead?: NoteHeadMetadata;
+    chord?: ChordMetadata;
+    tie?: TieMetadata;
+    barline?: BarlineMetadata;
+    
+    /** Données génériques additionnelles */
+    [key: string]: any;
+}
+
+/**
  * Élément enregistré avec son type et sa zone.
  */
 interface RegisteredElement {
@@ -44,7 +203,7 @@ interface RegisteredElement {
     priority: number; // 0 = haute priorité (ne bouge pas), 10 = basse priorité (peut être déplacé)
     layer: CollisionLayer; // Couche verticale de collision
     horizontalMargin: number; // Marge horizontale de sécurité autour de l'élément (px)
-    metadata?: any; // Informations supplémentaires (noteIndex, measureIndex, etc.)
+    metadata?: EnrichedMetadata; // Métadonnées enrichies
 }
 
 /**
@@ -390,22 +549,37 @@ export class PlaceAndSizeManager {
      * @param type - Type de l'élément
      * @param bbox - Zone occupée par l'élément
      * @param priority - Priorité de l'élément (0 = fixe, 10 = mobile)
-     * @param metadata - Métadonnées optionnelles
+     * @param metadata - Métadonnées enrichies avec géométrie visuelle et contexte musical
      * @param overrideLayer - Layer personnalisé (pour éléments dynamiques comme pick-strokes)
      */
     public registerElement(
         type: ElementType, 
         bbox: BoundingBox, 
         priority: number = 5,
-        metadata?: any,
+        metadata?: EnrichedMetadata,
         overrideLayer?: CollisionLayer
     ): void {
         const layer = overrideLayer ?? this.getCollisionLayer(type);
         const horizontalMargin = this.getHorizontalMargin(type);
-        this.elements.push({ type, bbox, priority, layer, horizontalMargin, metadata });
+        
+        // Enrichir les métadonnées avec le type d'élément si non fourni
+        const enrichedMetadata: EnrichedMetadata = {
+            ...metadata,
+            elementType: type,
+            canCollide: metadata?.canCollide ?? true
+        };
+        
+        this.elements.push({ 
+            type, 
+            bbox, 
+            priority, 
+            layer, 
+            horizontalMargin, 
+            metadata: enrichedMetadata 
+        });
         
         if (this.config.debugMode) {
-            console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`);
+            console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`, enrichedMetadata);
         }
     }
 
@@ -702,5 +876,124 @@ export class PlaceAndSizeManager {
      */
     public clearAll(): void {
         this.clear();
+    }
+
+    /**
+     * Récupère tous les éléments enregistrés d'un type donné.
+     * 
+     * @param type - Type d'élément à filtrer
+     * @returns Liste des éléments correspondants avec leurs métadonnées complètes
+     */
+    public getElementsByType(type: ElementType): RegisteredElement[] {
+        return this.elements.filter(el => el.type === type);
+    }
+
+    /**
+     * Récupère tous les éléments d'une mesure donnée.
+     * 
+     * @param measureIndex - Index de la mesure
+     * @returns Liste des éléments de cette mesure avec leurs métadonnées
+     */
+    public getElementsByMeasure(measureIndex: number): RegisteredElement[] {
+        return this.elements.filter(el => 
+            el.metadata?.measureIndex === measureIndex
+        );
+    }
+
+    /**
+     * Diagnostic complet des métadonnées d'alignement chords-stems.
+     * Retourne un rapport détaillé pour chaque mesure.
+     * 
+     * @returns Rapport de diagnostic par mesure
+     */
+    public diagnoseChordStemAlignment(): {
+        measureIndex: number;
+        chords: Array<{
+            symbol: string;
+            textX: number;
+            textAnchor: string;
+            bbox: BoundingBox;
+        }>;
+        stems: Array<{
+            centerX: number;
+            direction: string;
+            bbox: BoundingBox;
+        }>;
+        alignment: {
+            firstChordX: number;
+            firstStemX: number;
+            difference: number;
+        } | null;
+    }[] {
+        const measures = new Set(
+            this.elements
+                .map(el => el.metadata?.measureIndex)
+                .filter(idx => idx !== undefined)
+        );
+
+        return Array.from(measures).map(measureIndex => {
+            const chords = this.getElementsByMeasure(measureIndex!)
+                .filter(el => el.type === 'chord' && el.metadata?.chord)
+                .map(el => ({
+                    symbol: el.metadata!.chord!.symbol,
+                    textX: el.metadata!.chord!.textX,
+                    textAnchor: el.metadata!.chord!.textAnchor,
+                    bbox: el.bbox
+                }));
+
+            const stems = this.getElementsByMeasure(measureIndex!)
+                .filter(el => el.type === 'stem' && el.metadata?.stem)
+                .map(el => ({
+                    centerX: el.metadata!.stem!.centerX,
+                    direction: el.metadata!.stem!.direction,
+                    bbox: el.bbox
+                }));
+
+            const alignment = (chords.length > 0 && stems.length > 0) ? {
+                firstChordX: chords[0].textX,
+                firstStemX: stems[0].centerX,
+                difference: chords[0].textX - stems[0].centerX
+            } : null;
+
+            return {
+                measureIndex: measureIndex!,
+                chords,
+                stems,
+                alignment
+            };
+        }).sort((a, b) => a.measureIndex - b.measureIndex);
+    }
+
+    /**
+     * Affiche un rapport de diagnostic dans la console.
+     * Utile pour déboguer les problèmes d'alignement.
+     */
+    public logDiagnosticReport(): void {
+        const report = this.diagnoseChordStemAlignment();
+        
+        console.log('=== DIAGNOSTIC REPORT: Chord-Stem Alignment ===');
+        report.forEach(measure => {
+            console.log(`\n📏 Measure ${measure.measureIndex}:`);
+            console.log(`  Chords: ${measure.chords.length}`);
+            measure.chords.forEach((c, i) => {
+                console.log(`    [${i}] "${c.symbol}" at X=${c.textX.toFixed(2)} (anchor=${c.textAnchor})`);
+                console.log(`        bbox: x=${c.bbox.x.toFixed(2)}, w=${c.bbox.width.toFixed(2)}`);
+            });
+            
+            console.log(`  Stems: ${measure.stems.length}`);
+            measure.stems.forEach((s, i) => {
+                console.log(`    [${i}] ${s.direction} stem at centerX=${s.centerX.toFixed(2)}`);
+                console.log(`        bbox: x=${s.bbox.x.toFixed(2)}, w=${s.bbox.width.toFixed(2)}`);
+            });
+            
+            if (measure.alignment) {
+                const diff = measure.alignment.difference;
+                const status = Math.abs(diff) < 0.5 ? '✅ ALIGNED' : '❌ MISALIGNED';
+                console.log(`  ${status}: Chord X=${measure.alignment.firstChordX.toFixed(2)}, Stem X=${measure.alignment.firstStemX.toFixed(2)}, Δ=${diff.toFixed(2)}px`);
+            } else {
+                console.log(`  ⚠️  No alignment data available`);
+            }
+        });
+        console.log('\n=== END DIAGNOSTIC REPORT ===');
     }
 }

@@ -1,36 +1,20 @@
-/**
- * Note position in SVG with metadata for ties.
- */
-interface NotePosition {
-    x: number;
-    y: number;
-    headLeftX?: number;
-    headRightX?: number;
-    measureIndex: number;
-    chordIndex: number;
-    beatIndex: number;
-    noteIndex: number;
-    segmentNoteIndex?: number;
-    tieStart?: boolean;
-    tieEnd?: boolean;
-    globalTimeIndex?: number;
-    tieToVoid?: boolean;
-    tieFromVoid?: boolean;
-    stemTopY?: number;
-    stemBottomY?: number;
-    value?: number; // Note value: 1=whole, 2=half, 4=quarter, 8=eighth, etc.
-}
 import { RestRenderer } from './RestRenderer';
+import { NoteRenderer, NotePosition } from './NoteRenderer';
 import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { SVG_NS } from './constants';
 
 /**
  * @file MeasureRenderer.ts
- * @description SVG rendering of an individual musical measure.
- *
- * This class is responsible for the graphical rendering of a complete measure:
- * barlines, staff, chords, notes and beams.
+ * @description Rendu SVG d'une mesure musicale (staff et barlines).
+ * 
+ * Ce renderer gère :
+ * - Lignes de portée (staff)
+ * - Barres de mesure (simples, doubles, reprises)
+ * - Compteurs de répétition
+ * - Layout et coordonnées de la mesure
+ * 
+ * Le rendu des notes est délégué à NoteRenderer.
  */
 export class MeasureRenderer {
     /**
@@ -46,6 +30,7 @@ export class MeasureRenderer {
      * @param displayRepeatSymbol - Display the % symbol for repeated measures
      */
     private readonly restRenderer: RestRenderer;
+    private readonly noteRenderer: NoteRenderer;
     private readonly stemsDirection: 'up' | 'down';
     private readonly displayRepeatSymbol: boolean;
 
@@ -62,6 +47,7 @@ export class MeasureRenderer {
         this.stemsDirection = stemsDirection === 'down' ? 'down' : 'up';
         this.displayRepeatSymbol = displayRepeatSymbol ?? false;
         this.restRenderer = new RestRenderer(this.placeAndSizeManager);
+        this.noteRenderer = new NoteRenderer(this.stemsDirection, this.placeAndSizeManager);
     }
 
     /**
@@ -213,27 +199,9 @@ export class MeasureRenderer {
                 const beatX = beatCursorX;
                 const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
-                // Draw chord symbol (position already calculated and registered in SVGRenderer.registerChords())
-                if (firstNoteX !== null && beatIndex === 0 && segment.chord && this.placeAndSizeManager) {
-                    // Retrieve the chord position from PlaceAndSizeManager
-                    // The chord was already registered with collision detection in the REGISTRATION PHASE
-                    const allElements = this.placeAndSizeManager.getElements();
-                    const chordElement = allElements.find((el: any) => 
-                        el.type === 'chord' &&
-                        el.metadata?.measureIndex === measureIndex && 
-                        el.metadata?.segmentIndex === segmentIndex
-                    );
-                    
-                    if (chordElement?.metadata) {
-                        const finalX = chordElement.metadata.exactX;
-                        const finalY = chordElement.metadata.exactY;
-                        
-                        const chordText = this.createText(segment.chord, finalX, finalY, '22px', 'bold');
-                        chordText.setAttribute('text-anchor', 'middle');
-                        chordText.setAttribute('font-family', 'Arial, sans-serif');
-                        svg.appendChild(chordText);
-                    }
-                }
+                // NOTE: Chord rendering is now handled by ChordRenderer after all measures are drawn
+                // This ensures proper alignment with stem metadata
+                
                 beatCursorX += beatWidth;
             });
 
@@ -253,6 +221,10 @@ export class MeasureRenderer {
         }
     }
 
+    /**
+     * Dessine le rythme (notes) d'un beat.
+     * Délègue le rendu au NoteRenderer.
+     */
     private drawRhythm(
         svg: SVGElement,
         beat: Beat,
@@ -265,499 +237,24 @@ export class MeasureRenderer {
         notePositions: NotePosition[],
         segmentNoteCursor: number[]
     ): number | null {
-        const beats = [beat];
-        const beatWidth = width;
-        let currentX = x;
-        let firstNoteX: number | null = null;
-
-    const first = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor);
-        if (first !== null) firstNoteX = first;
-
-        return firstNoteX;
-    }
-
-    private drawBeat(
-        svg: SVGElement,
-        beat: Beat,
-        x: number,
-        staffLineY: number,
-        width: number,
-        measureIndex: number,
-        chordIndex: number,
-        beatIndex: number,
-        notePositions: NotePosition[],
-        segmentNoteCursor: number[]
-    ): number | null {
-        if (!beat || beat.notes.length === 0) return null;
-
-        const hasBeamableNotes = beat.notes.some(n => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
-
-        // Draw notes without beams; analyzer overlay will handle beams later
-        // Position notes left-aligned within the beat area but clamp spacing to avoid overflow
-        const noteCount = beat.notes.length;
-        let firstNoteX: number | null = null;
-
-        // Geometry constants (match stem/head geometry)
-        const innerLeft = 10;
-        const innerRight = 10;
-        const headHalfMax = 6; // worst case (diamond)
-        const startX = x + innerLeft;
-        const endLimit = x + width - innerRight - headHalfMax; // last note center must be <= this
-
-        // Detect tuplet groups in this beat
-        const tupletGroups: Array<{startIndex: number, endIndex: number, count: number, groupId: string, ratio?: {numerator: number, denominator: number}}> = [];
-        const seenTupletGroups = new Set<string>();
-        beat.notes.forEach((note, i) => {
-            if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
-                seenTupletGroups.add(note.tuplet.groupId);
-                const groupNotes = beat.notes.filter(n => n.tuplet && n.tuplet.groupId === note.tuplet!.groupId);
-                const startIdx = beat.notes.findIndex(n => n.tuplet && n.tuplet.groupId === note.tuplet!.groupId);
-                tupletGroups.push({
-                    startIndex: startIdx,
-                    endIndex: startIdx + groupNotes.length - 1,
-                    count: note.tuplet.count,
-                    groupId: note.tuplet.groupId,
-                    ratio: note.tuplet.ratio
-                });
-            }
-        });
-
-        // Calculate individual note positions with adaptive spacing and clamping to beat width
-        const notePositionsX: number[] = [];
-        // Determine ideal base spacing from densest note value
-        const densestSpacing = Math.max(...beat.notes.map(n => {
-            if (n.isRest) return 20; // rests: neutral spacing
-            const v = n.value;
-            if (v >= 64) return 16;
-            if (v >= 32) return 20;
-            if (v >= 16) return 26;
-            if (v >= 8)  return 24;
-            return 20;
-        }));
-        const availableSpan = Math.max(0, endLimit - startX);
-        // Build per-gap factors: compress tuplet-internal gaps slightly
-        const gapCount = Math.max(0, noteCount - 1);
-        const gapFactors: number[] = [];
-        for (let g = 0; g < gapCount; g++) {
-            const inSameTuplet = tupletGroups.some(T => g >= T.startIndex && g + 1 <= T.endIndex);
-            gapFactors.push(inSameTuplet ? 0.85 : 1.0);
-        }
-        const desiredGaps = gapFactors.map(f => densestSpacing * f);
-        const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
-        const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
-        const finalGaps = desiredGaps.map(g => g * scale);
-
-        let cursorX = startX;
-        for (let i = 0; i < noteCount; i++) {
-            notePositionsX.push(cursorX);
-            if (i < gapCount) cursorX += finalGaps[i];
-        }
-
-        beat.notes.forEach((nv, noteIndex) => {
-            // Calculate note position using precalculated positions
-            let noteX: number;
-            if (noteCount === 1 && nv.isRest && nv.value === 1) {
-                // Center the whole rest in the beat area
-                noteX = x + width / 2;
-            } else {
-                // Use precalculated position with tuplet spacing
-                noteX = notePositionsX[noteIndex];
-            }
-            
-            // Render rests properly
-            if (nv.isRest) {
-                // Draw the rest glyph at noteX
-                this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-                // Maintain analyzer segment index progression to stay in sync with overlay references
-                segmentNoteCursor[chordIndex]++;
-                // Rests do not participate in ties; don't push into notePositions
-                if (firstNoteX === null) firstNoteX = noteX;
-                return;
-            }
-            // Determine if this note belongs to a primary (level-1) beam group
-            const localIndexInSegment = segmentNoteCursor[chordIndex];
-            const isInPrimaryBeam = !!this.beamedAtLevel1?.has(`${chordIndex}:${localIndexInSegment}`);
-            const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-            const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
-            if (firstNoteX === null) firstNoteX = noteX;
-
-            let headLeftX: number;
-            let headRightX: number;
-            if (nv.value === 1 || nv.value === 2) {
-                const diamondSize = 6;
-                headLeftX = noteX - diamondSize;
-                headRightX = noteX + diamondSize;
-            } else {
-                const slashHalf = 10 / 2;
-                headLeftX = noteX - slashHalf;
-                headRightX = noteX + slashHalf;
-            }
-            const hasStem = nv.value >= 2;
-            const stemTopY = stemCoords.stemTopY;
-            const stemBottomY = stemCoords.stemBottomY;
-
-            notePositions.push({
-                x: noteX,
-                y: staffLineY,
-                headLeftX,
-                headRightX,
-                measureIndex,
-                chordIndex,
-                beatIndex,
-                noteIndex,
-                segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-                tieStart: !!nv.tieStart,
-                tieEnd: !!nv.tieEnd,
-                tieToVoid: !!nv.tieToVoid,
-                tieFromVoid: !!nv.tieFromVoid,
-                globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
-                stemTopY,
-                stemBottomY,
-                value: nv.value
-            });
-
-            // Register note head & stem for collision management
-            if (this.placeAndSizeManager) {
-                const noteHeadBBox = {
-                    x: headLeftX,
-                    y: staffLineY - 12,
-                    width: headRightX - headLeftX,
-                    height: 24
-                };
-                this.placeAndSizeManager.registerElement('note', noteHeadBBox, 6, { 
-                    value: nv.value, 
-                    dotted: nv.dotted, 
-                    measureIndex, 
-                    chordIndex, 
-                    beatIndex, 
-                    noteIndex,
-                    exactX: noteX,
-                    exactY: staffLineY
-                });
-                if (hasStem && stemTopY !== undefined && stemBottomY !== undefined) {
-                    const stemBBox = {
-                        x: noteX - 3, // approximate stem x based on drawStem logic
-                        y: stemTopY,
-                        width: 3,
-                        height: stemBottomY - stemTopY
-                    };
-                    this.placeAndSizeManager.registerElement('stem', stemBBox, 5, { 
-                        measureIndex, 
-                        chordIndex, 
-                        beatIndex, 
-                        noteIndex,
-                        exactX: noteX,
-                        exactY: (stemTopY + stemBottomY) / 2
-                    });
-                }
-            }
-        });
-        
-        // Draw tuplet brackets if any
-        tupletGroups.forEach(tupletGroup => {
-            const tupletStartX = notePositionsX[tupletGroup.startIndex];
-            const tupletEndX = notePositionsX[tupletGroup.endIndex];
-            // Position bracket above staff line (stems go DOWN from staffLineY + 5)
-            // Place bracket above the note heads at a comfortable distance
-            const bracketY = staffLineY - 15; // Above note heads, below where beams would be
-            
-            // Horizontal line
-            const bracket = document.createElementNS(SVG_NS, 'line');
-            bracket.setAttribute('x1', String(tupletStartX));
-            bracket.setAttribute('y1', String(bracketY));
-            bracket.setAttribute('x2', String(tupletEndX));
-            bracket.setAttribute('y2', String(bracketY));
-            bracket.setAttribute('stroke', '#000');
-            bracket.setAttribute('stroke-width', '1');
-            svg.appendChild(bracket);
-            
-            // Left vertical bar (pointing down)
-            const leftBar = document.createElementNS(SVG_NS, 'line');
-            leftBar.setAttribute('x1', String(tupletStartX));
-            leftBar.setAttribute('y1', String(bracketY));
-            leftBar.setAttribute('x2', String(tupletStartX));
-            leftBar.setAttribute('y2', String(bracketY + 5));
-            leftBar.setAttribute('stroke', '#000');
-            leftBar.setAttribute('stroke-width', '1');
-            svg.appendChild(leftBar);
-            
-            // Right vertical bar (pointing down)
-            const rightBar = document.createElementNS(SVG_NS, 'line');
-            rightBar.setAttribute('x1', String(tupletEndX));
-            rightBar.setAttribute('y1', String(bracketY));
-            rightBar.setAttribute('x2', String(tupletEndX));
-            rightBar.setAttribute('y2', String(bracketY + 5));
-            rightBar.setAttribute('stroke', '#000');
-            rightBar.setAttribute('stroke-width', '1');
-            svg.appendChild(rightBar);
-
-            // Register tuplet bracket bounding box (approx width & height)
-            if (this.placeAndSizeManager) {
-                const bracketBBox = {
-                    x: tupletStartX,
-                    y: bracketY - 6,
-                    width: tupletEndX - tupletStartX,
-                    height: 12
-                };
-                this.placeAndSizeManager.registerElement('tuplet-bracket', bracketBBox, 4, { 
-                    measureIndex, 
-                    chordIndex, 
-                    beatIndex,
-                    exactX: (tupletStartX + tupletEndX) / 2,
-                    exactY: bracketY
-                });
-            }
-            
-            // Tuplet number or ratio centered above the bracket
-            const centerX = (tupletStartX + tupletEndX) / 2;
-            let tupletTextY = bracketY - 3;
-            const text = document.createElementNS(SVG_NS, 'text');
-            text.setAttribute('x', String(centerX));
-            text.setAttribute('y', String(tupletTextY));
-            text.setAttribute('font-size', '10');
-            text.setAttribute('font-weight', 'bold');
-            text.setAttribute('text-anchor', 'middle');
-            // Display ratio if explicitly provided, otherwise just count
-            if (tupletGroup.ratio) {
-                text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
-            } else {
-                text.textContent = String(tupletGroup.count);
-            }
-            // Collision adjust for tuplet number against chords or other elements
-            if (this.placeAndSizeManager) {
-                const textWidth = (text.textContent || '').length * 6; // rough monospace approximation
-                let numberBBox = {
-                    x: centerX - textWidth / 2,
-                    y: tupletTextY - 10,
-                    width: textWidth,
-                    height: 12
-                };
-                if (this.placeAndSizeManager.hasCollision(numberBBox, 'tuplet-number', ['tuplet-bracket','tuplet-number'])) {
-                    const adjusted = this.placeAndSizeManager.findFreePosition(numberBBox, 'tuplet-number', 'vertical', ['tuplet-number']);
-                    if (adjusted) {
-                        tupletTextY = adjusted.y + 10; // baseline correction
-                        text.setAttribute('y', String(tupletTextY));
-                        numberBBox = { ...numberBBox, y: adjusted.y };
-                    }
-                }
-                this.placeAndSizeManager.registerElement('tuplet-number', numberBBox, 7, { 
-                    text: text.textContent, 
-                    measureIndex, 
-                    chordIndex, 
-                    beatIndex,
-                    exactX: centerX,
-                    exactY: tupletTextY
-                });
-            }
-            svg.appendChild(text);
-        });
-        
-        return firstNoteX;
-    }
-
-    private drawSingleNote(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, width: number): number {
-        if (nv.isRest) {
-            this.restRenderer.drawRest(svg, nv, x, staffLineY);
-            return x;
-        }
-        const centerX = x;
-        let stemInfo: { x: number; topY: number; bottomY: number; } | undefined;
-        if (nv.value === 1) {
-            this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-        } else if (nv.value === 2) {
-            this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-            stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
-        } else {
-            this.drawSlash(svg, centerX, staffLineY);
-            stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
-            const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-            if (level > 0 && stemInfo) {
-                this.drawFlag(svg, stemInfo, level, this.stemsDirection);
-            }
-        }
-
-        if (nv.dotted) {
-            const dot = document.createElementNS(SVG_NS, 'circle');
-            dot.setAttribute('cx', (centerX + 10).toString());
-            dot.setAttribute('cy', (staffLineY - 4).toString());
-            dot.setAttribute('r', '1.5');
-            dot.setAttribute('fill', '#000');
-            // Tag for later collision adjustment (we don't have measureIndex here; defer to parent context if needed)
-            dot.setAttribute('data-cg-dot', '1');
-            svg.appendChild(dot);
-            if (this.placeAndSizeManager) {
-                const cx = centerX + 10;
-                const cy = staffLineY - 4;
-                this.placeAndSizeManager.registerElement('dot', { 
-                    x: cx - 2, 
-                    y: cy - 2, 
-                    width: 4, 
-                    height: 4 
-                }, 9, { 
-                    value: nv.value, 
-                    dotted: true,
-                    exactX: cx,
-                    exactY: cy
-                });
-            }
-        }
-
-        return centerX;
+        return this.noteRenderer.drawBeat(
+            svg,
+            beat,
+            x,
+            staffLineY,
+            width,
+            measureIndex,
+            chordIndex,
+            beatIndex,
+            notePositions,
+            segmentNoteCursor,
+            this.beamedAtLevel1
+        );
     }
 
     /**
-     * Draw a single note without beams or flags (for analyzer path).
-     * Analyzer overlay will handle beams; this just draws head and stem.
-     * Retourne les coordonnées de la hampe si elle existe.
+     * Dessine une barre de mesure simple.
      */
-    private drawSingleNoteWithoutBeam(svg: SVGElement, nv: NoteElement, x: number, staffLineY: number, drawFlagsForIsolated: boolean = false): { stemTopY?: number; stemBottomY?: number; } {
-        if (nv.isRest) {
-            this.restRenderer.drawRest(svg, nv, x, staffLineY);
-            return {};
-        }
-    let stemInfo: { x: number; topY: number; bottomY: number; } | undefined;
-        if (nv.value === 1) {
-            this.drawDiamondNoteHead(svg, x, staffLineY, true);
-        } else if (nv.value === 2) {
-            this.drawDiamondNoteHead(svg, x, staffLineY, true);
-            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
-        } else {
-            // For beamable notes (>=8), draw slash + stem but no flag (analyzer overlay draws beams)
-            this.drawSlash(svg, x, staffLineY);
-            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
-            // If not part of a primary beam group, render flags directly here
-            if (drawFlagsForIsolated) {
-                const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-                if (level > 0 && stemInfo) {
-                    this.drawFlag(svg, stemInfo, level, this.stemsDirection);
-                }
-            }
-        }
-        if (nv.dotted) {
-            const dot = document.createElementNS(SVG_NS, 'circle');
-            dot.setAttribute('cx', (x + 10).toString());
-            dot.setAttribute('cy', (staffLineY - 4).toString());
-            dot.setAttribute('r', '1.5');
-            dot.setAttribute('fill', '#000');
-            dot.setAttribute('data-cg-dot', '1');
-            svg.appendChild(dot);
-            if (this.placeAndSizeManager) {
-                const cx = x + 10;
-                const cy = staffLineY - 4;
-                this.placeAndSizeManager.registerElement('dot', { 
-                    x: cx - 2, 
-                    y: cy - 2, 
-                    width: 4, 
-                    height: 4 
-                }, 9, { 
-                    value: nv.value, 
-                    dotted: true,
-                    exactX: cx,
-                    exactY: cy
-                });
-            }
-        }
-    return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
-    }
-
-    /**
-     * Dessine une hampe orientée selon stemsDirection ('up' ou 'down').
-     * Retourne les coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
-     */
-    private drawStemWithDirection(svg: SVGElement, x: number, y: number, height: number, direction: 'up' | 'down'): { x: number; topY: number; bottomY: number; } {
-        const slashLength = 10;
-        // Position de la hampe selon la direction (notation musicale standard)
-        // Hampes UP : à droite de la note head
-        // Hampes DOWN : à gauche de la note head
-        const stemStartX = direction === 'up' ? (x + slashLength/2) : (x - slashLength/2);
-        
-        let stemStartY: number, stemEndY: number;
-        if (direction === 'up') {
-            // Hampes vers le haut : part du HAUT de la tête de note et monte
-            stemStartY = y - slashLength/2;  // Haut de la tête de note
-            stemEndY = stemStartY - height;
-        } else {
-            // Hampes vers le bas : part du BAS de la tête de note et descend
-            stemStartY = y + slashLength/2;  // Bas de la tête de note
-            stemEndY = stemStartY + height;
-        }
-        const stem = document.createElementNS(SVG_NS, 'line');
-        stem.setAttribute('x1', stemStartX.toString());
-        stem.setAttribute('y1', stemStartY.toString());
-        stem.setAttribute('x2', stemStartX.toString());
-        stem.setAttribute('y2', stemEndY.toString());
-        stem.setAttribute('stroke', '#000');
-        stem.setAttribute('stroke-width', '2');
-        svg.appendChild(stem);
-        // Retourner les vraies valeurs top et bottom (le plus petit y est le top, le plus grand y est le bottom)
-        return { 
-            x: stemStartX, 
-            topY: Math.min(stemStartY, stemEndY), 
-            bottomY: Math.max(stemStartY, stemEndY) 
-        };
-    }
-
-    private drawDiamondNoteHead(svg: SVGElement, x: number, y: number, hollow: boolean): void {
-        const diamondSize = 6;
-        const diamond = document.createElementNS(SVG_NS, 'polygon');
-        const points = [ [x, y - diamondSize], [x + diamondSize, y], [x, y + diamondSize], [x - diamondSize, y] ];
-        diamond.setAttribute('points', points.map(p => `${p[0]},${p[1]}`).join(' '));
-        diamond.setAttribute('fill', hollow ? 'white' : 'black');
-        diamond.setAttribute('stroke', '#000');
-        diamond.setAttribute('stroke-width', '1');
-        svg.appendChild(diamond);
-    }
-
-    private drawSlash(svg: SVGElement, x: number, y: number): void {
-        const slashLength = 10;
-        const slash = document.createElementNS(SVG_NS, 'line');
-        slash.setAttribute('x1', (x + slashLength/2).toString());
-        slash.setAttribute('y1', (y - slashLength/2).toString());
-        slash.setAttribute('x2', (x - slashLength/2).toString());
-        slash.setAttribute('y2', (y + slashLength/2).toString());
-        slash.setAttribute('stroke', '#000');
-        slash.setAttribute('stroke-width', '3');
-        svg.appendChild(slash);
-    }
-
-    private drawStem(svg: SVGElement, x: number, y: number, height: number): { x: number; topY: number; bottomY: number; } {
-        const slashLength = 10;
-        const stemStartX = x - slashLength/2 + 2;
-        const stemStartY = y + slashLength/2;
-        const stem = document.createElementNS(SVG_NS, 'line');
-        stem.setAttribute('x1', stemStartX.toString());
-        stem.setAttribute('y1', stemStartY.toString());
-        stem.setAttribute('x2', stemStartX.toString());
-        stem.setAttribute('y2', (stemStartY + height).toString());
-        stem.setAttribute('stroke', '#000');
-        stem.setAttribute('stroke-width', '2');
-        svg.appendChild(stem);
-        return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
-    }
-
-    private drawFlag(
-        svg: SVGElement,
-        stem: { x: number; topY: number; bottomY: number; },
-        count: number,
-        direction: 'up' | 'down'
-    ): void {
-        const flagSpacing = 10;
-        for (let i = 0; i < count; i++) {
-            const flag = document.createElementNS(SVG_NS, 'path');
-            if (direction === 'up') {
-                const attachY = stem.topY + i * flagSpacing;
-                flag.setAttribute('d', `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
-            } else {
-                const attachY = stem.bottomY - i * flagSpacing;
-                flag.setAttribute('d', `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
-            }
-            flag.setAttribute('stroke', '#000');
-            flag.setAttribute('stroke-width', '2');
-            flag.setAttribute('fill', 'none');
-            svg.appendChild(flag);
-        }
-    }
-
     private drawBar(svg: SVGElement, x: number, y: number, height: number, measureIndex?: number, side?: 'left' | 'right'): void {
         const line = document.createElementNS(SVG_NS, 'line');
         line.setAttribute('x1', x.toString());

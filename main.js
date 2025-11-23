@@ -1286,6 +1286,303 @@ var RestRenderer = class {
   }
 };
 
+// src/renderer/NoteRenderer.ts
+var NoteRenderer = class {
+  constructor(stemsDirection = "up", placeAndSizeManager) {
+    __publicField(this, "restRenderer");
+    __publicField(this, "stemsDirection");
+    __publicField(this, "placeAndSizeManager");
+    this.stemsDirection = stemsDirection;
+    this.placeAndSizeManager = placeAndSizeManager;
+    this.restRenderer = new RestRenderer();
+  }
+  /**
+   * Dessine une tête de note en losange (diamond).
+   */
+  drawDiamondNoteHead(svg, x, y, hollow) {
+    const diamondSize = 6;
+    const diamond = document.createElementNS(SVG_NS, "polygon");
+    const points = [
+      [x, y - diamondSize],
+      [x + diamondSize, y],
+      [x, y + diamondSize],
+      [x - diamondSize, y]
+    ];
+    diamond.setAttribute("points", points.map((p) => `${p[0]},${p[1]}`).join(" "));
+    diamond.setAttribute("fill", hollow ? "white" : "black");
+    diamond.setAttribute("stroke", "#000");
+    diamond.setAttribute("stroke-width", "1");
+    svg.appendChild(diamond);
+  }
+  /**
+   * Dessine une barre de slash (tête de note pour valeurs >= 4).
+   */
+  drawSlash(svg, x, y) {
+    const slashLength = 10;
+    const slash = document.createElementNS(SVG_NS, "line");
+    slash.setAttribute("x1", (x + slashLength / 2).toString());
+    slash.setAttribute("y1", (y - slashLength / 2).toString());
+    slash.setAttribute("x2", (x - slashLength / 2).toString());
+    slash.setAttribute("y2", (y + slashLength / 2).toString());
+    slash.setAttribute("stroke", "#000");
+    slash.setAttribute("stroke-width", "3");
+    svg.appendChild(slash);
+  }
+  /**
+   * Dessine une hampe orientée selon stemsDirection.
+   * 
+   * @returns Coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
+   */
+  drawStemWithDirection(svg, x, y, height, direction) {
+    const slashLength = 10;
+    const stemStartX = direction === "up" ? x + slashLength / 2 : x - slashLength / 2;
+    let stemStartY, stemEndY;
+    if (direction === "up") {
+      stemStartY = y - slashLength / 2;
+      stemEndY = stemStartY - height;
+    } else {
+      stemStartY = y + slashLength / 2;
+      stemEndY = stemStartY + height;
+    }
+    const stem = document.createElementNS(SVG_NS, "line");
+    stem.setAttribute("x1", stemStartX.toString());
+    stem.setAttribute("y1", stemStartY.toString());
+    stem.setAttribute("x2", stemStartX.toString());
+    stem.setAttribute("y2", stemEndY.toString());
+    stem.setAttribute("stroke", "#000");
+    stem.setAttribute("stroke-width", "2");
+    svg.appendChild(stem);
+    return {
+      x: stemStartX,
+      topY: Math.min(stemStartY, stemEndY),
+      bottomY: Math.max(stemStartY, stemEndY)
+    };
+  }
+  /**
+   * Dessine des crochets (flags) sur une hampe pour les notes isolées.
+   */
+  drawFlag(svg, stem, count, direction) {
+    const flagSpacing = 10;
+    for (let i = 0; i < count; i++) {
+      const flag = document.createElementNS(SVG_NS, "path");
+      if (direction === "up") {
+        const attachY = stem.topY + i * flagSpacing;
+        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
+      } else {
+        const attachY = stem.bottomY - i * flagSpacing;
+        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
+      }
+      flag.setAttribute("stroke", "#000");
+      flag.setAttribute("stroke-width", "2");
+      flag.setAttribute("fill", "none");
+      svg.appendChild(flag);
+    }
+  }
+  /**
+   * Dessine un point pour une note pointée.
+   */
+  drawDot(svg, x, y, nv) {
+    const dot = document.createElementNS(SVG_NS, "circle");
+    dot.setAttribute("cx", (x + 10).toString());
+    dot.setAttribute("cy", (y - 4).toString());
+    dot.setAttribute("r", "1.5");
+    dot.setAttribute("fill", "#000");
+    dot.setAttribute("data-cg-dot", "1");
+    svg.appendChild(dot);
+    if (this.placeAndSizeManager) {
+      const cx = x + 10;
+      const cy = y - 4;
+      this.placeAndSizeManager.registerElement("dot", {
+        x: cx - 2,
+        y: cy - 2,
+        width: 4,
+        height: 4
+      }, 9, {
+        value: nv.value,
+        dotted: true,
+        exactX: cx,
+        exactY: cy
+      });
+    }
+  }
+  /**
+   * Dessine une note unique sans ligature (pour path analyzer).
+   * Les ligatures sont gérées par l'overlay analyzer.
+   * 
+   * @returns Coordonnées de la hampe si elle existe
+   */
+  drawSingleNoteWithoutBeam(svg, nv, x, staffLineY, drawFlagsForIsolated = false) {
+    if (nv.isRest) {
+      this.restRenderer.drawRest(svg, nv, x, staffLineY);
+      return {};
+    }
+    let stemInfo;
+    if (nv.value === 1) {
+      this.drawDiamondNoteHead(svg, x, staffLineY, true);
+    } else if (nv.value === 2) {
+      this.drawDiamondNoteHead(svg, x, staffLineY, true);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+    } else {
+      this.drawSlash(svg, x, staffLineY);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+      if (drawFlagsForIsolated) {
+        const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+        if (level > 0 && stemInfo) {
+          this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+        }
+      }
+    }
+    if (nv.dotted) {
+      this.drawDot(svg, x, staffLineY, nv);
+    }
+    return stemInfo ? {
+      stemTopY: stemInfo.topY,
+      stemBottomY: stemInfo.bottomY,
+      stemX: stemInfo.x
+    } : {};
+  }
+  /**
+   * Dessine un temps (beat) complet avec toutes ses notes.
+   * 
+   * @param svg - Élément SVG parent
+   * @param beat - Temps à dessiner
+   * @param beatX - Position X du début du temps
+   * @param staffLineY - Position Y de la ligne de portée
+   * @param beatWidth - Largeur allouée au temps
+   * @param measureIndex - Index de la mesure
+   * @param chordIndex - Index du segment d'accord
+   * @param beatIndex - Index du temps
+   * @param notePositions - Tableau pour collecter les positions des notes
+   * @param segmentNoteCursor - Compteurs de notes par segment
+   * @param beamedAtLevel1 - Set des notes en ligature niveau 1
+   * @returns Position X de la première note, ou null si aucune
+   */
+  drawBeat(svg, beat, beatX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor, beamedAtLevel1) {
+    const noteCount = beat.notes.length;
+    if (noteCount === 0) return null;
+    const innerLeft = 10;
+    const innerRight = 10;
+    const startX = beatX + innerLeft;
+    const endX = beatX + beatWidth - innerRight;
+    const availableWidth = endX - startX;
+    const notePositionsX = [];
+    let firstNoteX = null;
+    const gapCount = noteCount - 1;
+    const desiredGaps = [];
+    for (let i = 0; i < gapCount; i++) {
+      const currentNote = beat.notes[i];
+      const nextNote = beat.notes[i + 1];
+      const currentIsRest = currentNote.isRest;
+      const nextIsRest = nextNote.isRest;
+      const minGap = 20;
+      let gap = currentIsRest || nextIsRest ? minGap + 4 : minGap;
+      desiredGaps.push(gap);
+    }
+    const totalDesiredGap = desiredGaps.reduce((a, b) => a + b, 0);
+    const scale = gapCount > 0 ? Math.min(1, availableWidth / totalDesiredGap) : 1;
+    const finalGaps = desiredGaps.map((g) => g * scale);
+    let cursorX = startX;
+    for (let i = 0; i < noteCount; i++) {
+      notePositionsX.push(cursorX);
+      if (i < gapCount) cursorX += finalGaps[i];
+    }
+    beat.notes.forEach((nv, noteIndex) => {
+      var _a;
+      let noteX;
+      if (noteCount === 1 && nv.isRest && nv.value === 1) {
+        noteX = beatX + beatWidth / 2;
+      } else {
+        noteX = notePositionsX[noteIndex];
+      }
+      if (nv.isRest) {
+        this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
+        segmentNoteCursor[chordIndex]++;
+        if (firstNoteX === null) firstNoteX = noteX;
+        return;
+      }
+      const localIndexInSegment = segmentNoteCursor[chordIndex];
+      const isInPrimaryBeam = (_a = beamedAtLevel1 == null ? void 0 : beamedAtLevel1.has(`${chordIndex}:${localIndexInSegment}`)) != null ? _a : false;
+      const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
+      const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+      if (firstNoteX === null) firstNoteX = noteX;
+      let headLeftX, headRightX;
+      if (nv.value === 1 || nv.value === 2) {
+        const diamondSize = 6;
+        headLeftX = noteX - diamondSize;
+        headRightX = noteX + diamondSize;
+      } else {
+        const slashHalf = 10 / 2;
+        headLeftX = noteX - slashHalf;
+        headRightX = noteX + slashHalf;
+      }
+      const hasStem = nv.value >= 2;
+      const stemTopY = stemCoords.stemTopY;
+      const stemBottomY = stemCoords.stemBottomY;
+      const stemX = stemCoords.stemX;
+      notePositions.push({
+        x: noteX,
+        y: staffLineY,
+        headLeftX,
+        headRightX,
+        measureIndex,
+        chordIndex,
+        beatIndex,
+        noteIndex,
+        segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+        tieStart: !!nv.tieStart,
+        tieEnd: !!nv.tieEnd,
+        tieToVoid: !!nv.tieToVoid,
+        tieFromVoid: !!nv.tieFromVoid,
+        globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
+        stemTopY,
+        stemBottomY,
+        value: nv.value
+      });
+      if (this.placeAndSizeManager) {
+        const noteHeadBBox = {
+          x: headLeftX,
+          y: staffLineY - 12,
+          width: headRightX - headLeftX,
+          height: 24
+        };
+        this.placeAndSizeManager.registerElement("note", noteHeadBBox, 6, {
+          value: nv.value,
+          dotted: nv.dotted,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          noteIndex,
+          exactX: noteX,
+          exactY: staffLineY
+        });
+        if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0 && stemX !== void 0) {
+          const stemBBox = {
+            x: stemX - 1.5,
+            y: stemTopY,
+            width: 3,
+            height: stemBottomY - stemTopY
+          };
+          this.placeAndSizeManager.registerElement("stem", stemBBox, 5, {
+            measureIndex,
+            chordIndex,
+            beatIndex,
+            noteIndex,
+            canCollide: true,
+            stem: {
+              centerX: stemX,
+              centerY: (stemTopY + stemBottomY) / 2,
+              topY: stemTopY,
+              bottomY: stemBottomY,
+              direction: this.stemsDirection
+            }
+          });
+        }
+      }
+    });
+    return firstNoteX;
+  }
+};
+
 // src/renderer/MeasureRenderer.ts
 var MeasureRenderer = class {
   constructor(measure, x, y, width, beamedAtLevel1, placeAndSizeManager, stemsDirection, displayRepeatSymbol) {
@@ -1308,11 +1605,13 @@ var MeasureRenderer = class {
      * @param displayRepeatSymbol - Display the % symbol for repeated measures
      */
     __publicField(this, "restRenderer");
+    __publicField(this, "noteRenderer");
     __publicField(this, "stemsDirection");
     __publicField(this, "displayRepeatSymbol");
     this.stemsDirection = stemsDirection === "down" ? "down" : "up";
     this.displayRepeatSymbol = displayRepeatSymbol != null ? displayRepeatSymbol : false;
     this.restRenderer = new RestRenderer(this.placeAndSizeManager);
+    this.noteRenderer = new NoteRenderer(this.stemsDirection, this.placeAndSizeManager);
   }
   /**
    * Dessine la mesure complète dans le SVG.
@@ -1431,23 +1730,6 @@ var MeasureRenderer = class {
         const beatWidth = reqPerBeat[beatIndex] / reqSum * beatsWidth;
         const beatX = beatCursorX;
         const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
-        if (firstNoteX !== null && beatIndex === 0 && segment.chord && this.placeAndSizeManager) {
-          const allElements = this.placeAndSizeManager.getElements();
-          const chordElement = allElements.find(
-            (el) => {
-              var _a, _b;
-              return el.type === "chord" && ((_a = el.metadata) == null ? void 0 : _a.measureIndex) === measureIndex && ((_b = el.metadata) == null ? void 0 : _b.segmentIndex) === segmentIndex;
-            }
-          );
-          if (chordElement == null ? void 0 : chordElement.metadata) {
-            const finalX = chordElement.metadata.exactX;
-            const finalY = chordElement.metadata.exactY;
-            const chordText = this.createText(segment.chord, finalX, finalY, "22px", "bold");
-            chordText.setAttribute("text-anchor", "middle");
-            chordText.setAttribute("font-family", "Arial, sans-serif");
-            svg.appendChild(chordText);
-          }
-        }
         beatCursorX += beatWidth;
       });
       currentX += segmentWidth;
@@ -1463,419 +1745,28 @@ var MeasureRenderer = class {
       this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
     }
   }
+  /**
+   * Dessine le rythme (notes) d'un beat.
+   * Délègue le rendu au NoteRenderer.
+   */
   drawRhythm(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
-    const beats = [beat];
-    const beatWidth = width;
-    let currentX = x;
-    let firstNoteX = null;
-    const first = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor);
-    if (first !== null) firstNoteX = first;
-    return firstNoteX;
-  }
-  drawBeat(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
-    if (!beat || beat.notes.length === 0) return null;
-    const hasBeamableNotes = beat.notes.some((n) => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
-    const noteCount = beat.notes.length;
-    let firstNoteX = null;
-    const innerLeft = 10;
-    const innerRight = 10;
-    const headHalfMax = 6;
-    const startX = x + innerLeft;
-    const endLimit = x + width - innerRight - headHalfMax;
-    const tupletGroups = [];
-    const seenTupletGroups = /* @__PURE__ */ new Set();
-    beat.notes.forEach((note, i) => {
-      if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
-        seenTupletGroups.add(note.tuplet.groupId);
-        const groupNotes = beat.notes.filter((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
-        const startIdx = beat.notes.findIndex((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
-        tupletGroups.push({
-          startIndex: startIdx,
-          endIndex: startIdx + groupNotes.length - 1,
-          count: note.tuplet.count,
-          groupId: note.tuplet.groupId,
-          ratio: note.tuplet.ratio
-        });
-      }
-    });
-    const notePositionsX = [];
-    const densestSpacing = Math.max(...beat.notes.map((n) => {
-      if (n.isRest) return 20;
-      const v = n.value;
-      if (v >= 64) return 16;
-      if (v >= 32) return 20;
-      if (v >= 16) return 26;
-      if (v >= 8) return 24;
-      return 20;
-    }));
-    const availableSpan = Math.max(0, endLimit - startX);
-    const gapCount = Math.max(0, noteCount - 1);
-    const gapFactors = [];
-    for (let g = 0; g < gapCount; g++) {
-      const inSameTuplet = tupletGroups.some((T) => g >= T.startIndex && g + 1 <= T.endIndex);
-      gapFactors.push(inSameTuplet ? 0.85 : 1);
-    }
-    const desiredGaps = gapFactors.map((f) => densestSpacing * f);
-    const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
-    const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
-    const finalGaps = desiredGaps.map((g) => g * scale);
-    let cursorX = startX;
-    for (let i = 0; i < noteCount; i++) {
-      notePositionsX.push(cursorX);
-      if (i < gapCount) cursorX += finalGaps[i];
-    }
-    beat.notes.forEach((nv, noteIndex) => {
-      var _a;
-      let noteX;
-      if (noteCount === 1 && nv.isRest && nv.value === 1) {
-        noteX = x + width / 2;
-      } else {
-        noteX = notePositionsX[noteIndex];
-      }
-      if (nv.isRest) {
-        this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-        segmentNoteCursor[chordIndex]++;
-        if (firstNoteX === null) firstNoteX = noteX;
-        return;
-      }
-      const localIndexInSegment = segmentNoteCursor[chordIndex];
-      const isInPrimaryBeam = !!((_a = this.beamedAtLevel1) == null ? void 0 : _a.has(`${chordIndex}:${localIndexInSegment}`));
-      const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-      const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
-      if (firstNoteX === null) firstNoteX = noteX;
-      let headLeftX;
-      let headRightX;
-      if (nv.value === 1 || nv.value === 2) {
-        const diamondSize = 6;
-        headLeftX = noteX - diamondSize;
-        headRightX = noteX + diamondSize;
-      } else {
-        const slashHalf = 10 / 2;
-        headLeftX = noteX - slashHalf;
-        headRightX = noteX + slashHalf;
-      }
-      const hasStem = nv.value >= 2;
-      const stemTopY = stemCoords.stemTopY;
-      const stemBottomY = stemCoords.stemBottomY;
-      notePositions.push({
-        x: noteX,
-        y: staffLineY,
-        headLeftX,
-        headRightX,
-        measureIndex,
-        chordIndex,
-        beatIndex,
-        noteIndex,
-        segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-        tieStart: !!nv.tieStart,
-        tieEnd: !!nv.tieEnd,
-        tieToVoid: !!nv.tieToVoid,
-        tieFromVoid: !!nv.tieFromVoid,
-        globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
-        stemTopY,
-        stemBottomY,
-        value: nv.value
-      });
-      if (this.placeAndSizeManager) {
-        const noteHeadBBox = {
-          x: headLeftX,
-          y: staffLineY - 12,
-          width: headRightX - headLeftX,
-          height: 24
-        };
-        this.placeAndSizeManager.registerElement("note", noteHeadBBox, 6, {
-          value: nv.value,
-          dotted: nv.dotted,
-          measureIndex,
-          chordIndex,
-          beatIndex,
-          noteIndex,
-          exactX: noteX,
-          exactY: staffLineY
-        });
-        if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0) {
-          const stemBBox = {
-            x: noteX - 3,
-            // approximate stem x based on drawStem logic
-            y: stemTopY,
-            width: 3,
-            height: stemBottomY - stemTopY
-          };
-          this.placeAndSizeManager.registerElement("stem", stemBBox, 5, {
-            measureIndex,
-            chordIndex,
-            beatIndex,
-            noteIndex,
-            exactX: noteX,
-            exactY: (stemTopY + stemBottomY) / 2
-          });
-        }
-      }
-    });
-    tupletGroups.forEach((tupletGroup) => {
-      const tupletStartX = notePositionsX[tupletGroup.startIndex];
-      const tupletEndX = notePositionsX[tupletGroup.endIndex];
-      const bracketY = staffLineY - 15;
-      const bracket = document.createElementNS(SVG_NS, "line");
-      bracket.setAttribute("x1", String(tupletStartX));
-      bracket.setAttribute("y1", String(bracketY));
-      bracket.setAttribute("x2", String(tupletEndX));
-      bracket.setAttribute("y2", String(bracketY));
-      bracket.setAttribute("stroke", "#000");
-      bracket.setAttribute("stroke-width", "1");
-      svg.appendChild(bracket);
-      const leftBar = document.createElementNS(SVG_NS, "line");
-      leftBar.setAttribute("x1", String(tupletStartX));
-      leftBar.setAttribute("y1", String(bracketY));
-      leftBar.setAttribute("x2", String(tupletStartX));
-      leftBar.setAttribute("y2", String(bracketY + 5));
-      leftBar.setAttribute("stroke", "#000");
-      leftBar.setAttribute("stroke-width", "1");
-      svg.appendChild(leftBar);
-      const rightBar = document.createElementNS(SVG_NS, "line");
-      rightBar.setAttribute("x1", String(tupletEndX));
-      rightBar.setAttribute("y1", String(bracketY));
-      rightBar.setAttribute("x2", String(tupletEndX));
-      rightBar.setAttribute("y2", String(bracketY + 5));
-      rightBar.setAttribute("stroke", "#000");
-      rightBar.setAttribute("stroke-width", "1");
-      svg.appendChild(rightBar);
-      if (this.placeAndSizeManager) {
-        const bracketBBox = {
-          x: tupletStartX,
-          y: bracketY - 6,
-          width: tupletEndX - tupletStartX,
-          height: 12
-        };
-        this.placeAndSizeManager.registerElement("tuplet-bracket", bracketBBox, 4, {
-          measureIndex,
-          chordIndex,
-          beatIndex,
-          exactX: (tupletStartX + tupletEndX) / 2,
-          exactY: bracketY
-        });
-      }
-      const centerX = (tupletStartX + tupletEndX) / 2;
-      let tupletTextY = bracketY - 3;
-      const text = document.createElementNS(SVG_NS, "text");
-      text.setAttribute("x", String(centerX));
-      text.setAttribute("y", String(tupletTextY));
-      text.setAttribute("font-size", "10");
-      text.setAttribute("font-weight", "bold");
-      text.setAttribute("text-anchor", "middle");
-      if (tupletGroup.ratio) {
-        text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
-      } else {
-        text.textContent = String(tupletGroup.count);
-      }
-      if (this.placeAndSizeManager) {
-        const textWidth = (text.textContent || "").length * 6;
-        let numberBBox = {
-          x: centerX - textWidth / 2,
-          y: tupletTextY - 10,
-          width: textWidth,
-          height: 12
-        };
-        if (this.placeAndSizeManager.hasCollision(numberBBox, "tuplet-number", ["tuplet-bracket", "tuplet-number"])) {
-          const adjusted = this.placeAndSizeManager.findFreePosition(numberBBox, "tuplet-number", "vertical", ["tuplet-number"]);
-          if (adjusted) {
-            tupletTextY = adjusted.y + 10;
-            text.setAttribute("y", String(tupletTextY));
-            numberBBox = { ...numberBBox, y: adjusted.y };
-          }
-        }
-        this.placeAndSizeManager.registerElement("tuplet-number", numberBBox, 7, {
-          text: text.textContent,
-          measureIndex,
-          chordIndex,
-          beatIndex,
-          exactX: centerX,
-          exactY: tupletTextY
-        });
-      }
-      svg.appendChild(text);
-    });
-    return firstNoteX;
-  }
-  drawSingleNote(svg, nv, x, staffLineY, width) {
-    if (nv.isRest) {
-      this.restRenderer.drawRest(svg, nv, x, staffLineY);
-      return x;
-    }
-    const centerX = x;
-    let stemInfo;
-    if (nv.value === 1) {
-      this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-    } else if (nv.value === 2) {
-      this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-      stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
-    } else {
-      this.drawSlash(svg, centerX, staffLineY);
-      stemInfo = this.drawStemWithDirection(svg, centerX, staffLineY, 25, this.stemsDirection);
-      const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-      if (level > 0 && stemInfo) {
-        this.drawFlag(svg, stemInfo, level, this.stemsDirection);
-      }
-    }
-    if (nv.dotted) {
-      const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", (centerX + 10).toString());
-      dot.setAttribute("cy", (staffLineY - 4).toString());
-      dot.setAttribute("r", "1.5");
-      dot.setAttribute("fill", "#000");
-      dot.setAttribute("data-cg-dot", "1");
-      svg.appendChild(dot);
-      if (this.placeAndSizeManager) {
-        const cx = centerX + 10;
-        const cy = staffLineY - 4;
-        this.placeAndSizeManager.registerElement("dot", {
-          x: cx - 2,
-          y: cy - 2,
-          width: 4,
-          height: 4
-        }, 9, {
-          value: nv.value,
-          dotted: true,
-          exactX: cx,
-          exactY: cy
-        });
-      }
-    }
-    return centerX;
+    return this.noteRenderer.drawBeat(
+      svg,
+      beat,
+      x,
+      staffLineY,
+      width,
+      measureIndex,
+      chordIndex,
+      beatIndex,
+      notePositions,
+      segmentNoteCursor,
+      this.beamedAtLevel1
+    );
   }
   /**
-   * Draw a single note without beams or flags (for analyzer path).
-   * Analyzer overlay will handle beams; this just draws head and stem.
-   * Retourne les coordonnées de la hampe si elle existe.
+   * Dessine une barre de mesure simple.
    */
-  drawSingleNoteWithoutBeam(svg, nv, x, staffLineY, drawFlagsForIsolated = false) {
-    if (nv.isRest) {
-      this.restRenderer.drawRest(svg, nv, x, staffLineY);
-      return {};
-    }
-    let stemInfo;
-    if (nv.value === 1) {
-      this.drawDiamondNoteHead(svg, x, staffLineY, true);
-    } else if (nv.value === 2) {
-      this.drawDiamondNoteHead(svg, x, staffLineY, true);
-      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
-    } else {
-      this.drawSlash(svg, x, staffLineY);
-      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
-      if (drawFlagsForIsolated) {
-        const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-        if (level > 0 && stemInfo) {
-          this.drawFlag(svg, stemInfo, level, this.stemsDirection);
-        }
-      }
-    }
-    if (nv.dotted) {
-      const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", (x + 10).toString());
-      dot.setAttribute("cy", (staffLineY - 4).toString());
-      dot.setAttribute("r", "1.5");
-      dot.setAttribute("fill", "#000");
-      dot.setAttribute("data-cg-dot", "1");
-      svg.appendChild(dot);
-      if (this.placeAndSizeManager) {
-        const cx = x + 10;
-        const cy = staffLineY - 4;
-        this.placeAndSizeManager.registerElement("dot", {
-          x: cx - 2,
-          y: cy - 2,
-          width: 4,
-          height: 4
-        }, 9, {
-          value: nv.value,
-          dotted: true,
-          exactX: cx,
-          exactY: cy
-        });
-      }
-    }
-    return stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
-  }
-  /**
-   * Dessine une hampe orientée selon stemsDirection ('up' ou 'down').
-   * Retourne les coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
-   */
-  drawStemWithDirection(svg, x, y, height, direction) {
-    const slashLength = 10;
-    const stemStartX = direction === "up" ? x + slashLength / 2 : x - slashLength / 2;
-    let stemStartY, stemEndY;
-    if (direction === "up") {
-      stemStartY = y - slashLength / 2;
-      stemEndY = stemStartY - height;
-    } else {
-      stemStartY = y + slashLength / 2;
-      stemEndY = stemStartY + height;
-    }
-    const stem = document.createElementNS(SVG_NS, "line");
-    stem.setAttribute("x1", stemStartX.toString());
-    stem.setAttribute("y1", stemStartY.toString());
-    stem.setAttribute("x2", stemStartX.toString());
-    stem.setAttribute("y2", stemEndY.toString());
-    stem.setAttribute("stroke", "#000");
-    stem.setAttribute("stroke-width", "2");
-    svg.appendChild(stem);
-    return {
-      x: stemStartX,
-      topY: Math.min(stemStartY, stemEndY),
-      bottomY: Math.max(stemStartY, stemEndY)
-    };
-  }
-  drawDiamondNoteHead(svg, x, y, hollow) {
-    const diamondSize = 6;
-    const diamond = document.createElementNS(SVG_NS, "polygon");
-    const points = [[x, y - diamondSize], [x + diamondSize, y], [x, y + diamondSize], [x - diamondSize, y]];
-    diamond.setAttribute("points", points.map((p) => `${p[0]},${p[1]}`).join(" "));
-    diamond.setAttribute("fill", hollow ? "white" : "black");
-    diamond.setAttribute("stroke", "#000");
-    diamond.setAttribute("stroke-width", "1");
-    svg.appendChild(diamond);
-  }
-  drawSlash(svg, x, y) {
-    const slashLength = 10;
-    const slash = document.createElementNS(SVG_NS, "line");
-    slash.setAttribute("x1", (x + slashLength / 2).toString());
-    slash.setAttribute("y1", (y - slashLength / 2).toString());
-    slash.setAttribute("x2", (x - slashLength / 2).toString());
-    slash.setAttribute("y2", (y + slashLength / 2).toString());
-    slash.setAttribute("stroke", "#000");
-    slash.setAttribute("stroke-width", "3");
-    svg.appendChild(slash);
-  }
-  drawStem(svg, x, y, height) {
-    const slashLength = 10;
-    const stemStartX = x - slashLength / 2 + 2;
-    const stemStartY = y + slashLength / 2;
-    const stem = document.createElementNS(SVG_NS, "line");
-    stem.setAttribute("x1", stemStartX.toString());
-    stem.setAttribute("y1", stemStartY.toString());
-    stem.setAttribute("x2", stemStartX.toString());
-    stem.setAttribute("y2", (stemStartY + height).toString());
-    stem.setAttribute("stroke", "#000");
-    stem.setAttribute("stroke-width", "2");
-    svg.appendChild(stem);
-    return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
-  }
-  drawFlag(svg, stem, count, direction) {
-    const flagSpacing = 10;
-    for (let i = 0; i < count; i++) {
-      const flag = document.createElementNS(SVG_NS, "path");
-      if (direction === "up") {
-        const attachY = stem.topY + i * flagSpacing;
-        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
-      } else {
-        const attachY = stem.bottomY - i * flagSpacing;
-        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
-      }
-      flag.setAttribute("stroke", "#000");
-      flag.setAttribute("stroke-width", "2");
-      flag.setAttribute("fill", "none");
-      svg.appendChild(flag);
-    }
-  }
   drawBar(svg, x, y, height, measureIndex, side) {
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("x1", x.toString());
@@ -2964,15 +2855,28 @@ var PlaceAndSizeManager = class {
    * @param type - Type de l'élément
    * @param bbox - Zone occupée par l'élément
    * @param priority - Priorité de l'élément (0 = fixe, 10 = mobile)
-   * @param metadata - Métadonnées optionnelles
+   * @param metadata - Métadonnées enrichies avec géométrie visuelle et contexte musical
    * @param overrideLayer - Layer personnalisé (pour éléments dynamiques comme pick-strokes)
    */
   registerElement(type, bbox, priority = 5, metadata, overrideLayer) {
+    var _a;
     const layer = overrideLayer != null ? overrideLayer : this.getCollisionLayer(type);
     const horizontalMargin = this.getHorizontalMargin(type);
-    this.elements.push({ type, bbox, priority, layer, horizontalMargin, metadata });
+    const enrichedMetadata = {
+      ...metadata,
+      elementType: type,
+      canCollide: (_a = metadata == null ? void 0 : metadata.canCollide) != null ? _a : true
+    };
+    this.elements.push({
+      type,
+      bbox,
+      priority,
+      layer,
+      horizontalMargin,
+      metadata: enrichedMetadata
+    });
     if (this.config.debugMode) {
-      console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`);
+      console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`, enrichedMetadata);
     }
   }
   /**
@@ -3192,6 +3096,317 @@ var PlaceAndSizeManager = class {
    */
   clearAll() {
     this.clear();
+  }
+  /**
+   * Récupère tous les éléments enregistrés d'un type donné.
+   * 
+   * @param type - Type d'élément à filtrer
+   * @returns Liste des éléments correspondants avec leurs métadonnées complètes
+   */
+  getElementsByType(type) {
+    return this.elements.filter((el) => el.type === type);
+  }
+  /**
+   * Récupère tous les éléments d'une mesure donnée.
+   * 
+   * @param measureIndex - Index de la mesure
+   * @returns Liste des éléments de cette mesure avec leurs métadonnées
+   */
+  getElementsByMeasure(measureIndex) {
+    return this.elements.filter(
+      (el) => {
+        var _a;
+        return ((_a = el.metadata) == null ? void 0 : _a.measureIndex) === measureIndex;
+      }
+    );
+  }
+  /**
+   * Diagnostic complet des métadonnées d'alignement chords-stems.
+   * Retourne un rapport détaillé pour chaque mesure.
+   * 
+   * @returns Rapport de diagnostic par mesure
+   */
+  diagnoseChordStemAlignment() {
+    const measures = new Set(
+      this.elements.map((el) => {
+        var _a;
+        return (_a = el.metadata) == null ? void 0 : _a.measureIndex;
+      }).filter((idx) => idx !== void 0)
+    );
+    return Array.from(measures).map((measureIndex) => {
+      const chords = this.getElementsByMeasure(measureIndex).filter((el) => {
+        var _a;
+        return el.type === "chord" && ((_a = el.metadata) == null ? void 0 : _a.chord);
+      }).map((el) => ({
+        symbol: el.metadata.chord.symbol,
+        textX: el.metadata.chord.textX,
+        textAnchor: el.metadata.chord.textAnchor,
+        bbox: el.bbox
+      }));
+      const stems = this.getElementsByMeasure(measureIndex).filter((el) => {
+        var _a;
+        return el.type === "stem" && ((_a = el.metadata) == null ? void 0 : _a.stem);
+      }).map((el) => ({
+        centerX: el.metadata.stem.centerX,
+        direction: el.metadata.stem.direction,
+        bbox: el.bbox
+      }));
+      const alignment = chords.length > 0 && stems.length > 0 ? {
+        firstChordX: chords[0].textX,
+        firstStemX: stems[0].centerX,
+        difference: chords[0].textX - stems[0].centerX
+      } : null;
+      return {
+        measureIndex,
+        chords,
+        stems,
+        alignment
+      };
+    }).sort((a, b) => a.measureIndex - b.measureIndex);
+  }
+  /**
+   * Affiche un rapport de diagnostic dans la console.
+   * Utile pour déboguer les problèmes d'alignement.
+   */
+  logDiagnosticReport() {
+    const report = this.diagnoseChordStemAlignment();
+    console.log("=== DIAGNOSTIC REPORT: Chord-Stem Alignment ===");
+    report.forEach((measure) => {
+      console.log(`
+\u{1F4CF} Measure ${measure.measureIndex}:`);
+      console.log(`  Chords: ${measure.chords.length}`);
+      measure.chords.forEach((c, i) => {
+        console.log(`    [${i}] "${c.symbol}" at X=${c.textX.toFixed(2)} (anchor=${c.textAnchor})`);
+        console.log(`        bbox: x=${c.bbox.x.toFixed(2)}, w=${c.bbox.width.toFixed(2)}`);
+      });
+      console.log(`  Stems: ${measure.stems.length}`);
+      measure.stems.forEach((s, i) => {
+        console.log(`    [${i}] ${s.direction} stem at centerX=${s.centerX.toFixed(2)}`);
+        console.log(`        bbox: x=${s.bbox.x.toFixed(2)}, w=${s.bbox.width.toFixed(2)}`);
+      });
+      if (measure.alignment) {
+        const diff = measure.alignment.difference;
+        const status = Math.abs(diff) < 0.5 ? "\u2705 ALIGNED" : "\u274C MISALIGNED";
+        console.log(`  ${status}: Chord X=${measure.alignment.firstChordX.toFixed(2)}, Stem X=${measure.alignment.firstStemX.toFixed(2)}, \u0394=${diff.toFixed(2)}px`);
+      } else {
+        console.log(`  \u26A0\uFE0F  No alignment data available`);
+      }
+    });
+    console.log("\n=== END DIAGNOSTIC REPORT ===");
+  }
+};
+
+// src/renderer/ChordRenderer.ts
+var SVG_NS2 = "http://www.w3.org/2000/svg";
+var ChordRenderer = class {
+  // Estimation largeur char/fontSize
+  /**
+   * Constructeur du ChordRenderer.
+   */
+  constructor() {
+    __publicField(this, "DEFAULT_FONT_SIZE", 16);
+    __publicField(this, "DEFAULT_VERTICAL_OFFSET", 30);
+    __publicField(this, "CHAR_WIDTH_RATIO", 0.53);
+  }
+  /**
+   * Estime la largeur d'un texte d'accord.
+   * 
+   * @param text - Texte de l'accord
+   * @param fontSize - Taille de police
+   * @returns Largeur estimée en pixels
+   */
+  estimateTextWidth(text, fontSize) {
+    return Math.ceil(text.length * fontSize * this.CHAR_WIDTH_RATIO);
+  }
+  /**
+   * Trouve la position X de la première hampe (stem) d'un segment.
+   * Utilise les métadonnées enregistrées dans PlaceAndSizeManager.
+   * 
+   * @param placeAndSizeManager - Gestionnaire de placement
+   * @param measureIndex - Index de la mesure
+   * @param chordIndex - Index du segment/accord
+   * @returns Position X de la première hampe, ou null si non trouvée
+   */
+  findFirstStemX(placeAndSizeManager, measureIndex, chordIndex) {
+    const stems = placeAndSizeManager.getElementsByMeasure(measureIndex).filter((el) => {
+      var _a;
+      return el.type === "stem" && ((_a = el.metadata) == null ? void 0 : _a.stem);
+    }).filter((el) => el.metadata.chordIndex === chordIndex).sort((a, b) => {
+      var _a, _b, _c, _d;
+      const beatDiff = ((_a = a.metadata.beatIndex) != null ? _a : 0) - ((_b = b.metadata.beatIndex) != null ? _b : 0);
+      if (beatDiff !== 0) return beatDiff;
+      return ((_c = a.metadata.noteIndex) != null ? _c : 0) - ((_d = b.metadata.noteIndex) != null ? _d : 0);
+    });
+    if (stems.length === 0) {
+      return null;
+    }
+    const firstStem = stems[0];
+    return firstStem.metadata.stem.centerX;
+  }
+  /**
+   * Rend tous les accords pour les mesures données.
+   * 
+   * Cette méthode est appelée APRÈS que toutes les notes/stems ont été rendues
+   * et enregistrées dans le PlaceAndSizeManager, permettant un alignement précis
+   * avec les hampes.
+   * 
+   * @param svg - Élément SVG parent
+   * @param measurePositions - Positions des mesures
+   * @param placeAndSizeManager - Gestionnaire de placement
+   * @param options - Options de rendu
+   */
+  renderChords(svg, measurePositions, placeAndSizeManager, options = {}) {
+    var _a, _b, _c;
+    const fontSize = (_a = options.fontSize) != null ? _a : this.DEFAULT_FONT_SIZE;
+    const verticalOffset = (_b = options.verticalOffset) != null ? _b : this.DEFAULT_VERTICAL_OFFSET;
+    const displayRepeatSymbol = (_c = options.displayRepeatSymbol) != null ? _c : false;
+    measurePositions.forEach((mp) => {
+      if (!mp.x || !mp.y) return;
+      const measure = mp.measure;
+      const measureX = mp.x;
+      const measureY = mp.y;
+      const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+      segments.forEach((segment, segmentIndex) => {
+        const chordSymbol = segment.chord;
+        if (chordSymbol === "%") {
+          if (displayRepeatSymbol) {
+            this.renderRepeatSymbol(
+              svg,
+              measureX + mp.width / 2,
+              measureY - verticalOffset,
+              fontSize,
+              placeAndSizeManager,
+              mp.globalIndex,
+              segmentIndex
+            );
+          }
+          return;
+        }
+        const firstStemX = this.findFirstStemX(
+          placeAndSizeManager,
+          mp.globalIndex,
+          segmentIndex
+        );
+        if (firstStemX !== null) {
+          this.renderChordSymbol(
+            svg,
+            chordSymbol,
+            firstStemX,
+            measureY - verticalOffset,
+            fontSize,
+            "start",
+            placeAndSizeManager,
+            mp.globalIndex,
+            segmentIndex
+          );
+        } else {
+          console.warn(
+            `[ChordRenderer] No stem found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`
+          );
+          const segmentWidth = mp.width / segments.length;
+          const segmentX = measureX + segmentIndex * segmentWidth + segmentWidth / 2;
+          this.renderChordSymbol(
+            svg,
+            chordSymbol,
+            segmentX,
+            measureY - verticalOffset,
+            fontSize,
+            "middle",
+            placeAndSizeManager,
+            mp.globalIndex,
+            segmentIndex
+          );
+        }
+      });
+    });
+  }
+  /**
+   * Rend un symbole d'accord à la position donnée.
+   * 
+   * @param svg - Élément SVG parent
+   * @param chordSymbol - Symbole de l'accord (ex: "C", "Am7", "G/B")
+   * @param x - Position X
+   * @param y - Position Y (baseline)
+   * @param fontSize - Taille de police
+   * @param textAnchor - Mode d'ancrage du texte
+   * @param placeAndSizeManager - Gestionnaire de placement
+   * @param measureIndex - Index de la mesure
+   * @param chordIndex - Index du segment
+   */
+  renderChordSymbol(svg, chordSymbol, x, y, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex) {
+    const chordText = document.createElementNS(SVG_NS2, "text");
+    chordText.setAttribute("x", x.toString());
+    chordText.setAttribute("y", y.toString());
+    chordText.setAttribute("font-family", "Arial, sans-serif");
+    chordText.setAttribute("font-size", `${fontSize}px`);
+    chordText.setAttribute("font-weight", "bold");
+    chordText.setAttribute("fill", "#000");
+    chordText.setAttribute("text-anchor", textAnchor);
+    chordText.setAttribute("class", "chord-symbol");
+    chordText.textContent = chordSymbol;
+    svg.appendChild(chordText);
+    const textWidth = this.estimateTextWidth(chordSymbol, fontSize);
+    let bboxX;
+    if (textAnchor === "start") {
+      bboxX = x;
+    } else if (textAnchor === "middle") {
+      bboxX = x - textWidth / 2;
+    } else {
+      bboxX = x - textWidth;
+    }
+    placeAndSizeManager.registerElement("chord", {
+      x: bboxX,
+      y: y - fontSize,
+      width: textWidth,
+      height: fontSize + 4
+    }, 5, {
+      measureIndex,
+      chordIndex,
+      canCollide: true,
+      chord: {
+        symbol: chordSymbol,
+        textX: x,
+        textY: y,
+        textAnchor,
+        textWidth,
+        fontSize
+      }
+    });
+  }
+  /**
+   * Rend le symbole % pour une mesure répétée.
+   * 
+   * @param svg - Élément SVG parent
+   * @param x - Position X (centre)
+   * @param y - Position Y (baseline)
+   * @param fontSize - Taille de police
+   * @param placeAndSizeManager - Gestionnaire de placement
+   * @param measureIndex - Index de la mesure
+   * @param chordIndex - Index du segment
+   */
+  renderRepeatSymbol(svg, x, y, fontSize, placeAndSizeManager, measureIndex, chordIndex) {
+    const symbolText = document.createElementNS(SVG_NS2, "text");
+    symbolText.setAttribute("x", x.toString());
+    symbolText.setAttribute("y", y.toString());
+    symbolText.setAttribute("font-family", "Arial, sans-serif");
+    symbolText.setAttribute("font-size", `${fontSize * 1.5}px`);
+    symbolText.setAttribute("font-weight", "bold");
+    symbolText.setAttribute("fill", "#666");
+    symbolText.setAttribute("text-anchor", "middle");
+    symbolText.setAttribute("class", "repeat-symbol");
+    symbolText.textContent = "%";
+    svg.appendChild(symbolText);
+    const symbolWidth = fontSize * 1.5 * 0.6;
+    placeAndSizeManager.registerElement("repeat-symbol", {
+      x: x - symbolWidth / 2,
+      y: y - fontSize * 1.5,
+      width: symbolWidth,
+      height: fontSize * 1.5 + 4
+    }, 5, {
+      measureIndex,
+      chordIndex,
+      canCollide: true
+    });
   }
 };
 
@@ -3438,7 +3653,7 @@ var SVGRenderer = class {
     svg.setAttribute("height", "auto");
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("xmlns", SVG_NS);
-    const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: true });
+    const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
     const tieManager = new TieManager();
     const notePositions = [];
     const bg = document.createElementNS(SVG_NS, "rect");
@@ -3544,7 +3759,6 @@ var SVGRenderer = class {
       });
       this.registerBarlines(lineMeasurePositions, placeAndSizeManager);
       this.registerVoltaText(lineMeasurePositions, placeAndSizeManager);
-      this.registerChords(lineMeasurePositions, placeAndSizeManager);
       lineMeasurePositions.forEach((mp) => {
         const measure = mp.measure;
         const measureHeight2 = 120;
@@ -3591,6 +3805,12 @@ var SVGRenderer = class {
         }
       });
       this.drawVoltaBrackets(svg, lineMeasurePositions, placeAndSizeManager);
+      const chordRenderer = new ChordRenderer();
+      chordRenderer.renderChords(svg, lineMeasurePositions, placeAndSizeManager, {
+        displayRepeatSymbol: options.displayRepeatSymbol,
+        fontSize: 22,
+        verticalOffset: 40
+      });
       const currentLineNotes = notePositions.filter(
         (n) => lineMeasurePositions.some((mp) => mp.globalIndex === n.measureIndex)
       );
@@ -3599,6 +3819,9 @@ var SVGRenderer = class {
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
     });
     const bounds = placeAndSizeManager.getGlobalBounds();
+    if (options.debugPlacement) {
+      placeAndSizeManager.logDiagnosticReport();
+    }
     return svg;
   }
   /**
@@ -4040,103 +4263,6 @@ var SVGRenderer = class {
         }
       }
     }
-  }
-  /**
-   * Register all chord symbols in the collision detection manager BEFORE rendering.
-   * Chords are placed above the first note of the first beat in each segment.
-   * 
-   * @param measurePositions - Array of measure positions with x, y coordinates
-   * @param placeAndSizeManager - Collision detection manager
-   */
-  registerChords(measurePositions, placeAndSizeManager) {
-    const fontSize = 22;
-    const chordYOffset = 40;
-    measurePositions.forEach((mp) => {
-      if (mp.x === void 0 || mp.y === void 0) return;
-      const measure = mp.measure;
-      const measureX = mp.x;
-      const measureY = mp.y;
-      const measureWidth = mp.width;
-      const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
-      const barlineWidth = 2;
-      const leftPadding = barlineWidth + 10;
-      const rightPadding = barlineWidth + 5;
-      const beatsWidth = measureWidth - leftPadding - rightPadding;
-      segments.forEach((segment, segmentIndex) => {
-        if (!segment.chord || !segment.beats || segment.beats.length === 0) return;
-        const firstBeat = segment.beats[0];
-        const beatCount = segment.beats.length;
-        const approximateBeatWidth = beatsWidth / beatCount;
-        const beatX = measureX + leftPadding;
-        let firstNoteX;
-        if (firstBeat.isRest) {
-          firstNoteX = beatX + approximateBeatWidth / 2;
-        } else if (firstBeat.tuplet) {
-          const tupletNotes = firstBeat.tuplet.notes;
-          if (tupletNotes && tupletNotes.length > 0) {
-            const tupletNoteWidth = approximateBeatWidth / tupletNotes.length;
-            firstNoteX = beatX + tupletNoteWidth / 2;
-          } else {
-            firstNoteX = beatX + approximateBeatWidth / 2;
-          }
-        } else {
-          const notes = firstBeat.notes;
-          if (notes && notes.length > 0) {
-            const noteWidth = approximateBeatWidth / notes.length;
-            firstNoteX = beatX + noteWidth / 2;
-          } else {
-            firstNoteX = beatX + approximateBeatWidth / 2;
-          }
-        }
-        const chordX = firstNoteX;
-        const chordY = measureY + chordYOffset;
-        const chordWidth = segment.chord.length * fontSize * 0.6;
-        const chordBBox = {
-          x: chordX - chordWidth / 2,
-          y: chordY - fontSize,
-          width: chordWidth,
-          height: fontSize + 4
-        };
-        let finalX = chordX;
-        let finalY = chordY;
-        if (placeAndSizeManager.hasCollision(chordBBox, "chord")) {
-          const adjustedPosH = placeAndSizeManager.findFreePosition(
-            chordBBox,
-            "chord",
-            "horizontal",
-            ["chord"]
-          );
-          if (adjustedPosH) {
-            finalX = adjustedPosH.x + chordWidth / 2;
-            chordBBox.x = adjustedPosH.x;
-          }
-          if (placeAndSizeManager.hasCollision(chordBBox, "chord")) {
-            const adjustedPosV = placeAndSizeManager.findFreePosition(
-              chordBBox,
-              "chord",
-              "vertical",
-              ["chord"]
-            );
-            if (adjustedPosV) {
-              finalY = adjustedPosV.y + fontSize;
-              chordBBox.y = adjustedPosV.y;
-            }
-          }
-        }
-        placeAndSizeManager.registerElement("chord", {
-          x: finalX - chordWidth / 2,
-          y: finalY - fontSize,
-          width: chordWidth,
-          height: fontSize + 4
-        }, 5, {
-          chord: segment.chord,
-          measureIndex: mp.globalIndex,
-          segmentIndex,
-          exactX: finalX,
-          exactY: finalY
-        });
-      });
-    });
   }
   /**
    * Draw volta brackets above measures.
