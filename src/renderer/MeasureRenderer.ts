@@ -108,6 +108,9 @@ export class MeasureRenderer {
 
         // Check if we should display repeat symbol instead of full rhythm
         if (this.displayRepeatSymbol && this.measure.isRepeat) {
+            // Mark measure as having repeat symbol for ChordRenderer
+            (this.measure as any).__hasRepeatSymbol = true;
+            
             this.drawRepeatSymbol(svg);
             // Chord names are now handled by ChordRenderer
             // Draw right barline with ALL barline types (repeat, double bar, simple)

@@ -1663,6 +1663,7 @@ var MeasureRenderer = class {
       });
     }
     if (this.displayRepeatSymbol && this.measure.isRepeat) {
+      this.measure.__hasRepeatSymbol = true;
       this.drawRepeatSymbol(svg);
       if (this.measure.isRepeatEnd) {
         this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
@@ -3246,6 +3247,35 @@ var ChordRenderer = class {
             mp.globalIndex,
             segmentIndex
           );
+        } else if (measure.__hasRepeatSymbol) {
+          if (segments.length === 1) {
+            const defaultNoteX = measureX + 20;
+            this.renderChordSymbol(
+              svg,
+              chordSymbol,
+              defaultNoteX,
+              staffLineY - verticalOffset,
+              fontSize,
+              "start",
+              placeAndSizeManager,
+              mp.globalIndex,
+              segmentIndex
+            );
+          } else {
+            const segmentWidth = mp.width / segments.length;
+            const chordX = measureX + segmentIndex * segmentWidth + 20;
+            this.renderChordSymbol(
+              svg,
+              chordSymbol,
+              chordX,
+              staffLineY - verticalOffset,
+              fontSize,
+              "start",
+              placeAndSizeManager,
+              mp.globalIndex,
+              segmentIndex
+            );
+          }
         } else {
           console.warn(
             `[ChordRenderer] No note found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`

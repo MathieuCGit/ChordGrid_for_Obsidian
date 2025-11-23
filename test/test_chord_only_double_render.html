@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Chord-Only Double Render</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-case {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2 px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .input {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        svg {
+            border: 1px solid #ddd;
+            background: white;
+            display: block;
+            margin: 10px 0;
+        }
+        .chord-count {
+            background: #e8f4f8;
+            padding: 10px;
+            border-left: 4px solid #0066cc;
+            margin: 10px 0;
+        }
+        .chord-list {
+            font-family: monospace;
+            background: #fff;
+            padding: 10px;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            white-space: pre;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test: Chord-Only Mode - Double Render Bug</h1>
+    
+    <div class="test-case">
+        <h2>Test 1: Simple Chord-Only Mode</h2>
+        <div class="input">Input: 4/4 || C | Am | G | F ||</div>
+        <div id="test1"></div>
+    </div>
+    
+    <div class="test-case">
+        <h2>Test 2: Chord-Only with Multiple Segments</h2>
+        <div class="input">Input: 4/4 || C / Dm | G | F ||</div>
+        <div id="test2"></div>
+    </div>
+    
+    <div class="test-case">
+        <h2>Test 3: With Rhythm (Control)</h2>
+        <div class="input">Input: 4/4 || C[4 4 4 4] | Am[2 2 2 2 2 2 2 2] | G[1] | F[4 4 4 4] ||</div>
+        <div id="test3"></div>
+    </div>
+
+    <script type="module">
+        // Simuler un environnement pour tester
+        async function runTests() {
+            // Test 1: Chord-only mode
+            await testChordOnly('test1', '4/4 || C | Am | G | F ||');
+            
+            // Test 2: Multiple chord segments
+            await testChordOnly('test2', '4/4 || C / Dm | G | F ||');
+            
+            // Test 3: With rhythm
+            await testChordOnly('test3', '4/4 || C[4 4 4 4] | Am[2 2 2 2 2 2 2 2] | G[1] | F[4 4 4 4] ||');
+        }
+        
+        async function testChordOnly(containerId, input) {
+            const container = document.getElementById(containerId);
+            
+            // Créer un mock SVG pour compter les éléments
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const mockSvg = document.createElementNS(svgNS, 'svg');
+            mockSvg.setAttribute('width', '1200');
+            mockSvg.setAttribute('height', '200');
+            
+            // Simuler des accords (en pratique, on les obtiendrait du vrai renderer)
+            // Pour ce test HTML, on simule juste le comptage
+            
+            const chordSymbols = mockSvg.querySelectorAll('text.chord-symbol');
+            
+            const countDiv = document.createElement('div');
+            countDiv.className = 'chord-count';
+            countDiv.innerHTML = `<strong>Chord symbols found:</strong> ${chordSymbols.length}`;
+            container.appendChild(countDiv);
+            
+            // Afficher la liste des accords
+            const listDiv = document.createElement('div');
+            listDiv.className = 'chord-list';
+            let list = '';
+            chordSymbols.forEach((el, idx) => {
+                const x = el.getAttribute('x');
+                const y = el.getAttribute('y');
+                const text = el.textContent;
+                list += `${idx + 1}. "${text}" at x=${x}, y=${y}\n`;
+            });
+            listDiv.textContent = list || 'No chord symbols found';
+            container.appendChild(listDiv);
+            
+            container.appendChild(mockSvg);
+        }
+        
+        runTests();
+    </script>
+</body>
+</html>

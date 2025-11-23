@@ -182,6 +182,43 @@ export class ChordRenderer {
                         mp.globalIndex,
                         segmentIndex
                     );
+                } else if (measure.__hasRepeatSymbol) {
+                    // Mesure avec symbole % : pas de notes réelles
+                    // Si 1 seul accord : positionner à gauche au début de la mesure
+                    // Si plusieurs accords : les distribuer horizontalement
+                    
+                    if (segments.length === 1) {
+                        // Un seul accord : au début de la mesure
+                        const defaultNoteX = measureX + 20; // Position standard de la première note
+                        
+                        this.renderChordSymbol(
+                            svg,
+                            chordSymbol,
+                            defaultNoteX,
+                            staffLineY - verticalOffset,
+                            fontSize,
+                            'start',
+                            placeAndSizeManager,
+                            mp.globalIndex,
+                            segmentIndex
+                        );
+                    } else {
+                        // Plusieurs accords : distribuer horizontalement
+                        const segmentWidth = mp.width / segments.length;
+                        const chordX = measureX + segmentIndex * segmentWidth + 20; // 20px marge à gauche
+                        
+                        this.renderChordSymbol(
+                            svg,
+                            chordSymbol,
+                            chordX,
+                            staffLineY - verticalOffset,
+                            fontSize,
+                            'start',
+                            placeAndSizeManager,
+                            mp.globalIndex,
+                            segmentIndex
+                        );
+                    }
                 } else {
                     // Pas de note trouvée (mesure sans rythme ou erreur)
                     // Comportement de fallback : centrer dans le segment
