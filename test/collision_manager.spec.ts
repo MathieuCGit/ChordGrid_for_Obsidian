@@ -26,7 +26,7 @@ describe('PlaceAndSizeManager basic behavior', () => {
     const request: BoundingBox = { x: 55, y: 55, width: 20, height: 10 };
     // Initial collides
     expect(cm.hasCollision(request)).toBe(true);
-    const free = cm.findFreePosition(request, 'vertical');
+    const free = cm.findFreePosition(request, undefined, 'vertical');
     expect(free).not.toBeNull();
     if (free) {
       expect(cm.hasCollision(free)).toBe(false);
@@ -39,7 +39,7 @@ describe('PlaceAndSizeManager basic behavior', () => {
     const cm = new PlaceAndSizeManager({ minSpacing: 2 });
     cm.registerElement('chord', { x: 50, y: 50, width: 30, height: 20 }, 5);
     const request: BoundingBox = { x: 55, y: 55, width: 20, height: 10 };
-    const free = cm.findFreePosition(request, 'horizontal');
+    const free = cm.findFreePosition(request, undefined, 'horizontal');
     expect(free).not.toBeNull();
     if (free) {
       expect(cm.hasCollision(free)).toBe(false);
@@ -52,7 +52,7 @@ describe('PlaceAndSizeManager basic behavior', () => {
     cm.registerElement('chord', { x: 0, y: 0, width: 20, height: 20 }, 5);
     const box = { x: 5, y: 5, width: 5, height: 5 };
     expect(cm.hasCollision(box)).toBe(true);
-    expect(cm.hasCollision(box, ['chord'])).toBe(false);
+    expect(cm.hasCollision(box, undefined, ['chord'])).toBe(false);
   });
 
   test('suggestVerticalOffset for tuplet-number above chord', () => {
