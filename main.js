@@ -1685,7 +1685,8 @@ var MeasureRenderer = class {
     const innerPaddingPerSegment = 20;
     const totalInnerPadding = innerPaddingPerSegment * segments.length;
     const totalSeparatorPixels = separatorsCount * separatorWidth;
-    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
+    const extraLeftPadding = this.measure.isRepeatStart ? 15 : 0;
+    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
     const headHalfMax = 6;
     const valueMinSpacing = (v) => {
       if (v >= 64) return 16;
@@ -1711,7 +1712,6 @@ var MeasureRenderer = class {
       return reqs.reduce((a, b) => a + b, 0);
     });
     const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
-    const extraLeftPadding = this.measure.isRepeatStart ? 15 : 0;
     let currentX = this.x + extraLeftPadding;
     for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
       const segment = segments[segmentIndex];
@@ -3567,7 +3567,11 @@ var SVGRenderer = class {
       if (line.measures.length === 0) continue;
       const currentWidth = line.width;
       let targetRatio = maxWidth / currentWidth;
-      if (!isForcedLayout) {
+      if (isForcedLayout) {
+        if (targetRatio < 0.7) {
+          targetRatio = 1;
+        }
+      } else {
         targetRatio = Math.max(this.MIN_SPACING_RATIO, Math.min(this.MAX_SPACING_RATIO, targetRatio));
       }
       if (Math.abs(targetRatio - 1) > 0.01) {

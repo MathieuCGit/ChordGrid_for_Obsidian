@@ -142,7 +142,10 @@ export class MeasureRenderer {
         const totalInnerPadding = innerPaddingPerSegment * segments.length;
         const totalSeparatorPixels = separatorsCount * separatorWidth;
 
-    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
+        // Add extra padding if measure starts with repeat barline to avoid collisions
+        const extraLeftPadding = (this.measure as any).isRepeatStart ? 15 : 0;
+
+    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
         // Helper spacing functions (must mirror SVGRenderer)
         const headHalfMax = 6;
         const valueMinSpacing = (v: number) => {
@@ -172,9 +175,6 @@ export class MeasureRenderer {
         });
         const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
 
-        // Add extra padding if measure starts with repeat barline to avoid collisions
-        const extraLeftPadding = (this.measure as any).isRepeatStart ? 15 : 0;
-        
         let currentX = this.x + extraLeftPadding; // segment left
         for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
             const segment = segments[segmentIndex];

@@ -222,12 +222,17 @@ export class SVGRenderer {
       const currentWidth = line.width;
       let targetRatio = maxWidth / currentWidth;
       
-      // In forced mode (measures-per-line), no limits - full compression/extension
-      // In automatic mode, respect readability limits
-      if (!isForcedLayout) {
+      // In forced mode (measures-per-line), allow extension but prevent excessive compression
+      // that would make notes unreadable
+      if (isForcedLayout) {
+        // Don't compress below 0.7 ratio - if content needs more space, SVG will expand
+        if (targetRatio < 0.7) {
+          targetRatio = 1.0; // Keep original width, SVG will be wider
+        }
+      } else {
+        // In automatic mode, respect readability limits
         targetRatio = Math.max(this.MIN_SPACING_RATIO, Math.min(this.MAX_SPACING_RATIO, targetRatio));
       }
-      // Otherwise, use the calculated ratio directly, without limits
       
       // Adjust the width of each measure and the total line width
       if (Math.abs(targetRatio - 1.0) > 0.01) { // Minimum threshold to avoid unnecessary adjustments
