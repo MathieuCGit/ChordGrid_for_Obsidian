@@ -217,6 +217,12 @@ export class ChordGridParser {
 
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
+      
+      // Skip validation for chord-only measures (no rhythm notation)
+      if ((measure as any).__isChordOnlyMode) {
+        continue;
+      }
+      
       let foundQuarterNotes = 0;
       
       // Track tuplets we've already counted to avoid double-counting
@@ -585,6 +591,7 @@ export class ChordGridParser {
       const beats: Beat[] = [];
       let firstChord = '';
       let anySource = '';
+      let isChordOnlyMode = false; // Track if this measure is chord-only mode
 
       let m2: RegExpExecArray | null;
       // Determine whether this measure is first/last on the line for tie logic
@@ -651,11 +658,53 @@ export class ChordGridParser {
           segmentIndex++;
         }
       } else {
-        // No brackets: treat entire content as rhythm group without chord
-        const rhythm = text.trim();
+        // No brackets: could be either:
+        // 1. Chord-only mode: just chord symbols (e.g., "C" or "Em / G")
+        // 2. Rhythm-only mode: rhythm without chord (e.g., "88 4 4")
+        
+        const trimmedText = text.trim();
         anySource = text;
         
-        if (rhythm.length > 0) {
+        // Detect chord-only mode: text contains chord names separated by / or space, no digits
+        // Chord pattern: A-G followed by optional accidentals, extensions, and bass notes
+        // Examples: C, Am, Cmaj7, G7sus4, F#m7b5, Bb/D, Gmaj7/B
+        // Pattern allows: root + accidental + quality + extensions + alterations + bass
+        const chordPattern = /^[A-G][#b]?(?:m|maj|min|dim|aug)?[0-9]*(?:sus[24]?|add[0-9]+)?(?:b5|#5|b9|#9|#11|b13)?(?:\/[A-G][#b]?)?(?:\s*\/\s*[A-G][#b]?(?:m|maj|min|dim|aug)?[0-9]*(?:sus[24]?|add[0-9]+)?(?:b5|#5|b9|#9|#11|b13)?(?:\/[A-G][#b]?)?)*$/;
+        const isChordOnly = chordPattern.test(trimmedText);
+        
+        if (isChordOnly && trimmedText.length > 0) {
+          // Chord-only mode: parse chord symbols
+          // Two cases:
+          // 1. "Em / G" (with spaces) = two separate chords
+          // 2. "Fmaj7/A" (no spaces) = one chord with bass note
+          
+          const chords: string[] = [];
+          
+          // Split by " / " (with spaces) first to get chord groups
+          const slashWithSpaceParts = trimmedText.split(/\s+\/\s+/);
+          
+          // Each part is either a simple chord or might contain bass notes (/)
+          for (const part of slashWithSpaceParts) {
+            if (part.trim().length > 0) {
+              chords.push(part.trim());
+            }
+          }
+          
+          if (!firstChord && chords.length > 0) firstChord = chords[0];
+          
+          // Create segments for each chord (no beats/rhythm)
+          chords.forEach((chord, idx) => {
+            chordSegments.push({
+              chord: chord,
+              beats: [], // No rhythm in chord-only mode
+              leadingSpace: idx > 0 // All chords after first have logical spacing
+            });
+          });
+          
+          isChordOnlyMode = true;
+        } else if (trimmedText.length > 0) {
+          // Rhythm-only mode: parse as rhythm without chord
+          const rhythm = trimmedText;
           const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true);
           
           chordSegments.push({
@@ -676,6 +725,11 @@ export class ChordGridParser {
         isLineBreak: false,
         source: anySource || text
       };
+      
+      // Mark chord-only mode if detected
+      if (isChordOnlyMode) {
+        (newMeasure as any).__isChordOnlyMode = true;
+      }
 
       // Add repeat bar properties based on barline type
       // Check if there's a pending start barline from previous token

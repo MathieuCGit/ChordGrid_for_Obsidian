@@ -83,6 +83,12 @@ export class MeasureRenderer {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - 2;
 
+        // Check for chord-only mode (no rhythm notation)
+        if ((this.measure as any).__isChordOnlyMode) {
+            this.drawChordOnlyMeasure(svg, measureIndex);
+            return;
+        }
+
         // Draw left barline - check for repeat start first
         if ((this.measure as any).isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
@@ -207,74 +213,26 @@ export class MeasureRenderer {
                 const beatX = beatCursorX;
                 const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
-                if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
-                    const chordX = firstNoteX;
-                    const chordY = this.y + 40;
-                    const fontSize = 22;
+                // Draw chord symbol (position already calculated and registered in SVGRenderer.registerChords())
+                if (firstNoteX !== null && beatIndex === 0 && segment.chord && this.placeAndSizeManager) {
+                    // Retrieve the chord position from PlaceAndSizeManager
+                    // The chord was already registered with collision detection in the REGISTRATION PHASE
+                    const allElements = this.placeAndSizeManager.getElements();
+                    const chordElement = allElements.find((el: any) => 
+                        el.type === 'chord' &&
+                        el.metadata?.measureIndex === measureIndex && 
+                        el.metadata?.segmentIndex === segmentIndex
+                    );
                     
-                    // Estimate chord text width (rough approximation: 0.6 * fontSize per character)
-                    const chordWidth = segment.chord.length * fontSize * 0.6;
-                    
-                    // Check for collisions and adjust position if needed
-                    let finalY = chordY;
-                    let finalX = chordX;
-                    if (this.placeAndSizeManager) {
-                        const chordBBox = {
-                            x: chordX - chordWidth / 2,
-                            y: chordY - fontSize,
-                            width: chordWidth,
-                            height: fontSize + 4
-                        };
+                    if (chordElement?.metadata) {
+                        const finalX = chordElement.metadata.exactX;
+                        const finalY = chordElement.metadata.exactY;
                         
-                        // Check if there's a collision (especially with barlines at priority 0)
-                        if (this.placeAndSizeManager.hasCollision(chordBBox, 'chord')) {
-                            // First try horizontal adjustment (for left barlines like ||:)
-                            const adjustedPosH = this.placeAndSizeManager.findFreePosition(
-                                chordBBox,
-                                'chord',  // Type being placed
-                                'horizontal',
-                                ['chord']
-                            );
-                            
-                            if (adjustedPosH) {
-                                finalX = adjustedPosH.x + chordWidth / 2; // Convert back to center
-                                // Update bbox with new X
-                                chordBBox.x = adjustedPosH.x;
-                            }
-                            
-                            // Then check vertical if still needed
-                            if (this.placeAndSizeManager.hasCollision(chordBBox, 'chord')) {
-                                const adjustedPosV = this.placeAndSizeManager.findFreePosition(
-                                    chordBBox,
-                                    'chord',  // Type being placed
-                                    'vertical',
-                                    ['chord']
-                                );
-                                if (adjustedPosV) {
-                                    finalY = adjustedPosV.y + fontSize; // Convert back to baseline
-                                }
-                            }
-                        }
-                        
-                        // Register the chord element with final position
-                        this.placeAndSizeManager.registerElement('chord', {
-                            x: finalX - chordWidth / 2,
-                            y: finalY - fontSize,
-                            width: chordWidth,
-                            height: fontSize + 4
-                        }, 5, { 
-                            chord: segment.chord, 
-                            measureIndex, 
-                            segmentIndex,
-                            exactX: finalX,
-                            exactY: finalY
-                        });
+                        const chordText = this.createText(segment.chord, finalX, finalY, '22px', 'bold');
+                        chordText.setAttribute('text-anchor', 'middle');
+                        chordText.setAttribute('font-family', 'Arial, sans-serif');
+                        svg.appendChild(chordText);
                     }
-                    
-                    const chordText = this.createText(segment.chord, finalX, finalY, '22px', 'bold');
-                    chordText.setAttribute('text-anchor', 'middle');
-                    chordText.setAttribute('font-family', 'Arial, sans-serif');
-                    svg.appendChild(chordText);
                 }
                 beatCursorX += beatWidth;
             });
@@ -810,15 +768,8 @@ export class MeasureRenderer {
         line.setAttribute('stroke-width', '1.5');
         svg.appendChild(line);
 
-        // Register barline in PlaceAndSizeManager for accurate bounds calculation
-        if (this.placeAndSizeManager) {
-            this.placeAndSizeManager.registerElement('barline', {
-                x: x - 3,  // Extra margin to prevent collisions
-                y: y,
-                width: 6,  // Wider bbox to ensure no overlap
-                height: height
-            }, 0, { exactX: x, measureIndex, side });  // Store exact X position for volta alignment
-        }
+        // Note: Barline registration is done in SVGRenderer.preRegisterBarlines()
+        // to avoid double registration and ensure consistent collision detection
     }
 
     private drawBarWithRepeat(svg: SVGElement, x: number, y: number, height: number, isStart: boolean, measureIndex?: number): void {
@@ -884,39 +835,12 @@ export class MeasureRenderer {
             circle.setAttribute('fill', '#000');
             svg.appendChild(circle);
             
-            // Register repeat dots for collision detection
-            if (this.placeAndSizeManager) {
-                this.placeAndSizeManager.registerElement('dot', {
-                    x: dotX - 4,  // Larger collision box to ensure no overlap
-                    y: dotY - 4,
-                    width: 8,
-                    height: 8
-                }, 0, { 
-                    type: 'repeat-barline',
-                    exactX: dotX,
-                    exactY: dotY
-                });
-            }
+            // Note: Repeat dots registration is done in SVGRenderer.preRegisterBarlines()
+            // to avoid double registration
         });
 
-        // Register the repeat barline itself including dots area (extends 12px for dots)
-        if (this.placeAndSizeManager) {
-            // The dots extend 12px from the barline, we need to protect that space
-            const bboxX = isStart ? x - 3 : x - 15;  // Start: protect right side, End: protect left side with dots
-            const bboxWidth = isStart ? 20 : 20;  // 6px bars + 12px dots + margins
-            
-            this.placeAndSizeManager.registerElement('barline', {
-                x: bboxX,
-                y: y,
-                width: bboxWidth,
-                height: height
-            }, 0, { 
-                type: isStart ? 'repeat-start' : 'repeat-end',
-                exactX: x,  // The exact X position of the first line of the barline
-                measureIndex,
-                side: isStart ? 'left' : 'right'
-            });
-        }
+        // Note: Repeat barline registration is done in SVGRenderer.preRegisterBarlines()
+        // to ensure consistent collision detection with accurate dimensions
     }
 
     private drawFinalDoubleBar(svg: SVGElement, x: number, y: number, height: number): void {
@@ -940,19 +864,8 @@ export class MeasureRenderer {
         bar2.setAttribute('stroke-width', '5');
         svg.appendChild(bar2);
 
-        // Register the final double barline (two lines span from x to x+6+2.5)
-        if (this.placeAndSizeManager) {
-            this.placeAndSizeManager.registerElement('barline', {
-                x: x - 3,  // Extra margin for safety
-                y: y,
-                width: 12,  // 6px spacing + 5px thick stroke + margins
-                height: height
-            }, 0, { 
-                type: 'final-double',
-                exactX: x,
-                exactY: y + height / 2
-            });
-        }
+        // Note: Final double barline registration is done in SVGRenderer.preRegisterBarlines()
+        // to ensure consistent collision detection
     }
 
     /**
@@ -1055,6 +968,124 @@ export class MeasureRenderer {
                 width: endX - startX,
                 height: hookHeight + 20
             }, 1, { text, isClosed }); // Priority 1 - high priority but not absolutely fixed
+        }
+    }
+
+    /**
+     * Draw a chord-only measure (no rhythm notation, just chord symbols centered).
+     * Used for simple lead sheets where only chord changes are indicated.
+     * 
+     * @param svg - SVG container
+     * @param measureIndex - Index of the measure
+     */
+    private drawChordOnlyMeasure(svg: SVGElement, measureIndex: number): void {
+        const leftBarX = this.x;
+        const rightBarX = this.x + this.width - 2;
+
+        // Draw left barline
+        if ((this.measure as any).isRepeatStart) {
+            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+            this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
+        }
+
+        // Get chord segments
+        const segments: ChordSegment[] = this.measure.chordSegments || [];
+        const chordCount = segments.length;
+        
+        if (chordCount === 0) {
+            // No chords, just draw barlines
+        } else if (chordCount === 1) {
+            // Single chord: center it in the measure
+            const chord = segments[0].chord;
+            const chordX = this.x + this.width / 2;
+            const chordY = this.y + 60; // Vertically centered (no staff line)
+            const fontSize = 24; // Larger font for chord-only mode
+            
+            const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, 'bold');
+            chordText.setAttribute('text-anchor', 'middle');
+            chordText.setAttribute('font-family', 'Arial, sans-serif');
+            svg.appendChild(chordText);
+        } else if (chordCount === 2) {
+            // Special case: 2 chords with diagonal slash separator
+            // Draw diagonal line from bottom-left to top-right
+            const slashStartX = leftBarX + 5;
+            const slashStartY = this.y + 110; // Near bottom of measure
+            const slashEndX = rightBarX - 5;
+            const slashEndY = this.y + 10; // Near top of measure
+            
+            const diagonalLine = document.createElementNS(SVG_NS, 'line');
+            diagonalLine.setAttribute('x1', slashStartX.toString());
+            diagonalLine.setAttribute('y1', slashStartY.toString());
+            diagonalLine.setAttribute('x2', slashEndX.toString());
+            diagonalLine.setAttribute('y2', slashEndY.toString());
+            diagonalLine.setAttribute('stroke', '#999');
+            diagonalLine.setAttribute('stroke-width', '2');
+            svg.appendChild(diagonalLine);
+            
+            // Position chords on either side of the diagonal
+            const fontSize = 20;
+            
+            // First chord: left side, ABOVE the diagonal line (top-left)
+            const chord1 = segments[0].chord;
+            const chord1X = this.x + this.width * 0.25; // More to the left
+            const chord1Y = this.y + 25; // Upper position (above diagonal)
+            const chordText1 = this.createText(chord1, chord1X, chord1Y, `${fontSize}px`, 'bold');
+            chordText1.setAttribute('text-anchor', 'middle');
+            chordText1.setAttribute('font-family', 'Arial, sans-serif');
+            svg.appendChild(chordText1);
+            
+            // Second chord: right side, BELOW the diagonal line (bottom-right)
+            const chord2 = segments[1].chord;
+            const chord2X = this.x + this.width * 0.75; // More to the right
+            const chord2Y = this.y + 95; // Lower position (below diagonal)
+            const chordText2 = this.createText(chord2, chord2X, chord2Y, `${fontSize}px`, 'bold');
+            chordText2.setAttribute('text-anchor', 'middle');
+            chordText2.setAttribute('font-family', 'Arial, sans-serif');
+            svg.appendChild(chordText2);
+        } else {
+            // Multiple chords (3+): distribute them horizontally with small slashes
+            const availableWidth = this.width - 20; // margins
+            const chordSpacing = availableWidth / chordCount;
+            
+            segments.forEach((segment, idx) => {
+                const chord = segment.chord;
+                if (!chord) return;
+                
+                const chordX = this.x + 10 + chordSpacing * (idx + 0.5);
+                const chordY = this.y + 60; // Vertically centered
+                const fontSize = 20; // Slightly smaller for multiple chords
+                
+                const chordText = this.createText(chord, chordX, chordY, `${fontSize}px`, 'bold');
+                chordText.setAttribute('text-anchor', 'middle');
+                chordText.setAttribute('font-family', 'Arial, sans-serif');
+                svg.appendChild(chordText);
+                
+                // Draw small slash separator between chords (except before first)
+                if (idx > 0) {
+                    const slashX = this.x + 10 + chordSpacing * idx;
+                    const slashLine = document.createElementNS(SVG_NS, 'line');
+                    slashLine.setAttribute('x1', slashX.toString());
+                    slashLine.setAttribute('y1', (this.y + 30).toString());
+                    slashLine.setAttribute('x2', (slashX + 10).toString());
+                    slashLine.setAttribute('y2', (this.y + 90).toString());
+                    slashLine.setAttribute('stroke', '#999');
+                    slashLine.setAttribute('stroke-width', '1.5');
+                    svg.appendChild(slashLine);
+                }
+            });
+        }
+
+        // Draw right barline
+        if ((this.measure as any).isRepeatEnd) {
+            this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+            if ((this.measure as any).repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            }
+        } else if (this.measure.barline === '||') {
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+        } else {
+            this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
         }
     }
 

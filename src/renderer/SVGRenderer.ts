@@ -25,6 +25,7 @@
  */
 
 import { ChordGrid, Measure } from '../parser/type';
+import { Beat } from '../models/Beat';
 import { MeasureRenderer } from './MeasureRenderer';
 import { SVG_NS } from './constants';
 import { TieManager } from '../utils/TieManager';
@@ -363,7 +364,7 @@ export class SVGRenderer {
   svg.setAttribute('xmlns', SVG_NS);
 
     // Initialize managers
-    const placeAndSizeManager = new PlaceAndSizeManager();
+    const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: true });
     const tieManager = new TieManager();
     const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[] = [];
 
@@ -496,8 +497,9 @@ export class SVGRenderer {
         });
 
         // 3. LOCAL PLANNING & RESOLUTION
-        this.preRegisterBarlines(lineMeasurePositions, placeAndSizeManager);
-        this.preRegisterVoltaTextPositions(lineMeasurePositions, placeAndSizeManager);
+        this.registerBarlines(lineMeasurePositions, placeAndSizeManager);
+        this.registerVoltaText(lineMeasurePositions, placeAndSizeManager);
+        this.registerChords(lineMeasurePositions, placeAndSizeManager);
         
         // Register measures themselves for complete geometric tracking
         lineMeasurePositions.forEach((mp) => {
@@ -1008,7 +1010,7 @@ export class SVGRenderer {
    * @param measurePositions - Array of measure positions
    * @param placeAndSizeManager - Collision detection manager
    */
-  private preRegisterBarlines(
+  private registerBarlines(
     measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
     placeAndSizeManager: PlaceAndSizeManager
   ): void {
@@ -1110,11 +1112,11 @@ export class SVGRenderer {
    * @param measurePositions - Array of measure positions with x, y coordinates
    * @param placeAndSizeManager - Collision detection manager
    */
-  private preRegisterVoltaTextPositions(
+  private registerVoltaText(
     measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
     placeAndSizeManager: PlaceAndSizeManager
   ): void {
-    // Barlines are already pre-registered, so we can retrieve their exact positions and widths
+    // Barlines are already registered, so we can retrieve their exact positions and widths
 
     // Find all volta starts and calculate text positions
     for (let i = 0; i < measurePositions.length; i++) {
@@ -1194,6 +1196,139 @@ export class SVGRenderer {
         }
       }
     }
+  }
+
+  /**
+   * Register all chord symbols in the collision detection manager BEFORE rendering.
+   * Chords are placed above the first note of the first beat in each segment.
+   * 
+   * @param measurePositions - Array of measure positions with x, y coordinates
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  private registerChords(
+    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    placeAndSizeManager: PlaceAndSizeManager
+  ): void {
+    // Constants for chord rendering (must match MeasureRenderer values)
+    const fontSize = 22;
+    const chordYOffset = 40; // Distance above staff line
+    
+    measurePositions.forEach((mp) => {
+      if (mp.x === undefined || mp.y === undefined) return;
+      
+      const measure = mp.measure;
+      const measureX = mp.x;
+      const measureY = mp.y;
+      const measureWidth = mp.width;
+      
+      // Get segments from measure (same logic as MeasureRenderer)
+      const segments: any[] = (measure as any).chordSegments || [{ chord: (measure as any).chord, beats: (measure as any).beats }];
+      
+      // Calculate available width for beats (excluding barlines)
+      const barlineWidth = 2;
+      const leftPadding = barlineWidth + 10;
+      const rightPadding = barlineWidth + 5;
+      const beatsWidth = measureWidth - leftPadding - rightPadding;
+      
+      segments.forEach((segment: any, segmentIndex: number) => {
+        if (!segment.chord || !segment.beats || segment.beats.length === 0) return;
+        
+        // Simplified calculation for first note position in first beat
+        // This is an approximation - the exact position is calculated in MeasureRenderer.drawRhythm()
+        // but we need a reasonable estimate for collision detection
+        
+        const firstBeat = segment.beats[0];
+        
+        // Calculate approximate beat position
+        // Use simplified width calculation (exact calculation would require requiredBeatWidth logic)
+        const beatCount = segment.beats.length;
+        const approximateBeatWidth = beatsWidth / beatCount;
+        const beatX = measureX + leftPadding;
+        
+        // Estimate first note X position within the beat
+        let firstNoteX: number;
+        if ((firstBeat as any).isRest) {
+          firstNoteX = beatX + approximateBeatWidth / 2;
+        } else if ((firstBeat as any).tuplet) {
+          const tupletNotes = (firstBeat as any).tuplet.notes;
+          if (tupletNotes && tupletNotes.length > 0) {
+            const tupletNoteWidth = approximateBeatWidth / tupletNotes.length;
+            firstNoteX = beatX + tupletNoteWidth / 2;
+          } else {
+            firstNoteX = beatX + approximateBeatWidth / 2;
+          }
+        } else {
+          const notes = (firstBeat as any).notes;
+          if (notes && notes.length > 0) {
+            const noteWidth = approximateBeatWidth / notes.length;
+            firstNoteX = beatX + noteWidth / 2;
+          } else {
+            firstNoteX = beatX + approximateBeatWidth / 2;
+          }
+        }
+        
+        // Calculate chord position
+        const chordX = firstNoteX;
+        const chordY = measureY + chordYOffset;
+        const chordWidth = segment.chord.length * fontSize * 0.6;
+        
+        // Create chord bounding box
+        const chordBBox = {
+          x: chordX - chordWidth / 2,
+          y: chordY - fontSize,
+          width: chordWidth,
+          height: fontSize + 4
+        };
+        
+        let finalX = chordX;
+        let finalY = chordY;
+        
+        // Check for collisions and adjust position
+        if (placeAndSizeManager.hasCollision(chordBBox, 'chord')) {
+          // Try horizontal adjustment first
+          const adjustedPosH = placeAndSizeManager.findFreePosition(
+            chordBBox,
+            'chord',
+            'horizontal',
+            ['chord']
+          );
+          
+          if (adjustedPosH) {
+            finalX = adjustedPosH.x + chordWidth / 2;
+            chordBBox.x = adjustedPosH.x;
+          }
+          
+          // Then try vertical adjustment if still needed
+          if (placeAndSizeManager.hasCollision(chordBBox, 'chord')) {
+            const adjustedPosV = placeAndSizeManager.findFreePosition(
+              chordBBox,
+              'chord',
+              'vertical',
+              ['chord']
+            );
+            
+            if (adjustedPosV) {
+              finalY = adjustedPosV.y + fontSize;
+              chordBBox.y = adjustedPosV.y;
+            }
+          }
+        }
+        
+        // Register chord with final collision-free position
+        placeAndSizeManager.registerElement('chord', {
+          x: finalX - chordWidth / 2,
+          y: finalY - fontSize,
+          width: chordWidth,
+          height: fontSize + 4
+        }, 5, {
+          chord: segment.chord,
+          measureIndex: mp.globalIndex,
+          segmentIndex,
+          exactX: finalX,
+          exactY: finalY
+        });
+      });
+    });
   }
 
   /**
