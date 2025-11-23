@@ -219,12 +219,12 @@ export class NoteRenderer {
         // Blanche (valeur 2) : diamond creux avec hampe
         else if (nv.value === 2) {
             this.drawDiamondNoteHead(svg, x, staffLineY, true);
-            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
         }
         // Notes ligaturables (>= 8) : slash + hampe (+ flags si isolée)
         else {
             this.drawSlash(svg, x, staffLineY);
-            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
 
             // Crochets pour notes isolées (non ligaturées)
             if (drawFlagsForIsolated) {

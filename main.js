@@ -1427,10 +1427,10 @@ var NoteRenderer = class {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
     } else if (nv.value === 2) {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
-      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
     } else {
       this.drawSlash(svg, x, staffLineY);
-      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 25, this.stemsDirection);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
       if (drawFlagsForIsolated) {
         const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
         if (level > 0 && stemInfo) {
@@ -3203,6 +3203,38 @@ var ChordRenderer = class {
     return firstNote.bbox.x;
   }
   /**
+   * Calcule la position Y sécurisée pour un accord en évitant les collisions avec les stems.
+   * 
+   * @param placeAndSizeManager - Gestionnaire de placement
+   * @param measureIndex - Index de la mesure
+   * @param staffLineY - Position Y de la ligne de staff
+   * @param baseVerticalOffset - Offset vertical de base (minimum)
+   * @returns Position Y ajustée pour éviter les stems
+   */
+  calculateSafeChordY(placeAndSizeManager, measureIndex, staffLineY, baseVerticalOffset) {
+    const measureElements = placeAndSizeManager.getElementsByMeasure(measureIndex);
+    const stems = measureElements.filter((el) => el.type === "stem");
+    if (stems.length === 0) {
+      return staffLineY - baseVerticalOffset;
+    }
+    let highestStemY = staffLineY;
+    stems.forEach((stem) => {
+      var _a;
+      if ((_a = stem.metadata) == null ? void 0 : _a.stem) {
+        const { topY, direction } = stem.metadata.stem;
+        if (direction === "up") {
+          highestStemY = Math.min(highestStemY, topY);
+        }
+      }
+    });
+    const STEM_CLEARANCE = 12;
+    const safeY = Math.min(
+      staffLineY - baseVerticalOffset,
+      highestStemY - STEM_CLEARANCE
+    );
+    return safeY;
+  }
+  /**
    * Rend tous les accords pour les mesures données.
    * 
    * Cette méthode est appelée APRÈS que toutes les notes/stems ont été rendues
@@ -3217,7 +3249,7 @@ var ChordRenderer = class {
   renderChords(svg, measurePositions, placeAndSizeManager, options = {}) {
     var _a, _b, _c;
     const fontSize = (_a = options.fontSize) != null ? _a : this.DEFAULT_FONT_SIZE;
-    const verticalOffset = (_b = options.verticalOffset) != null ? _b : this.DEFAULT_VERTICAL_OFFSET;
+    const baseVerticalOffset = (_b = options.verticalOffset) != null ? _b : this.DEFAULT_VERTICAL_OFFSET;
     const displayRepeatSymbol = (_c = options.displayRepeatSymbol) != null ? _c : false;
     const STAFF_LINE_OFFSET = 80;
     measurePositions.forEach((mp) => {
@@ -3236,6 +3268,12 @@ var ChordRenderer = class {
         if (!chordSymbol || chordSymbol === "") {
           return;
         }
+        const chordY = this.calculateSafeChordY(
+          placeAndSizeManager,
+          mp.globalIndex,
+          staffLineY,
+          baseVerticalOffset
+        );
         const firstNoteX = this.findFirstNoteX(
           placeAndSizeManager,
           mp.globalIndex,
@@ -3246,7 +3284,7 @@ var ChordRenderer = class {
             svg,
             chordSymbol,
             firstNoteX,
-            staffLineY - verticalOffset,
+            chordY,
             fontSize,
             "start",
             placeAndSizeManager,
@@ -3260,7 +3298,7 @@ var ChordRenderer = class {
               svg,
               chordSymbol,
               defaultNoteX,
-              staffLineY - verticalOffset,
+              chordY,
               fontSize,
               "start",
               placeAndSizeManager,
@@ -3274,7 +3312,7 @@ var ChordRenderer = class {
               svg,
               chordSymbol,
               chordX,
-              staffLineY - verticalOffset,
+              chordY,
               fontSize,
               "start",
               placeAndSizeManager,
@@ -3292,7 +3330,7 @@ var ChordRenderer = class {
             svg,
             chordSymbol,
             segmentX,
-            staffLineY - verticalOffset,
+            chordY,
             fontSize,
             "middle",
             placeAndSizeManager,

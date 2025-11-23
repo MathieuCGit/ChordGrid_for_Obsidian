@@ -112,6 +112,58 @@ export class ChordRenderer {
     }
 
     /**
+     * Calcule la position Y sécurisée pour un accord en évitant les collisions avec les stems.
+     * 
+     * @param placeAndSizeManager - Gestionnaire de placement
+     * @param measureIndex - Index de la mesure
+     * @param staffLineY - Position Y de la ligne de staff
+     * @param baseVerticalOffset - Offset vertical de base (minimum)
+     * @returns Position Y ajustée pour éviter les stems
+     */
+    private calculateSafeChordY(
+        placeAndSizeManager: PlaceAndSizeManager,
+        measureIndex: number,
+        staffLineY: number,
+        baseVerticalOffset: number
+    ): number {
+        // Récupérer tous les stems de cette mesure
+        const measureElements = placeAndSizeManager.getElementsByMeasure(measureIndex);
+        const stems = measureElements.filter(el => el.type === 'stem');
+        
+        if (stems.length === 0) {
+            // Pas de stems : utiliser l'offset de base
+            return staffLineY - baseVerticalOffset;
+        }
+        
+        // Trouver le point le plus haut de tous les stems (plus petite valeur Y)
+        let highestStemY = staffLineY;
+        
+        stems.forEach(stem => {
+            if (stem.metadata?.stem) {
+                const { topY, direction } = stem.metadata.stem;
+                
+                // Pour stems vers le haut, topY est le point le plus élevé
+                // Pour stems vers le bas, on ne considère pas (chords vont au-dessus)
+                if (direction === 'up') {
+                    highestStemY = Math.min(highestStemY, topY);
+                }
+            }
+        });
+        
+        // Ajouter un minimum de clearance au-dessus du stem le plus haut
+        const STEM_CLEARANCE = 12; // pixels de marge au-dessus des stems
+        
+        // Position de l'accord = plus haut stem - clearance
+        // Mais au minimum baseVerticalOffset au-dessus du staff
+        const safeY = Math.min(
+            staffLineY - baseVerticalOffset,
+            highestStemY - STEM_CLEARANCE
+        );
+        
+        return safeY;
+    }
+
+    /**
      * Rend tous les accords pour les mesures données.
      * 
      * Cette méthode est appelée APRÈS que toutes les notes/stems ont été rendues
@@ -130,7 +182,7 @@ export class ChordRenderer {
         options: ChordRenderOptions = {}
     ): void {
         const fontSize = options.fontSize ?? this.DEFAULT_FONT_SIZE;
-        const verticalOffset = options.verticalOffset ?? this.DEFAULT_VERTICAL_OFFSET;
+        const baseVerticalOffset = options.verticalOffset ?? this.DEFAULT_VERTICAL_OFFSET;
         const displayRepeatSymbol = options.displayRepeatSymbol ?? false;
         
         // Staff line is at measureY + 80 (see MeasureRenderer.ts line 85)
@@ -162,6 +214,14 @@ export class ChordRenderer {
                     return;
                 }
 
+                // Calculer la position Y sécurisée pour éviter les collisions avec stems
+                const chordY = this.calculateSafeChordY(
+                    placeAndSizeManager,
+                    mp.globalIndex,
+                    staffLineY,
+                    baseVerticalOffset
+                );
+
                 // Chercher la position de la première note de ce segment
                 const firstNoteX = this.findFirstNoteX(
                     placeAndSizeManager,
@@ -175,7 +235,7 @@ export class ChordRenderer {
                         svg,
                         chordSymbol,
                         firstNoteX,
-                        staffLineY - verticalOffset,
+                        chordY,
                         fontSize,
                         'start',
                         placeAndSizeManager,
@@ -195,7 +255,7 @@ export class ChordRenderer {
                             svg,
                             chordSymbol,
                             defaultNoteX,
-                            staffLineY - verticalOffset,
+                            chordY,
                             fontSize,
                             'start',
                             placeAndSizeManager,
@@ -211,7 +271,7 @@ export class ChordRenderer {
                             svg,
                             chordSymbol,
                             chordX,
-                            staffLineY - verticalOffset,
+                            chordY,
                             fontSize,
                             'start',
                             placeAndSizeManager,
@@ -237,7 +297,7 @@ export class ChordRenderer {
                         svg,
                         chordSymbol,
                         segmentX,
-                        staffLineY - verticalOffset,
+                        chordY,
                         fontSize,
                         'middle',
                         placeAndSizeManager,
