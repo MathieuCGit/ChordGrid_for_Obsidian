@@ -551,14 +551,11 @@ export class SVGRenderer {
         );
 
         const allowedMeasureIndices = new Set(lineMeasurePositions.map(mp => mp.globalIndex));
-
-        // Enregistrement des Pick-Strokes (Ligne courante uniquement)
-        this.preRegisterPickStrokes(grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
         
-        // Dessin des Liaisons (Ligne courante uniquement)
+        // Dessin des Liaisons (Ligne courante uniquement) - AVANT les pick-strokes
         this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
 
-        // Dessin des Pick-Strokes (Ligne courante uniquement)
+        // Dessin des Pick-Strokes (Ligne courante uniquement) - APRÈS les liaisons pour calculer l'offset global
         this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
     });
 
@@ -756,67 +753,6 @@ export class SVGRenderer {
         controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
       }
       
-      // Éviter les collisions avec les pick-strokes (layer decoration)
-      // Scanner tous les pick-strokes dans la zone horizontale ET verticale pertinente
-      if (placeAndSizeManager) {
-        const minX = Math.min(startX, endX);
-        const maxX = Math.max(startX, endX);
-        const decorationElements = placeAndSizeManager.getElements().filter(e => e.type === 'pick-stroke');
-        
-        // Déterminer la zone verticale où la liaison sera tracée
-        const tieReferenceY = orientation === 'up' ? Math.max(startY, endY) : Math.min(startY, endY);
-        
-        // Trouver les limites verticales des pick-strokes dans cette zone
-        let decorationTop = Infinity;
-        let decorationBottom = -Infinity;
-        let hasRelevantPickStroke = false;
-        
-        decorationElements.forEach((elem) => {
-          const db = elem.bbox;
-          
-          // Vérifier si le pick-stroke est dans la zone horizontale de la tie
-          const horizOverlap = db.x < maxX && (db.x + db.width) > minX;
-          if (!horizOverlap) return;
-          
-          // Vérifier si le pick-stroke est dans la bonne zone verticale
-          // - Pour orientation 'up' (liaisons en dessous) : pick-stroke doit être en dessous des notes
-          // - Pour orientation 'down' (liaisons au-dessus) : pick-stroke doit être au-dessus des notes
-          const pickStrokeCenterY = db.y + db.height / 2;
-          
-          // Plus besoin de MAX_VERTICAL_DISTANCE car PlaceAndSizeManager est scopé à la ligne
-          const isInRelevantVerticalZone = orientation === 'up' 
-            ? (pickStrokeCenterY > tieReferenceY) // pick-stroke en dessous
-            : (pickStrokeCenterY < tieReferenceY); // pick-stroke au-dessus
-          
-          if (isInRelevantVerticalZone) {
-            decorationTop = Math.min(decorationTop, db.y);
-            decorationBottom = Math.max(decorationBottom, db.y + db.height);
-            hasRelevantPickStroke = true;
-          }
-        });
-        
-        // Ajuster controlY si conflit avec un pick-stroke pertinent
-        if (hasRelevantPickStroke && decorationTop !== Infinity) {
-          const clearance = 4; // Marge de sécurité
-          const oldControlY = controlY;
-          if (orientation === 'up') {
-            // Liaisons en dessous : si controlY entre dans la zone decoration, repousser vers le bas
-            if (controlY < decorationBottom + clearance) {
-              controlY = decorationBottom + clearance;
-            }
-          } else {
-            // Liaisons au-dessus : si controlY entre dans la zone decoration, repousser vers le haut
-            if (controlY > decorationTop - clearance) {
-              controlY = decorationTop - clearance;
-            }
-          }
-          console.log(`controlY adjusted: ${oldControlY.toFixed(2)} → ${controlY.toFixed(2)}`);
-        } else {
-          console.log('No relevant pick-stroke found, controlY unchanged');
-        }
-        console.log('=================\n');
-      }
-      
       // Collision avoidance: adjust curve if any dot overlaps
       if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
@@ -856,8 +792,17 @@ export class SVGRenderer {
       if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const topY = Math.min(controlY, startY, endY);
-        const bottomY = Math.max(controlY, startY, endY);
+        
+        // Pour une courbe de Bézier quadratique Q(t) = (1-t)²*P0 + 2(1-t)t*P1 + t²*P2
+        // Le sommet (extremum) en Y est à t = (P0 - P1) / (P0 - 2*P1 + P2)
+        // Simplifié: le point le plus éloigné n'est PAS controlY mais une moyenne pondérée
+        // À t=0.5 (milieu de la courbe): Y = 0.25*startY + 0.5*controlY + 0.25*endY
+        const midCurveY = 0.25 * startY + 0.5 * controlY + 0.25 * endY;
+        
+        // Calculer les extrema réels de la courbe
+        const topY = Math.min(startY, endY, midCurveY, controlY);
+        const bottomY = Math.max(startY, endY, midCurveY, controlY);
+        
         placeAndSizeManager.registerElement('tie', { 
           x: minX, 
           y: topY, 
@@ -866,7 +811,9 @@ export class SVGRenderer {
         }, 3, { 
           cross: isCross,
           exactX: (startX + endX) / 2,
-          exactY: controlY
+          exactY: controlY,
+          midCurveY: midCurveY,  // Point médian réel de la courbe de Bézier
+          orientation: orientation  // 'up' ou 'down' pour savoir où est la courbe
         });
       }
     };
@@ -1728,10 +1675,79 @@ export class SVGRenderer {
     const TARGET_H = 12; // ajustable
     const MARGIN = 3;    // écart par rapport à la tête
 
-    // 5) Les pick-strokes restent à position fixe près des notes
+    // 5) NOUVEAU: Calculer l'offset vertical global pour éviter les liaisons
+    // Scanner toutes les liaisons pour trouver le point le plus extrême (haut ou bas selon stems)
+    let globalVerticalOffset = 0;
+    const CLEARANCE = 4; // Marge de sécurité entre pick-strokes et liaisons
+    
+    const tieElements = placeAndSizeManager.getElements().filter(e => e.type === 'tie');
+    if (tieElements.length > 0) {
+      // Déterminer si on place les picks au-dessus (stems-down) ou en-dessous (stems-up)
+      // On prend la direction majoritaire des hampes dans cette ligne
+      const placeAbove = stemsDirection === 'down';
+      
+      if (placeAbove) {
+        // Stems down → picks au-dessus → chercher le point le PLUS HAUT des liaisons
+        // Utiliser les métadonnées pour obtenir le vrai point extrême de la courbe
+        const highestTieY = Math.min(...tieElements.map(e => {
+          // Si la liaison est 'up' (courbe en dessous), utiliser bbox.y (top)
+          // Si la liaison est 'down' (courbe au-dessus), utiliser midCurveY
+          const metadata = e.metadata as any;
+          if (metadata && metadata.orientation === 'down') {
+            // Courbe au-dessus: le point le plus haut est midCurveY ou controlY
+            return Math.min(metadata.midCurveY, metadata.exactY, e.bbox.y);
+          }
+          // Courbe en dessous: le point le plus haut est le top de la bbox
+          return e.bbox.y;
+        }));
+        
+        // Calculer la position typique d'un pick-stroke sans offset
+        // (on utilise une position de référence moyenne)
+        const avgNoteY = notePositions.length > 0 
+          ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length 
+          : 100;
+        const NOTE_HEAD_HALF_HEIGHT = 5;
+        const refNoteHeadTop = avgNoteY - NOTE_HEAD_HALF_HEIGHT;
+        const refPickY = refNoteHeadTop - MARGIN - TARGET_H;
+        
+        // Si la liaison dépasse vers le haut, décaler les picks vers le haut
+        if (highestTieY < refPickY + TARGET_H + CLEARANCE) {
+          globalVerticalOffset = highestTieY - (refPickY + TARGET_H + CLEARANCE);
+        }
+      } else {
+        // Stems up → picks en-dessous → chercher le point le PLUS BAS des liaisons
+        // Utiliser les métadonnées pour obtenir le vrai point extrême de la courbe
+        const lowestTieY = Math.max(...tieElements.map(e => {
+          // Si la liaison est 'up' (courbe en dessous), utiliser midCurveY
+          // Si la liaison est 'down' (courbe au-dessus), utiliser bbox bottom
+          const metadata = e.metadata as any;
+          if (metadata && metadata.orientation === 'up') {
+            // Courbe en dessous: le point le plus bas est midCurveY ou controlY
+            return Math.max(metadata.midCurveY, metadata.exactY, e.bbox.y + e.bbox.height);
+          }
+          // Courbe au-dessus: le point le plus bas est le bottom de la bbox
+          return e.bbox.y + e.bbox.height;
+        }));
+        
+        // Calculer la position typique d'un pick-stroke sans offset
+        const avgNoteY = notePositions.length > 0 
+          ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length 
+          : 100;
+        const NOTE_HEAD_HALF_HEIGHT = 5;
+        const refNoteHeadBottom = avgNoteY + NOTE_HEAD_HALF_HEIGHT;
+        const refPickY = refNoteHeadBottom + MARGIN;
+        
+        // Si la liaison dépasse vers le bas, décaler les picks vers le bas
+        if (lowestTieY > refPickY - CLEARANCE) {
+          globalVerticalOffset = lowestTieY + CLEARANCE - refPickY;
+        }
+      }
+    }
+
+    // 6) Les pick-strokes restent à position fixe près des notes (avec offset global)
     //    C'est aux autres éléments (chords, tuplets) de les éviter via le layer system
 
-    // Fonction de dessin des pick-strokes à position fixe
+    // Fonction de dessin des pick-strokes à position fixe (avec offset global)
     const drawSymbol = (
       isDown: boolean,
       anchorX: number,
@@ -1748,8 +1764,10 @@ export class SVGRenderer {
       const tw = ow * scale;
       const th = oh * scale;
 
-      // Position fixe - pas de décalage (verticalOffset supprimé)
-      const finalY = placeAbove ? (noteHeadEdgeY - MARGIN - th) : (noteHeadEdgeY + MARGIN);
+      // Position avec offset global pour éviter les liaisons
+      // L'offset est appliqué dans la même direction que le placement (placeAbove)
+      const baseY = placeAbove ? (noteHeadEdgeY - MARGIN - th) : (noteHeadEdgeY + MARGIN);
+      const finalY = baseY + globalVerticalOffset;
       const finalX = anchorX - tw / 2;
 
       const translateX = finalX - origX * scale;

@@ -2903,6 +2903,9 @@ var PlaceAndSizeManager = class {
     if (layer1 === "decoration" && layer2 === "above-measure" || layer1 === "above-measure" && layer2 === "decoration") {
       return false;
     }
+    if (layer1 === "staff" && layer2 === "decoration" || layer1 === "decoration" && layer2 === "staff") {
+      return true;
+    }
     return false;
   }
   /**
@@ -3595,7 +3598,6 @@ var SVGRenderer = class {
         (n) => lineMeasurePositions.some((mp) => mp.globalIndex === n.measureIndex)
       );
       const allowedMeasureIndices = new Set(lineMeasurePositions.map((mp) => mp.globalIndex));
-      this.preRegisterPickStrokes(grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
       this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
     });
@@ -3720,44 +3722,6 @@ var SVGRenderer = class {
       if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const decorationElements = placeAndSizeManager.getElements().filter((e) => e.type === "pick-stroke");
-        const tieReferenceY = orientation === "up" ? Math.max(startY, endY) : Math.min(startY, endY);
-        let decorationTop = Infinity;
-        let decorationBottom = -Infinity;
-        let hasRelevantPickStroke = false;
-        decorationElements.forEach((elem) => {
-          const db = elem.bbox;
-          const horizOverlap = db.x < maxX && db.x + db.width > minX;
-          if (!horizOverlap) return;
-          const pickStrokeCenterY = db.y + db.height / 2;
-          const isInRelevantVerticalZone = orientation === "up" ? pickStrokeCenterY > tieReferenceY : pickStrokeCenterY < tieReferenceY;
-          if (isInRelevantVerticalZone) {
-            decorationTop = Math.min(decorationTop, db.y);
-            decorationBottom = Math.max(decorationBottom, db.y + db.height);
-            hasRelevantPickStroke = true;
-          }
-        });
-        if (hasRelevantPickStroke && decorationTop !== Infinity) {
-          const clearance = 4;
-          const oldControlY = controlY;
-          if (orientation === "up") {
-            if (controlY < decorationBottom + clearance) {
-              controlY = decorationBottom + clearance;
-            }
-          } else {
-            if (controlY > decorationTop - clearance) {
-              controlY = decorationTop - clearance;
-            }
-          }
-          console.log(`controlY adjusted: ${oldControlY.toFixed(2)} \u2192 ${controlY.toFixed(2)}`);
-        } else {
-          console.log("No relevant pick-stroke found, controlY unchanged");
-        }
-        console.log("=================\n");
-      }
-      if (placeAndSizeManager) {
-        const minX = Math.min(startX, endX);
-        const maxX = Math.max(startX, endX);
         const preliminaryTopY = orientation === "up" ? Math.min(startY, endY) : controlY;
         const preliminaryBottomY = orientation === "up" ? controlY : Math.max(startY, endY);
         const overlappingDot = dotsForCollisions.find((d2) => {
@@ -3792,8 +3756,9 @@ var SVGRenderer = class {
       if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const topY = Math.min(controlY, startY, endY);
-        const bottomY = Math.max(controlY, startY, endY);
+        const midCurveY = 0.25 * startY + 0.5 * controlY + 0.25 * endY;
+        const topY = Math.min(startY, endY, midCurveY, controlY);
+        const bottomY = Math.max(startY, endY, midCurveY, controlY);
         placeAndSizeManager.registerElement("tie", {
           x: minX,
           y: topY,
@@ -3802,7 +3767,11 @@ var SVGRenderer = class {
         }, 3, {
           cross: isCross,
           exactX: (startX + endX) / 2,
-          exactY: controlY
+          exactY: controlY,
+          midCurveY,
+          // Point médian réel de la courbe de Bézier
+          orientation
+          // 'up' ou 'down' pour savoir où est la courbe
         });
       }
     };
@@ -4406,6 +4375,43 @@ var SVGRenderer = class {
     const DOWNBOW_H = 33;
     const TARGET_H = 12;
     const MARGIN = 3;
+    let globalVerticalOffset = 0;
+    const CLEARANCE = 4;
+    const tieElements = placeAndSizeManager.getElements().filter((e) => e.type === "tie");
+    if (tieElements.length > 0) {
+      const placeAbove = stemsDirection === "down";
+      if (placeAbove) {
+        const highestTieY = Math.min(...tieElements.map((e) => {
+          const metadata = e.metadata;
+          if (metadata && metadata.orientation === "down") {
+            return Math.min(metadata.midCurveY, metadata.exactY, e.bbox.y);
+          }
+          return e.bbox.y;
+        }));
+        const avgNoteY = notePositions.length > 0 ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length : 100;
+        const NOTE_HEAD_HALF_HEIGHT = 5;
+        const refNoteHeadTop = avgNoteY - NOTE_HEAD_HALF_HEIGHT;
+        const refPickY = refNoteHeadTop - MARGIN - TARGET_H;
+        if (highestTieY < refPickY + TARGET_H + CLEARANCE) {
+          globalVerticalOffset = highestTieY - (refPickY + TARGET_H + CLEARANCE);
+        }
+      } else {
+        const lowestTieY = Math.max(...tieElements.map((e) => {
+          const metadata = e.metadata;
+          if (metadata && metadata.orientation === "up") {
+            return Math.max(metadata.midCurveY, metadata.exactY, e.bbox.y + e.bbox.height);
+          }
+          return e.bbox.y + e.bbox.height;
+        }));
+        const avgNoteY = notePositions.length > 0 ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length : 100;
+        const NOTE_HEAD_HALF_HEIGHT = 5;
+        const refNoteHeadBottom = avgNoteY + NOTE_HEAD_HALF_HEIGHT;
+        const refPickY = refNoteHeadBottom + MARGIN;
+        if (lowestTieY > refPickY - CLEARANCE) {
+          globalVerticalOffset = lowestTieY + CLEARANCE - refPickY;
+        }
+      }
+    }
     const drawSymbol = (isDown2, anchorX, noteHeadEdgeY, placeAbove) => {
       const d = isDown2 ? DOWNBOW_PATH : UPBOW_PATH;
       const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
@@ -4415,7 +4421,8 @@ var SVGRenderer = class {
       const scale = TARGET_H / oh;
       const tw = ow * scale;
       const th = oh * scale;
-      const finalY = placeAbove ? noteHeadEdgeY - MARGIN - th : noteHeadEdgeY + MARGIN;
+      const baseY = placeAbove ? noteHeadEdgeY - MARGIN - th : noteHeadEdgeY + MARGIN;
+      const finalY = baseY + globalVerticalOffset;
       const finalX = anchorX - tw / 2;
       const translateX = finalX - origX * scale;
       const translateY = finalY - origY * scale;

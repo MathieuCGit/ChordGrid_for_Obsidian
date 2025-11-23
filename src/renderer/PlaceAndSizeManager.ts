@@ -359,6 +359,13 @@ export class PlaceAndSizeManager {
             return false;
         }
         
+        // IMPORTANT: staff (ties) PEUT collider avec decoration (pick-strokes)
+        // Les liaisons doivent pouvoir éviter les pick-strokes qui sont placés au-dessus/en-dessous des notes
+        if ((layer1 === 'staff' && layer2 === 'decoration') ||
+            (layer1 === 'decoration' && layer2 === 'staff')) {
+            return true;
+        }
+        
         // Par défaut, pas de collision entre couches différentes
         return false;
     }
