@@ -273,6 +273,12 @@ export class ChordRenderer {
         measureIndex: number,
         chordIndex: number
     ): void {
+        // Replace # and b with proper music symbols ♯ and ♭
+        let processedChord = chordSymbol.replace(/#/g, '♯').replace(/\bb\b/g, '♭');
+        // Also handle 'b' when followed by a number (like b9, b5) or at end of quality (like Cmb5)
+        processedChord = processedChord.replace(/b([0-9])/g, '♭$1');
+        processedChord = processedChord.replace(/([A-G])b([^0-9]|$)/g, '$1♭$2');
+        
         const chordText = document.createElementNS(SVG_NS, 'text');
         chordText.setAttribute('x', x.toString());
         chordText.setAttribute('y', y.toString());
@@ -282,12 +288,87 @@ export class ChordRenderer {
         chordText.setAttribute('fill', '#000');
         chordText.setAttribute('text-anchor', textAnchor);
         chordText.setAttribute('class', 'chord-symbol');
-        chordText.textContent = chordSymbol;
+        
+        // Parse chord structure: Root + Quality + Superstructures + Bass
+        // Root: A-G with optional ♯/♭ (always at start)
+        // Quality: M, m, maj, min, dim, aug, etc. (immediately after root)
+        // Superstructures: 7, 9, 11, 13, sus, add, (b9), etc. (render smaller)
+        // Bass: /Note (render smaller)
+        
+        const rootMatch = processedChord.match(/^[A-G][♯♭]?/);
+        if (!rootMatch) {
+            // Fallback: render as-is if parsing fails
+            chordText.textContent = processedChord;
+            svg.appendChild(chordText);
+            const textWidth = this.estimateTextWidth(processedChord, fontSize);
+            this.registerChordBBox(chordText, x, y, textWidth, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, processedChord);
+            return;
+        }
+        
+        const root = rootMatch[0];
+        let remaining = processedChord.substring(root.length);
+        
+        // Extract quality - including mM (minor with major 7th), mmaj, mMaj, Mmaj, etc.
+        // Order matters: check longer patterns first (mMaj, mmaj) before shorter ones (M, m, maj, min)
+        // Quality will be rendered with superstructures (smaller size)
+        const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|\-)/);
+        const quality = qualityMatch ? qualityMatch[0] : '';
+        remaining = remaining.substring(quality.length);
+        
+        // Extract bass note (everything after last /)
+        let bass = '';
+        const lastSlashIndex = remaining.lastIndexOf('/');
+        if (lastSlashIndex !== -1) {
+            bass = remaining.substring(lastSlashIndex); // includes the "/"
+            remaining = remaining.substring(0, lastSlashIndex);
+        }
+        
+        // Everything else is superstructures (7, 9, sus4, add9, (b9), etc.)
+        const superstructures = remaining;
+        
+        // Render: root only (normal size) - just the note letter and accidental
+        const mainNode = document.createTextNode(root);
+        chordText.appendChild(mainNode);
+        
+        // Render: quality + superstructures (smaller, 75% of main size)
+        const qualityAndSuper = quality + superstructures;
+        if (qualityAndSuper.length > 0) {
+            const superSpan = document.createElementNS(SVG_NS, 'tspan');
+            superSpan.setAttribute('font-size', `${Math.round(fontSize * 0.75)}px`);
+            superSpan.textContent = qualityAndSuper;
+            chordText.appendChild(superSpan);
+        }
+        
+        // Render: bass note (smaller, 83% of main size)
+        if (bass.length > 0) {
+            const bassSpan = document.createElementNS(SVG_NS, 'tspan');
+            bassSpan.setAttribute('font-size', `${Math.round(fontSize * 0.83)}px`);
+            bassSpan.textContent = bass;
+            chordText.appendChild(bassSpan);
+        }
+        
         svg.appendChild(chordText);
 
-        // Calculer la largeur estimée du texte
-        const textWidth = this.estimateTextWidth(chordSymbol, fontSize);
-
+        // Calculer la largeur estimée du texte (approximation with mixed sizes)
+        const textWidth = this.estimateTextWidth(processedChord, fontSize);
+        this.registerChordBBox(chordText, x, y, textWidth, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, processedChord);
+    }
+    
+    /**
+     * Helper method to register chord bounding box in PlaceAndSizeManager
+     */
+    private registerChordBBox(
+        chordText: SVGTextElement,
+        x: number,
+        y: number,
+        textWidth: number,
+        fontSize: number,
+        textAnchor: 'start' | 'middle' | 'end',
+        placeAndSizeManager: PlaceAndSizeManager,
+        measureIndex: number,
+        chordIndex: number,
+        chordSymbol: string
+    ): void {
         // Calculer la bbox selon l'ancrage
         let bboxX: number;
         if (textAnchor === 'start') {
@@ -364,7 +445,7 @@ export class ChordRenderer {
             );
         } else if (chordCount === 2) {
             // Special case: 2 chords with diagonal positioning
-            const fontSize = 20;
+            const fontSize = 24; // Same size as single chord for consistency
             
             // First chord: left side, ABOVE the diagonal line (top-left)
             const chord1 = segments[0].chord;
@@ -403,7 +484,7 @@ export class ChordRenderer {
             // Multiple chords (3+): distribute them horizontally
             const availableWidth = measureWidth - 20; // margins
             const chordSpacing = availableWidth / chordCount;
-            const fontSize = 20;
+            const fontSize = 24; // Same size as single chord for consistency
             
             segments.forEach((segment: any, idx: number) => {
                 const chord = segment.chord;

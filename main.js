@@ -534,7 +534,13 @@ var _ChordGridParser = class _ChordGridParser {
       } else {
         const trimmedText = text.trim();
         anySource = text;
-        const chordPattern = /^[A-G][#b]?(?:m|maj|min|dim|aug)?[0-9]*(?:sus[24]?|add[0-9]+)?(?:b5|#5|b9|#9|#11|b13)?(?:\/[A-G][#b]?)?(?:\s*\/\s*[A-G][#b]?(?:m|maj|min|dim|aug)?[0-9]*(?:sus[24]?|add[0-9]+)?(?:b5|#5|b9|#9|#11|b13)?(?:\/[A-G][#b]?)?)*$/;
+        const rootPattern = "[A-G][#b\u266F\u266D]?";
+        const qualityPattern = "(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|\xF8|o|\\+|\\-)?";
+        const extensionPattern = "[0-9]+";
+        const alterationPattern = "(?:\\([#b\u266F\u266D]?[0-9]+\\)|[#b\u266F\u266D][0-9]+)";
+        const susPattern = "(?:sus[24]?|add[#b\u266F\u266D]?[0-9]+)";
+        const singleChordPattern = `${rootPattern}${qualityPattern}(?:${extensionPattern}|${alterationPattern}|${susPattern})*(?:/${rootPattern})?`;
+        const chordPattern = new RegExp(`^${singleChordPattern}(?:\\s+\\/\\s+${singleChordPattern})*$`);
         const isChordOnly = chordPattern.test(trimmedText);
         if (isChordOnly && trimmedText.length > 0) {
           const chords = [];
@@ -3311,6 +3317,9 @@ var ChordRenderer = class {
    * @param chordIndex - Index du segment
    */
   renderChordSymbol(svg, chordSymbol, x, y, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex) {
+    let processedChord = chordSymbol.replace(/#/g, "\u266F").replace(/\bb\b/g, "\u266D");
+    processedChord = processedChord.replace(/b([0-9])/g, "\u266D$1");
+    processedChord = processedChord.replace(/([A-G])b([^0-9]|$)/g, "$1\u266D$2");
     const chordText = document.createElementNS(SVG_NS2, "text");
     chordText.setAttribute("x", x.toString());
     chordText.setAttribute("y", y.toString());
@@ -3320,9 +3329,49 @@ var ChordRenderer = class {
     chordText.setAttribute("fill", "#000");
     chordText.setAttribute("text-anchor", textAnchor);
     chordText.setAttribute("class", "chord-symbol");
-    chordText.textContent = chordSymbol;
+    const rootMatch = processedChord.match(/^[A-G][♯♭]?/);
+    if (!rootMatch) {
+      chordText.textContent = processedChord;
+      svg.appendChild(chordText);
+      const textWidth2 = this.estimateTextWidth(processedChord, fontSize);
+      this.registerChordBBox(chordText, x, y, textWidth2, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, processedChord);
+      return;
+    }
+    const root = rootMatch[0];
+    let remaining = processedChord.substring(root.length);
+    const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|\-)/);
+    const quality = qualityMatch ? qualityMatch[0] : "";
+    remaining = remaining.substring(quality.length);
+    let bass = "";
+    const lastSlashIndex = remaining.lastIndexOf("/");
+    if (lastSlashIndex !== -1) {
+      bass = remaining.substring(lastSlashIndex);
+      remaining = remaining.substring(0, lastSlashIndex);
+    }
+    const superstructures = remaining;
+    const mainNode = document.createTextNode(root);
+    chordText.appendChild(mainNode);
+    const qualityAndSuper = quality + superstructures;
+    if (qualityAndSuper.length > 0) {
+      const superSpan = document.createElementNS(SVG_NS2, "tspan");
+      superSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
+      superSpan.textContent = qualityAndSuper;
+      chordText.appendChild(superSpan);
+    }
+    if (bass.length > 0) {
+      const bassSpan = document.createElementNS(SVG_NS2, "tspan");
+      bassSpan.setAttribute("font-size", `${Math.round(fontSize * 0.83)}px`);
+      bassSpan.textContent = bass;
+      chordText.appendChild(bassSpan);
+    }
     svg.appendChild(chordText);
-    const textWidth = this.estimateTextWidth(chordSymbol, fontSize);
+    const textWidth = this.estimateTextWidth(processedChord, fontSize);
+    this.registerChordBBox(chordText, x, y, textWidth, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, processedChord);
+  }
+  /**
+   * Helper method to register chord bounding box in PlaceAndSizeManager
+   */
+  registerChordBBox(chordText, x, y, textWidth, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, chordSymbol) {
     let bboxX;
     if (textAnchor === "start") {
       bboxX = x;
@@ -3385,7 +3434,7 @@ var ChordRenderer = class {
         0
       );
     } else if (chordCount === 2) {
-      const fontSize = 20;
+      const fontSize = 24;
       const chord1 = segments[0].chord;
       const chord1X = measureX + measureWidth * 0.25;
       const chord1Y = measureY + 25;
@@ -3417,7 +3466,7 @@ var ChordRenderer = class {
     } else {
       const availableWidth = measureWidth - 20;
       const chordSpacing = availableWidth / chordCount;
-      const fontSize = 20;
+      const fontSize = 24;
       segments.forEach((segment, idx) => {
         const chord = segment.chord;
         if (!chord) return;

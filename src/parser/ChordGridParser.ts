@@ -666,10 +666,32 @@ export class ChordGridParser {
         anySource = text;
         
         // Detect chord-only mode: text contains chord names separated by / or space, no digits
-        // Chord pattern: A-G followed by optional accidentals, extensions, and bass notes
-        // Examples: C, Am, Cmaj7, G7sus4, F#m7b5, Bb/D, Gmaj7/B
-        // Pattern allows: root + accidental + quality + extensions + alterations + bass
-        const chordPattern = /^[A-G][#b]?(?:m|maj|min|dim|aug)?[0-9]*(?:sus[24]?|add[0-9]+)?(?:b5|#5|b9|#9|#11|b13)?(?:\/[A-G][#b]?)?(?:\s*\/\s*[A-G][#b]?(?:m|maj|min|dim|aug)?[0-9]*(?:sus[24]?|add[0-9]+)?(?:b5|#5|b9|#9|#11|b13)?(?:\/[A-G][#b]?)?)*$/;
+        // Chord pattern: comprehensive support for all standard chord notations
+        // Examples: C, Am, Cmaj7, G7sus4, F#m7b5, Bb/D, Gmaj7/B, FM7, CM9, FM7(#11)/A
+        // Pattern breakdown:
+        // - Root: A-G with optional # or b (or unicode ♯/♭)
+        // - Quality: M, m, maj, min, major, minor, dim, aug, ø, o, +, - (optional)
+        // - Extensions: any combination of numbers (2,4,5,6,7,9,11,13)
+        // - Alterations: b5, #5, b9, #9, #11, b13, etc. with optional parentheses
+        // - Suspensions: sus, sus2, sus4
+        // - Additions: add + number with optional alteration
+        // - Bass note: /[root] at the end
+        
+        // Build a more permissive pattern that captures real-world chord notation
+        const rootPattern = '[A-G][#b♯♭]?';
+        // Quality: include mM, mMaj, mmaj (minor with major 7th) - longer patterns first
+        const qualityPattern = '(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\\+|\\-)?';
+        const extensionPattern = '[0-9]+';
+        // Alterations can be in parentheses or not: b5, #11, (b9), (#11), etc.
+        const alterationPattern = '(?:\\([#b♯♭]?[0-9]+\\)|[#b♯♭][0-9]+)';
+        const susPattern = '(?:sus[24]?|add[#b♯♭]?[0-9]+)';
+        
+        // A chord is: root + quality + (extension/alteration/sus)* + optional bass
+        // Allow multiple alterations, extensions, etc. in any order
+        const singleChordPattern = `${rootPattern}${qualityPattern}(?:${extensionPattern}|${alterationPattern}|${susPattern})*(?:/${rootPattern})?`;
+        
+        // Full pattern: one or more chords separated by " / " (with spaces)
+        const chordPattern = new RegExp(`^${singleChordPattern}(?:\\s+\\/\\s+${singleChordPattern})*$`);
         const isChordOnly = chordPattern.test(trimmedText);
         
         if (isChordOnly && trimmedText.length > 0) {
