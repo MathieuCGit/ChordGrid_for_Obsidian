@@ -82,6 +82,9 @@ export const LAYOUT = {
     
     /** Chord vertical offset (px) @plannedFor v3.0 */
     CHORD_VERTICAL_OFFSET: 30,
+    
+    /** Spacing between double barlines (px) @plannedFor v3.0 */
+    DOUBLE_BAR_SPACING: 6,
 } as const;
 
 // =============================================================================

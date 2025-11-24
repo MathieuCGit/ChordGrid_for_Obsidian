@@ -296,14 +296,14 @@ export class MeasureRenderer {
             thickBar.setAttribute('y1', y.toString());
             thickBar.setAttribute('x2', x.toString());
             thickBar.setAttribute('y2', (y + height).toString());
-            thickBar.setAttribute('stroke', '#000');
+            thickBar.setAttribute('stroke', VISUAL.COLOR_BLACK);
             thickBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_THICK.toString());
             svg.appendChild(thickBar);
 
             const thinBar = document.createElementNS(SVG_NS, 'line');
-            thinBar.setAttribute('x1', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
+            thinBar.setAttribute('x1', (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
             thinBar.setAttribute('y1', y.toString());
-            thinBar.setAttribute('x2', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
+            thinBar.setAttribute('x2', (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
             thinBar.setAttribute('y2', (y + height).toString());
             thinBar.setAttribute('stroke', VISUAL.COLOR_BLACK);
             thinBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
@@ -320,9 +320,9 @@ export class MeasureRenderer {
             svg.appendChild(thinBar);
 
             const thickBar = document.createElementNS(SVG_NS, 'line');
-            thickBar.setAttribute('x1', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
+            thickBar.setAttribute('x1', (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
             thickBar.setAttribute('y1', y.toString());
-            thickBar.setAttribute('x2', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
+            thickBar.setAttribute('x2', (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
             thickBar.setAttribute('y2', (y + height).toString());
             thickBar.setAttribute('stroke', VISUAL.COLOR_BLACK);
             thickBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_THICK.toString());
@@ -368,9 +368,9 @@ export class MeasureRenderer {
 
         // Thick line (final bar) - as per classical notation, spaced 6px from thin line
         const bar2 = document.createElementNS(SVG_NS, 'line');
-        bar2.setAttribute('x1', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
+        bar2.setAttribute('x1', (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
         bar2.setAttribute('y1', y.toString());
-        bar2.setAttribute('x2', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
+        bar2.setAttribute('x2', (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
         bar2.setAttribute('y2', (y + height).toString());
         bar2.setAttribute('stroke', VISUAL.COLOR_BLACK);
         bar2.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_FINAL.toString());
