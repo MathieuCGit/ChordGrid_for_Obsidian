@@ -108,6 +108,11 @@ export class SVGRenderer {
    * Calcule la largeur totale requise pour une mesure.
    */
   private calculateMeasureWidth(measure: Measure): number {
+    // Empty measures (| |) should have a minimal width
+    if ((measure as any).__isEmpty) {
+      return LAYOUT.BASE_MEASURE_WIDTH * 0.5; // Half the base width for empty measures
+    }
+    
     const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
     let width = 0;
     

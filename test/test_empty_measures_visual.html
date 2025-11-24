@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Empty Measures Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-case {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .code {
+            background: #f8f9fa;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+        }
+        svg {
+            border: 1px solid #ddd;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Empty Measures Rendering Test</h1>
+    
+    <div class="test-case">
+        <h2>Test 1: User's Example with Empty Measures</h2>
+        <div class="code">picks-auto stems-down
+4/4 ||:.1-3 CM7 | Am7b5 / Bb7#5 | Em7/9[161616-16 -4] G6[161616-16 4] | FM7(#11)/A / G7(#9)(b13) :||
+|.4 EbM7#11 | | ||</div>
+        <div id="test1"></div>
+    </div>
+    
+    <div class="test-case">
+        <h2>Test 2: Multiple Empty Measures</h2>
+        <div class="code">4/4 CM7 | | | FM7 | ||</div>
+        <div id="test2"></div>
+    </div>
+    
+    <div class="test-case">
+        <h2>Test 3: Empty Measures with Rhythm</h2>
+        <div class="code">4/4 CM7[4 4 4 4] | | FM7[88 88 88 88] | ||</div>
+        <div id="test3"></div>
+    </div>
+
+    <script src="../main.js"></script>
+    <script>
+        const { ChordGridParser, SVGRenderer } = window.ChordGridPlugin;
+        
+        function renderTest(inputId, input) {
+            const parser = new ChordGridParser();
+            const result = parser.parse(input);
+            
+            console.log(`\n=== ${inputId} ===`);
+            console.log('Measures:', result.grid.measures.length);
+            result.grid.measures.forEach((m, i) => {
+                console.log(`  ${i}: ${m.chord || '(empty)'} - isEmpty: ${m.__isEmpty}`);
+            });
+            
+            const renderer = new SVGRenderer();
+            const svg = renderer.render(result.grid, {
+                stemsDirection: result.stemsDirection || 'up',
+                pickStrokes: result.picksMode || 'off'
+            });
+            
+            document.getElementById(inputId).appendChild(svg);
+        }
+        
+        renderTest('test1', `picks-auto stems-down
+4/4 ||:.1-3 CM7 | Am7b5 / Bb7#5 | Em7/9[161616-16 -4] G6[161616-16 4] | FM7(#11)/A / G7(#9)(b13) :||
+|.4 EbM7#11 | | ||`);
+        
+        renderTest('test2', '4/4 CM7 | | | FM7 | ||');
+        renderTest('test3', '4/4 CM7[4 4 4 4] | | FM7[88 88 88 88] | ||');
+    </script>
+</body>
+</html>
