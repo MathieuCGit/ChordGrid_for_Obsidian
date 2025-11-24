@@ -7,41 +7,63 @@ Ce plugin Obsidian (version 2.1.0) permet de rendre des grilles d'accords avec n
 ## Structure du projet
 
 ```
-chord-grid/
-├── main.ts                    # Point d'entrée du plugin Obsidian
+ChordGrid_for_Obsidian/
+├── main.ts                          # Point d'entrée du plugin Obsidian
+├── manifest.json                    # Manifeste du plugin
+├── package.json                     # Dépendances & scripts
+├── esbuild.config.mjs               # Configuration de build
+├── jest.config.js                   # Configuration des tests
+├── styles.css                       # Styles du plugin
+├── README.md                        # Documentation utilisateur (anglais)
+├── README.fr.md                     # Documentation utilisateur (français)
+├── LICENSE                          # Licence MIT
+├── documentation/                   # Documentation technique
+│   ├── README.md                    # Index de la documentation
+│   ├── ARCHITECTURE.md              # Architecture (anglais)
+│   ├── ARCHITECTURE_[Fr].md         # Ce fichier (français)
+│   ├── CHANGELOG.md                 # Historique des versions
+│   ├── CONTRIBUTING.md              # Guide de contribution
+│   ├── DEBUG_IMPLEMENTATION*.md     # Guides système de debug
+│   ├── DEBUG_LOGGER*.md             # Documentation du logger
+│   ├── TUPLET_RATIOS*.md            # Système de ratios tuplets
+│   ├── MIXED_TUPLETS.md             # Tuplets mixtes (baseLen)
+│   ├── GROUPING_CONVENTIONS.md      # Groupement binary/ternary
+│   └── release_notes_v2.1.0.md      # Notes de version
 ├── src/
-│   ├── parser/                # Module de parsing
-│   │   ├── ChordGridParser.ts # Parser principal
-│   │   └── type.ts            # Définitions de types
-│   ├── analyzer/              # Module d'analyse musicale
-│   │   ├── MusicAnalyzer.ts   # Analyseur principal
-│   │   └── analyzer-types.ts  # Types d'analyse
-│   ├── models/                # Modèles de données
-│   │   ├── Beat.ts            # Modèle Beat
-│   │   ├── Measure.ts         # Modèle Measure
-│   │   ├── Note.ts            # Modèle Note
-│   │   └── TimeSignature.ts   # Modèle TimeSignature
-│   ├── renderer/              # Module de rendu SVG
-│   │   ├── SVGRenderer.ts     # Renderer principal
-│   │   ├── MeasureRenderer.ts # Rendu de mesures
-│   │   ├── NoteRenderer.ts    # Rendu de notes
-│   │   ├── RestRenderer.ts    # Rendu de silences
-│   │   ├── AnalyzerBeamOverlay.ts # Overlay ligatures analysées
-│   │   ├── CollisionManager.ts # Gestion des collisions (v2.1.0)
-│   │   ├── constants.ts       # Constantes SVG
-│   │   └── TieManager.ts      # Gestion liaisons cross-mesure
-│   └── utils/                 # Utilitaires
-│       ├── TieManager.ts      # (déprécié, déplacé dans renderer)
-│       └── DebugLogger.ts     # Logs de débogage
-└── test/                      # Tests unitaires
-    ├── parse.spec.ts          # Tests parsing
-    ├── beam_parse.spec.ts     # Tests ligatures
-    ├── beam_render.test.ts    # Tests rendu
-    ├── analyzer.spec.ts       # Tests analyseur
-    ├── tuplet_*.spec.ts       # Tests tuplets
-    ├── collision_manager.spec.ts # Tests collision (v2.1.0)
-    ├── tie_dot_collision.spec.ts # Tests tie-dot (v2.1.0)
-    └── ...                    # 174 tests au total
+│   ├── parser/                      # Module de parsing
+│   │   ├── ChordGridParser.ts       # Parser principal
+│   │   └── type.ts                  # Définitions de types
+│   ├── analyzer/                    # Module d'analyse musicale
+│   │   ├── MusicAnalyzer.ts         # Analyseur principal
+│   │   └── analyzer-types.ts        # Types d'analyse
+│   ├── models/                      # Modèles de données
+│   │   ├── Beat.ts                  # Modèle Beat
+│   │   ├── Measure.ts               # Modèle Measure
+│   │   ├── Note.ts                  # Modèle Note
+│   │   └── TimeSignature.ts         # Modèle TimeSignature
+│   ├── renderer/                    # Module de rendu SVG
+│   │   ├── SVGRenderer.ts           # Renderer principal
+│   │   ├── MeasureRenderer.ts       # Rendu de mesures
+│   │   ├── NoteRenderer.ts          # Rendu de notes
+│   │   ├── RestRenderer.ts          # Rendu de silences
+│   │   ├── BeamRenderer.ts          # Rendu des ligatures
+│   │   ├── AnalyzerBeamOverlay.ts   # Overlay ligatures analysées
+│   │   ├── ChordRenderer.ts         # Rendu des symboles d'accords
+│   │   ├── PlaceAndSizeManager.ts   # Gestion placement & collisions
+│   │   └── constants.ts             # Constantes SVG
+│   └── utils/
+│       ├── TieManager.ts            # Gestion liaisons cross-mesure
+│       └── DebugLogger.ts           # Logs de débogage
+└── test/                            # Tests unitaires (40 fichiers, 275 tests)
+    ├── *.spec.ts                    # Fichiers de test Jest
+    ├── analyzer.spec.ts             # Tests analyseur
+    ├── beam_*.spec.ts               # Tests ligatures
+    ├── chord_*.spec.ts              # Tests rendu d'accords
+    ├── tie_*.spec.ts                # Tests liaisons
+    ├── tuplet_*.spec.ts             # Tests tuplets
+    ├── repeat_*.spec.ts             # Tests notation répétition
+    ├── volta_*.spec.ts              # Tests crochets volta
+    └── ...                          # Tests parser, renderer
 ```
 
 ## Flux de données
@@ -291,11 +313,16 @@ NoteRenderer / RestRenderer (par note)
 - Position finale ajustée pour éviter overlap
 
 **Algorithme de layout :**
-1. Calculer espace disponible
+1. Calculer espace disponible (en soustrayant `extraLeftPadding` pour barlines de reprise)
 2. Allouer espace proportionnellement aux beats
 3. Insérer séparateurs pour changements d'accords
 4. Rendre chaque segment avec NoteRenderer
 5. Enregistrer éléments dans CollisionManager au fur et à mesure
+
+**Gestion de l'espace pour barlines de reprise (v2.2.1) :**
+- `extraLeftPadding` est calculé pour barlines `||:` (8px: 3px + 6px + 1.5px - 2.5px)
+- Cet espace est soustrait de `availableForBeatCells` pour éviter débordement des notes
+- Garantit que les notes restent dans les limites de la mesure même avec layouts compressés (`measures-per-line`)
 
 ### NoteRenderer
 

@@ -7,8 +7,28 @@ This Obsidian plugin renders chord grids with rhythmic notation in SVG format. I
 ## Project Structure
 
 ```
-chord-grid/
+ChordGrid_for_Obsidian/
 ├── main.ts                          # Obsidian plugin entry point
+├── manifest.json                    # Plugin manifest
+├── package.json                     # Dependencies & scripts
+├── esbuild.config.mjs               # Build configuration
+├── jest.config.js                   # Test configuration
+├── styles.css                       # Plugin styles
+├── README.md                        # User documentation (English)
+├── README.fr.md                     # User documentation (French)
+├── LICENSE                          # MIT License
+├── documentation/                   # Technical documentation
+│   ├── README.md                    # Documentation index
+│   ├── ARCHITECTURE.md              # This file (English)
+│   ├── ARCHITECTURE_[Fr].md         # Architecture (French)
+│   ├── CHANGELOG.md                 # Version history
+│   ├── CONTRIBUTING.md              # Contribution guidelines
+│   ├── DEBUG_IMPLEMENTATION*.md     # Debug system guides
+│   ├── DEBUG_LOGGER*.md             # Logger documentation
+│   ├── TUPLET_RATIOS*.md            # Tuplet ratio system
+│   ├── MIXED_TUPLETS.md             # Mixed tuplets (baseLen)
+│   ├── GROUPING_CONVENTIONS.md      # Binary/ternary grouping
+│   └── release_notes_v2.1.0.md      # Release notes
 ├── src/
 │   ├── parser/                      # Parsing (syntax only)
 │   │   ├── ChordGridParser.ts       # Main parser (includes tie & tuplet parsing)
@@ -26,18 +46,24 @@ chord-grid/
 │   │   ├── MeasureRenderer.ts       # Measure rendering
 │   │   ├── NoteRenderer.ts          # Note rendering
 │   │   ├── RestRenderer.ts          # Rest rendering
+│   │   ├── BeamRenderer.ts          # Beam rendering
 │   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer
-│   │   ├── CollisionManager.ts      # Collision detection & resolution
+│   │   ├── ChordRenderer.ts         # Chord symbol rendering
+│   │   ├── PlaceAndSizeManager.ts   # Placement & collision management
 │   │   └── constants.ts             # SVG/layout constants
 │   └── utils/
 │       ├── TieManager.ts            # Cross-measure tie management
 │       └── DebugLogger.ts           # Debug logging system
-└── test/
-  ├── *.spec.ts / *.test.ts          # Unit tests (parser / render / collision)
-  ├── collision_manager.spec.ts      # CollisionManager unit tests
-  ├── tie_dot_collision.spec.ts      # Tie-dot collision tests
-  ├── run_analyzer_tests.ts          # Analyzer tests
-  └── run_integration_analyzer.ts    # Parser→Analyzer integration
+└── test/                            # Unit tests (40 test files, 275 tests)
+    ├── *.spec.ts                    # Jest test files
+    ├── analyzer.spec.ts             # Analyzer tests
+    ├── beam_*.spec.ts               # Beam tests
+    ├── chord_*.spec.ts              # Chord rendering tests
+    ├── tie_*.spec.ts                # Tie tests
+    ├── tuplet_*.spec.ts             # Tuplet tests
+    ├── repeat_*.spec.ts             # Repeat notation tests
+    ├── volta_*.spec.ts              # Volta bracket tests
+    └── ...                          # Parser, renderer tests
 
 ```
 
@@ -274,11 +300,16 @@ NoteRenderer / RestRenderer (par note)
 - Position finale ajustée pour éviter overlap
 
 **Algorithme de layout :**
-1. Calculer espace disponible
+1. Calculer espace disponible (en soustrayant `extraLeftPadding` pour barlines de reprise)
 2. Allouer espace proportionnellement aux beats
 3. Insérer séparateurs pour changements d'accords
 4. Rendre chaque segment avec NoteRenderer
 5. Enregistrer éléments dans CollisionManager au fur et à mesure
+
+**Gestion de l'espace pour barlines de reprise (v2.2.1) :**
+- `extraLeftPadding` est calculé pour barlines `||:` (8px: 3px + 6px + 1.5px - 2.5px)
+- Cet espace est soustrait de `availableForBeatCells` pour éviter débordement des notes
+- Garantit que les notes restent dans les limites de la mesure même avec layouts compressés (`measures-per-line`)
 
 ### NoteRenderer
 

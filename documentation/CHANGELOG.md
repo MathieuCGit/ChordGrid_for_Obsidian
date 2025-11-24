@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Position: 5px from top, 10px right of barline (consistent with musical notation standards)
 
 ### Fixed
+- **Note overflow with repeat barlines and compressed measures**
+  - Fixed notes being clipped when using `measures-per-line` directive with repeat barlines (`||:`)
+  - `extraLeftPadding` (used for repeat barlines) now properly subtracted from `availableForBeatCells`
+  - Ensures notes stay within measure boundaries even with compressed layouts
+  - Resolves visual artifacts where notes extended beyond measure width
 - **Barline rendering for repeat measures**
   - Fixed final double barline (`||`) not appearing on repeat measures with `show%` directive
   - Repeat measures now correctly render all barline types (`:||`, `||:`, `||`)
