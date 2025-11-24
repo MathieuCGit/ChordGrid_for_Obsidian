@@ -1181,8 +1181,9 @@ export class SVGRenderer {
           
           const y = startMP.y;
           const textSize = 14;
-          const textOffset = 3; // Petit espace entre barline et texte
-          const textMargin = 5; // Safety margin around text bbox
+          const textOffset = LAYOUT.VOLTA_TEXT_OFFSET;
+          const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+          const leftPadding = LAYOUT.VOLTA_TEXT_LEFT_PADDING; // Extra left padding for collision clearance
           const voltaInfo = measure.voltaStart;
           
           // Calculate initial text position (AFTER the barline)
@@ -1190,10 +1191,12 @@ export class SVGRenderer {
           const textY = y + textSize + 2;
           const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
           
+          // Create bbox with extended left padding to ensure proper collision detection with barlines
+          // The left padding extends the bbox leftward without moving the text position
           const initialBBox = {
-            x: initialTextX - textMargin,
+            x: initialTextX - textMargin - leftPadding,
             y: textY - textSize - textMargin,
-            width: estimatedTextWidth + (2 * textMargin),
+            width: estimatedTextWidth + (2 * textMargin) + leftPadding,
             height: textSize + (2 * textMargin)
           };
           
@@ -1210,12 +1213,14 @@ export class SVGRenderer {
           const finalBBox = adjustedBBox || initialBBox;
           
           // Register in collision manager (priority 5 = movable)
-          // Note: bbox already includes textMargin (5px on all sides)
+          // Store leftPadding in metadata so drawVoltaBrackets can correctly position the text
           placeAndSizeManager.registerElement('volta-text', finalBBox, 5, {
             text: voltaInfo.text,
-            exactX: finalBBox.x + textMargin + estimatedTextWidth / 2,
+            exactX: finalBBox.x + textMargin + leftPadding + estimatedTextWidth / 2,
             exactY: textY - textSize / 2,
-            textMargin: textMargin
+            textMargin: textMargin,
+            leftPadding: leftPadding,
+            measureIndex: i  // Add measureIndex so drawVoltaBrackets can find it
           });
         }
       }
@@ -1350,11 +1355,13 @@ export class SVGRenderer {
           );
           
           const registeredText = registeredVoltaTexts[0];
-          // The registered bbox includes textMargin, so we need to add it back to get the actual text position
-          const textMargin = 5;
+          // The registered bbox includes textMargin + leftPadding on the left side
+          // We need to add both to get the actual text start position
+          const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+          const leftPadding = registeredText?.metadata?.leftPadding ?? LAYOUT.VOLTA_TEXT_LEFT_PADDING;
           const textX = registeredText 
-            ? registeredText.bbox.x + textMargin  // bbox.x includes margin, text starts at bbox.x + margin
-            : startX + 8; // Fallback: startX + textOffset + margin
+            ? registeredText.bbox.x + textMargin + leftPadding
+            : startX + LAYOUT.VOLTA_TEXT_OFFSET + textMargin;
           
           const voltaText = document.createElementNS(SVG_NS, 'text');
           voltaText.setAttribute('x', textX.toString());

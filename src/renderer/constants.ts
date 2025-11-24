@@ -109,6 +109,15 @@ export const LAYOUT = {
     
     /** Side margin for availableWidth calculation (px) @plannedFor v3.0 */
     AVAILABLE_WIDTH_SIDE_MARGIN: 60,
+    
+    /** Spacing between barline and volta text (px) @plannedFor v3.0 */
+    VOLTA_TEXT_OFFSET: 5,
+    
+    /** Horizontal margin around volta text for collision detection (px) @plannedFor v3.0 */
+    VOLTA_TEXT_MARGIN: 5,
+    
+    /** Extra left padding for volta text bbox to ensure clearance from barlines (px) @plannedFor v3.0 */
+    VOLTA_TEXT_LEFT_PADDING: 3,
 } as const;
 
 // =============================================================================

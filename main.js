@@ -1217,7 +1217,13 @@ var LAYOUT = {
   /** Y offset for measures in line (px) @plannedFor v3.0 */
   MEASURE_Y_OFFSET: 40,
   /** Side margin for availableWidth calculation (px) @plannedFor v3.0 */
-  AVAILABLE_WIDTH_SIDE_MARGIN: 60
+  AVAILABLE_WIDTH_SIDE_MARGIN: 60,
+  /** Spacing between barline and volta text (px) @plannedFor v3.0 */
+  VOLTA_TEXT_OFFSET: 5,
+  /** Horizontal margin around volta text for collision detection (px) @plannedFor v3.0 */
+  VOLTA_TEXT_MARGIN: 5,
+  /** Extra left padding for volta text bbox to ensure clearance from barlines (px) @plannedFor v3.0 */
+  VOLTA_TEXT_LEFT_PADDING: 3
 };
 var TYPOGRAPHY = {
   /** Default font size for chord symbols (px) */
@@ -4654,16 +4660,17 @@ var SVGRenderer = class {
           const startX = (_c = (_b = (_a = startBarline == null ? void 0 : startBarline.metadata) == null ? void 0 : _a.visualEndX) != null ? _b : startBarline ? startBarline.bbox.x + startBarline.bbox.width : void 0) != null ? _c : i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex ? measurePositions[i - 1].x + measurePositions[i - 1].width : startMP.x;
           const y = startMP.y;
           const textSize = 14;
-          const textOffset = 3;
-          const textMargin = 5;
+          const textOffset = LAYOUT.VOLTA_TEXT_OFFSET;
+          const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+          const leftPadding = LAYOUT.VOLTA_TEXT_LEFT_PADDING;
           const voltaInfo = measure.voltaStart;
           const initialTextX = startX + textOffset;
           const textY = y + textSize + 2;
           const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
           const initialBBox = {
-            x: initialTextX - textMargin,
+            x: initialTextX - textMargin - leftPadding,
             y: textY - textSize - textMargin,
-            width: estimatedTextWidth + 2 * textMargin,
+            width: estimatedTextWidth + 2 * textMargin + leftPadding,
             height: textSize + 2 * textMargin
           };
           const adjustedBBox = placeAndSizeManager.findFreePosition(
@@ -4680,9 +4687,12 @@ var SVGRenderer = class {
           const finalBBox = adjustedBBox || initialBBox;
           placeAndSizeManager.registerElement("volta-text", finalBBox, 5, {
             text: voltaInfo.text,
-            exactX: finalBBox.x + textMargin + estimatedTextWidth / 2,
+            exactX: finalBBox.x + textMargin + leftPadding + estimatedTextWidth / 2,
             exactY: textY - textSize / 2,
-            textMargin
+            textMargin,
+            leftPadding,
+            measureIndex: i
+            // Add measureIndex so drawVoltaBrackets can find it
           });
         }
       }
@@ -4699,7 +4709,7 @@ var SVGRenderer = class {
    * @param placeAndSizeManager - Manager for registering collision boxes
    */
   drawVoltaBrackets(svg, measurePositions, placeAndSizeManager) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     const allBarlines = placeAndSizeManager.getElements().filter((el) => {
       var _a2;
       return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.exactX) !== void 0;
@@ -4783,8 +4793,9 @@ var SVGRenderer = class {
             }
           );
           const registeredText = registeredVoltaTexts[0];
-          const textMargin = 5;
-          const textX = registeredText ? registeredText.bbox.x + textMargin : startX + 8;
+          const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+          const leftPadding = (_g = (_f = registeredText == null ? void 0 : registeredText.metadata) == null ? void 0 : _f.leftPadding) != null ? _g : LAYOUT.VOLTA_TEXT_LEFT_PADDING;
+          const textX = registeredText ? registeredText.bbox.x + textMargin + leftPadding : startX + LAYOUT.VOLTA_TEXT_OFFSET + textMargin;
           const voltaText = document.createElementNS(SVG_NS, "text");
           voltaText.setAttribute("x", textX.toString());
           voltaText.setAttribute("y", textY.toString());
