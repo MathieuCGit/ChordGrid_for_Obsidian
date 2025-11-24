@@ -554,22 +554,22 @@ export class ChordGridParser {
       }
       
       // Skip other empty tokens but don't add them as measures
-      // EXCEPT when measures-per-line is specified AND the content contains at least a space
-      // (to distinguish intentional empty measures "| |" from leading empty tokens on first line)
+      // EXCEPT when the content contains at least a space (intentional empty measure "| |")
+      // (to distinguish intentional empty measures from leading empty tokens on first line)
       if (t.content.trim().length === 0) {
         // But check for volta that should apply to next measure
         if (t.volta) {
           pendingVolta = t.volta;
         }
         
-        // Only create empty measure if:
-        // 1. measures-per-line is specified
-        // 2. The content has at least one space (intentional empty measure "| |")
-        // 3. OR it's not the first token (to avoid the leading space after time signature)
+        // Create empty measure if:
+        // 1. The content has at least one space (intentional empty measure "| |")
+        // 2. OR it's not the first token (to avoid the leading space after time signature)
+        // 3. OR measures-per-line is specified (forced layout mode)
         const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
         const isNotFirstToken = ti > 0;
         
-        if (measuresPerLine !== undefined && (isIntentionalEmpty || isNotFirstToken)) {
+        if (isIntentionalEmpty || (measuresPerLine !== undefined && isNotFirstToken)) {
           // Create an empty measure (no chords, no rhythm)
           const emptyMeasure: Measure = {
             beats: [],
