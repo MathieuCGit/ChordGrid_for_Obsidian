@@ -2,19 +2,26 @@ import { RestRenderer } from './RestRenderer';
 import { NoteRenderer, NotePosition } from './NoteRenderer';
 import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
-import { SVG_NS } from './constants';
+import { 
+    SVG_NS, 
+    LAYOUT, 
+    NOTATION, 
+    NOTE_SPACING, 
+    SEGMENT_WIDTH,
+    VISUAL 
+} from './constants';
 
 /**
  * @file MeasureRenderer.ts
- * @description Rendu SVG d'une mesure musicale (staff et barlines).
+ * @description SVG rendering of a musical measure (staff and barlines).
  * 
- * Ce renderer gère :
- * - Lignes de portée (staff)
- * - Barres de mesure (simples, doubles, reprises)
- * - Compteurs de répétition
- * - Layout et coordonnées de la mesure
+ * This renderer handles:
+ * - Staff lines
+ * - Barlines (simple, double, repeats)
+ * - Repeat counters
+ * - Measure layout and coordinates
  * 
- * Le rendu des notes est délégué à NoteRenderer.
+ * Note rendering is delegated to NoteRenderer.
  */
 export class MeasureRenderer {
     /**
@@ -51,23 +58,23 @@ export class MeasureRenderer {
     }
 
     /**
-     * Dessine la mesure complète dans le SVG.
+     * Draw the complete measure in the SVG.
      * 
-     * Cette méthode orchestre le rendu de tous les éléments de la mesure :
-     * 1. Barres de mesure (gauche avec éventuelle reprise)
-     * 2. Ligne de portée
-     * 3. Segments d'accords avec leurs beats
-     * 4. Notes et silences avec ligatures
-     * 5. Barre de mesure de fin (avec éventuelle reprise ou double barre)
+     * This method orchestrates rendering of all measure elements:
+     * 1. Barlines (left with possible repeat)
+     * 2. Staff line
+     * 3. Chord segments with their beats
+     * 4. Notes and rests with beams
+     * 5. Right barline (with possible repeat or double bar)
      * 
-     * @param svg - Élément SVG parent
-     * @param measureIndex - Index de la mesure dans la grille (pour numérotation)
-     * @param notePositions - Tableau collectant les positions de toutes les notes (pour liaisons)
-     * @param grid - Grille complète (pour contexte de signature temporelle, etc.)
+     * @param svg - Parent SVG element
+     * @param measureIndex - Measure index in the grid (for numbering)
+     * @param notePositions - Array collecting positions of all notes (for ties)
+     * @param grid - Complete grid (for time signature context, etc.)
      */
     public drawMeasure(svg: SVGElement, measureIndex: number, notePositions: NotePosition[], grid: ChordGrid): void {
         const leftBarX = this.x;
-        const rightBarX = this.x + this.width - 2;
+        const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Check for empty measure (forced by measures-per-line)
         if ((this.measure as any).__isEmpty) {
@@ -83,28 +90,28 @@ export class MeasureRenderer {
 
         // Draw left barline - check for repeat start first
         if ((this.measure as any).isRepeatStart) {
-            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+            this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
-            this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
+            this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        const staffLineY = this.y + 80;
+        const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
         const staffLine = document.createElementNS(SVG_NS, 'line');
-        staffLine.setAttribute('x1', (this.x + 10).toString());
+        staffLine.setAttribute('x1', (this.x + LAYOUT.BASE_LEFT_PADDING).toString());
         staffLine.setAttribute('y1', staffLineY.toString());
-        staffLine.setAttribute('x2', (this.x + this.width - 10).toString());
+        staffLine.setAttribute('x2', (this.x + this.width - LAYOUT.BASE_LEFT_PADDING).toString());
         staffLine.setAttribute('y2', staffLineY.toString());
-        staffLine.setAttribute('stroke', '#000');
-        staffLine.setAttribute('stroke-width', '1');
+        staffLine.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        staffLine.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_THIN.toString());
         svg.appendChild(staffLine);
 
         // Register staff line in PlaceAndSizeManager
         if (this.placeAndSizeManager) {
             this.placeAndSizeManager.registerElement('staff-line', {
-                x: this.x + 10,
-                y: staffLineY - 1,
-                width: this.width - 20,
-                height: 2
+                x: this.x + LAYOUT.BASE_LEFT_PADDING,
+                y: staffLineY - VISUAL.STROKE_WIDTH_THIN,
+                width: this.width - (LAYOUT.BASE_LEFT_PADDING * 2),
+                height: VISUAL.STROKE_WIDTH_THIN * 2
             }, 0, { 
                 exactX: this.x + (this.width / 2), // Center X of the staff line
                 exactY: staffLineY,
@@ -121,15 +128,15 @@ export class MeasureRenderer {
             // Chord names are now handled by ChordRenderer
             // Draw right barline with ALL barline types (repeat, double bar, simple)
             if ((this.measure as any).isRepeatEnd) {
-                this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+                this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
                 // Draw repeat count if present (e.g., x3)
                 if ((this.measure as any).repeatCount !== undefined) {
                     this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
                 }
             } else if (this.measure.barline === '||') {
-                this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+                this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
             } else {
-                this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
+                this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
             }
             return;
         }
@@ -141,36 +148,36 @@ export class MeasureRenderer {
         // Layout segments: allocate widths proportional to per-beat required width,
         // but insert a visible separator when a segment has leadingSpace=true.
         const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
-        const separatorWidth = 12; // px gap when source had a space
+        const separatorWidth = LAYOUT.SEPARATOR_WIDTH; // px gap when source had a space
         const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + ((idx > 0 && seg.leadingSpace) ? 1 : 0), 0);
 
-        const innerPaddingPerSegment = 20; // preserves previous +/-10 per side
+        const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT; // preserves previous +/-10 per side
         const totalInnerPadding = innerPaddingPerSegment * segments.length;
         const totalSeparatorPixels = separatorsCount * separatorWidth;
 
         // Add extra padding if measure starts with repeat barline to avoid collisions
-        const extraLeftPadding = (this.measure as any).isRepeatStart ? 15 : 0;
+        const extraLeftPadding = (this.measure as any).isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
 
-    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
+        const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
         // Helper spacing functions (must mirror SVGRenderer)
-        const headHalfMax = 6;
+        const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
         const valueMinSpacing = (v: number) => {
-            if (v >= 64) return 16;
-            if (v >= 32) return 20;
-            if (v >= 16) return 26;
-            if (v >= 8)  return 24;
-            return 20;
+            if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+            if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+            if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+            if (v >= 8)  return NOTE_SPACING.EIGHTH;
+            return NOTE_SPACING.QUARTER_AND_LONGER;
         };
         const requiredBeatWidth = (beat: Beat) => {
             const noteCount = beat?.notes?.length || 0;
-            if (noteCount <= 1) return 28 + 10 + headHalfMax;
+            if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
             const spacing = Math.max(
                 ...beat.notes.map(n => {
                     const base = valueMinSpacing(n.value);
                     return n.isRest ? base + 4 : base; // rests need a tad more space visually
                 })
             );
-            return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+            return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + 8;
         };
 
         // iterate segments and place beats
@@ -197,7 +204,7 @@ export class MeasureRenderer {
             // Allocate segment width proportionally to this segment's requirement within the measure
             const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
             const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
-            const segmentX = currentX + 10; // inner left padding
+            const segmentX = currentX + LAYOUT.BASE_LEFT_PADDING; // inner left padding
             const beatsWidth = segmentWidth - innerPaddingPerSegment;
 
             // Prefix-sum to place each beat proportionally
@@ -217,21 +224,21 @@ export class MeasureRenderer {
         }
 
         if ((this.measure as any).isRepeatEnd) {
-            this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+            this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
             // Draw repeat count if present (e.g., x3)
             if ((this.measure as any).repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
             }
         } else if (this.measure.barline === '||') {
-            this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
         } else if (this.measure.barline || measureIndex === (grid.measures.length - 1)) {
-            this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
+            this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
         }
     }
 
     /**
-     * Dessine le rythme (notes) d'un beat.
-     * Délègue le rendu au NoteRenderer.
+     * Draw the rhythm (notes) of a beat.
+     * Delegates rendering to NoteRenderer.
      */
     private drawRhythm(
         svg: SVGElement,
@@ -290,16 +297,16 @@ export class MeasureRenderer {
             thickBar.setAttribute('x2', x.toString());
             thickBar.setAttribute('y2', (y + height).toString());
             thickBar.setAttribute('stroke', '#000');
-            thickBar.setAttribute('stroke-width', '3');
+            thickBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_THICK.toString());
             svg.appendChild(thickBar);
 
             const thinBar = document.createElementNS(SVG_NS, 'line');
-            thinBar.setAttribute('x1', (x + 6).toString());
+            thinBar.setAttribute('x1', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
             thinBar.setAttribute('y1', y.toString());
-            thinBar.setAttribute('x2', (x + 6).toString());
+            thinBar.setAttribute('x2', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
             thinBar.setAttribute('y2', (y + height).toString());
-            thinBar.setAttribute('stroke', '#000');
-            thinBar.setAttribute('stroke-width', '1.5');
+            thinBar.setAttribute('stroke', VISUAL.COLOR_BLACK);
+            thinBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
             svg.appendChild(thinBar);
         } else {
             // :|| - Thin line first (left), then thick line (right)
@@ -308,26 +315,26 @@ export class MeasureRenderer {
             thinBar.setAttribute('y1', y.toString());
             thinBar.setAttribute('x2', x.toString());
             thinBar.setAttribute('y2', (y + height).toString());
-            thinBar.setAttribute('stroke', '#000');
-            thinBar.setAttribute('stroke-width', '1.5');
+            thinBar.setAttribute('stroke', VISUAL.COLOR_BLACK);
+            thinBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
             svg.appendChild(thinBar);
 
             const thickBar = document.createElementNS(SVG_NS, 'line');
-            thickBar.setAttribute('x1', (x + 6).toString());
+            thickBar.setAttribute('x1', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
             thickBar.setAttribute('y1', y.toString());
-            thickBar.setAttribute('x2', (x + 6).toString());
+            thickBar.setAttribute('x2', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
             thickBar.setAttribute('y2', (y + height).toString());
-            thickBar.setAttribute('stroke', '#000');
-            thickBar.setAttribute('stroke-width', '3');
+            thickBar.setAttribute('stroke', VISUAL.COLOR_BLACK);
+            thickBar.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_THICK.toString());
             svg.appendChild(thickBar);
         }
 
         // Position dots based on start/end repeat
-        const dotOffset = isStart ? 12 : -12;
+        const dotOffset = isStart ? NOTATION.REPEAT_DOT_OFFSET : -NOTATION.REPEAT_DOT_OFFSET;
         
         // Position dots centered on the staff line (y + 80)
-        const staffLineY = y + 80;
-        const dotSpacing = 12; // Spacing above and below staff line
+        const staffLineY = y + NOTATION.STAFF_LINE_Y_OFFSET;
+        const dotSpacing = NOTATION.REPEAT_DOT_OFFSET; // Spacing above and below staff line
         const dot1Y = staffLineY - dotSpacing;  // Above staff line
         const dot2Y = staffLineY + dotSpacing;  // Below staff line
         
@@ -336,8 +343,8 @@ export class MeasureRenderer {
             const dotX = x + dotOffset;
             circle.setAttribute('cx', dotX.toString());
             circle.setAttribute('cy', dotY.toString());
-            circle.setAttribute('r', '3');
-            circle.setAttribute('fill', '#000');
+            circle.setAttribute('r', NOTATION.REPEAT_DOT_RADIUS.toString());
+            circle.setAttribute('fill', VISUAL.COLOR_BLACK);
             svg.appendChild(circle);
             
             // Note: Repeat dots registration is done in SVGRenderer.preRegisterBarlines()
@@ -355,18 +362,18 @@ export class MeasureRenderer {
         bar1.setAttribute('y1', y.toString());
         bar1.setAttribute('x2', x.toString());
         bar1.setAttribute('y2', (y + height).toString());
-        bar1.setAttribute('stroke', '#000');
-        bar1.setAttribute('stroke-width', '1.5');
+        bar1.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        bar1.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
         svg.appendChild(bar1);
 
         // Thick line (final bar) - as per classical notation, spaced 6px from thin line
         const bar2 = document.createElementNS(SVG_NS, 'line');
-        bar2.setAttribute('x1', (x + 6).toString());
+        bar2.setAttribute('x1', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
         bar2.setAttribute('y1', y.toString());
-        bar2.setAttribute('x2', (x + 6).toString());
+        bar2.setAttribute('x2', (x + NOTATION.REPEAT_DOT_OFFSET).toString());
         bar2.setAttribute('y2', (y + height).toString());
-        bar2.setAttribute('stroke', '#000');
-        bar2.setAttribute('stroke-width', '5');
+        bar2.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        bar2.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_FINAL.toString());
         svg.appendChild(bar2);
 
         // Note: Final double barline registration is done in SVGRenderer.preRegisterBarlines()
@@ -380,9 +387,9 @@ export class MeasureRenderer {
      * @param count - Number of repeats
      */
     private drawRepeatCount(svg: SVGElement, x: number, count: number): void {
-        const textX = x + 10; // 10px to the right of the barline
+        const textX = x + LAYOUT.BASE_LEFT_PADDING; // 10px to the right of the barline
         const textY = this.y + 5; // 5px from top (higher than chords)
-        const fontSize = 22; // Larger than time signature (18px), same as chords
+        const fontSize = LAYOUT.REPEAT_COUNT_FONT_SIZE; // Larger than time signature (18px), same as chords
         
         const text = document.createElementNS(SVG_NS, 'text');
         text.setAttribute('x', textX.toString());
@@ -390,14 +397,14 @@ export class MeasureRenderer {
         text.setAttribute('font-family', 'Arial, sans-serif');
         text.setAttribute('font-size', `${fontSize}px`);
         text.setAttribute('font-weight', 'normal');
-        text.setAttribute('fill', '#000');
+        text.setAttribute('fill', VISUAL.COLOR_BLACK);
         text.textContent = `x${count}`;
         svg.appendChild(text);
         
         // Register in collision manager for proper SVG bounds calculation
         if (this.placeAndSizeManager) {
             // Approximate text width: "x3" = ~30px at 22px font
-            const textWidth = count >= 10 ? 40 : 30; // Extra width for double digits
+            const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH; // Extra width for double digits
             this.placeAndSizeManager.registerElement('repeat-count', {
                 x: textX,
                 y: textY - fontSize, // Text baseline is at textY, so top is textY - fontSize
@@ -425,8 +432,8 @@ export class MeasureRenderer {
      * @param isClosed - Whether to draw the right hook (closed bracket)
      */
     private drawVoltaBracket(svg: SVGElement, startX: number, endX: number, text: string, isClosed: boolean): void {
-        const y = this.y + 10; // Above the staff
-        const hookHeight = 10; // Height of descending hooks
+        const y = this.y + LAYOUT.BASE_LEFT_PADDING; // Above the staff
+        const hookHeight = NOTATION.HOOK_HEIGHT; // Height of descending hooks
         
         // Horizontal line
         const horizontalLine = document.createElementNS(SVG_NS, 'line');
@@ -434,8 +441,8 @@ export class MeasureRenderer {
         horizontalLine.setAttribute('y1', y.toString());
         horizontalLine.setAttribute('x2', endX.toString());
         horizontalLine.setAttribute('y2', y.toString());
-        horizontalLine.setAttribute('stroke', '#000');
-        horizontalLine.setAttribute('stroke-width', '1.5');
+        horizontalLine.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        horizontalLine.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
         svg.appendChild(horizontalLine);
         
         // Left descending hook (always present)
@@ -444,8 +451,8 @@ export class MeasureRenderer {
         leftHook.setAttribute('y1', y.toString());
         leftHook.setAttribute('x2', startX.toString());
         leftHook.setAttribute('y2', (y + hookHeight).toString());
-        leftHook.setAttribute('stroke', '#000');
-        leftHook.setAttribute('stroke-width', '1.5');
+        leftHook.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        leftHook.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
         svg.appendChild(leftHook);
         
         // Right descending hook (only if closed)
@@ -455,13 +462,13 @@ export class MeasureRenderer {
             rightHook.setAttribute('y1', y.toString());
             rightHook.setAttribute('x2', endX.toString());
             rightHook.setAttribute('y2', (y + hookHeight).toString());
-            rightHook.setAttribute('stroke', '#000');
-            rightHook.setAttribute('stroke-width', '1.5');
+            rightHook.setAttribute('stroke', VISUAL.COLOR_BLACK);
+            rightHook.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_MEDIUM.toString());
             svg.appendChild(rightHook);
         }
         
         // Text label (e.g., "1-3" or "4")
-        const voltaText = this.createText(text, startX + 5, y - 2, '14px', 'normal');
+        const voltaText = this.createText(text, startX + 5, y - VISUAL.STROKE_WIDTH_THIN * 2, '14px', 'normal');
         voltaText.setAttribute('text-anchor', 'start');
         svg.appendChild(voltaText);
         
@@ -469,9 +476,9 @@ export class MeasureRenderer {
         if (this.placeAndSizeManager) {
             this.placeAndSizeManager.registerElement('volta-bracket', {
                 x: startX,
-                y: y - 20, // Include text height
+                y: y - LAYOUT.INNER_PADDING_PER_SEGMENT, // Include text height
                 width: endX - startX,
-                height: hookHeight + 20
+                height: hookHeight + LAYOUT.INNER_PADDING_PER_SEGMENT
             }, 1, { text, isClosed }); // Priority 1 - high priority but not absolutely fixed
         }
     }
@@ -490,39 +497,39 @@ export class MeasureRenderer {
      */
     private drawEmptyMeasure(svg: SVGElement, measureIndex: number): void {
         const leftBarX = this.x;
-        const rightBarX = this.x + this.width - 2;
+        const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Draw left barline
         if ((this.measure as any).isRepeatStart) {
-            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+            this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
-            this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
+            this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
         // NO staff line for empty measures - they are truly empty
 
         // Draw right barline
         if ((this.measure as any).isRepeatEnd) {
-            this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+            this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
             if ((this.measure as any).repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
             }
         } else if (this.measure.barline === '||') {
-            this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
         } else {
-            this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
+            this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
         }
     }
 
     private drawChordOnlyMeasure(svg: SVGElement, measureIndex: number): void {
         const leftBarX = this.x;
-        const rightBarX = this.x + this.width - 2;
+        const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Draw left barline
         if ((this.measure as any).isRepeatStart) {
-            this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+            this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
-            this.drawBar(svg, leftBarX, this.y, 120, measureIndex, 'left');
+            this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
         // Get chord segments for visual separators
@@ -535,7 +542,7 @@ export class MeasureRenderer {
             const slashStartX = leftBarX + 5;
             const slashStartY = this.y + 110; // Near bottom of measure
             const slashEndX = rightBarX - 5;
-            const slashEndY = this.y + 10; // Near top of measure
+            const slashEndY = this.y + LAYOUT.BASE_LEFT_PADDING; // Near top of measure
             
             const diagonalLine = document.createElementNS(SVG_NS, 'line');
             diagonalLine.setAttribute('x1', slashStartX.toString());

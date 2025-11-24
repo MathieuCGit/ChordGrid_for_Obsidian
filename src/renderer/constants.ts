@@ -70,6 +70,18 @@ export const LAYOUT = {
     
     /** Extra breathing room at end of multi-note segments (px) */
     SEGMENT_END_PADDING: 8,
+    
+    /** Repeat symbol height (px) @plannedFor v3.0 */
+    REPEAT_SYMBOL_HEIGHT: 30,
+    
+    /** Repeat count font size (px) @plannedFor v3.0 */
+    REPEAT_COUNT_FONT_SIZE: 22,
+    
+    /** Repeat count width (approximate, px) @plannedFor v3.0 */
+    REPEAT_COUNT_WIDTH: 30,
+    
+    /** Chord vertical offset (px) @plannedFor v3.0 */
+    CHORD_VERTICAL_OFFSET: 30,
 } as const;
 
 // =============================================================================
@@ -125,8 +137,14 @@ export const VISUAL = {
     /** Standard line stroke width (px) */
     STROKE_WIDTH_THIN: 1,
     
+    /** Medium line stroke width (px) @plannedFor v3.0 */
+    STROKE_WIDTH_MEDIUM: 1.5,
+    
     /** Thick line stroke width (barlines) (px) */
-    STROKE_WIDTH_THICK: 2,
+    STROKE_WIDTH_THICK: 3,
+    
+    /** Final barline stroke width (px) @plannedFor v3.0 */
+    STROKE_WIDTH_FINAL: 5,
     
     /** Extra thick stroke width (note slashes) (px) */
     STROKE_WIDTH_EXTRA_THICK: 3,
@@ -139,6 +157,12 @@ export const VISUAL = {
     
     /** Barline width for special barlines (px) */
     BARLINE_WIDTH_SPECIAL: 10,
+    
+    /** Separator color (chord-only mode) @plannedFor v3.0 */
+    COLOR_SEPARATOR: '#999',
+    
+    /** Repeat symbol color @plannedFor v3.0 */
+    COLOR_REPEAT_SYMBOL: '#444',
 } as const;
 
 // =============================================================================
@@ -197,8 +221,14 @@ export const NOTATION = {
     /** Repeat dots spacing above/below staff line (px) */
     REPEAT_DOT_SPACING: 12,
     
-    /** Repeat dots horizontal offset from barline (px) */
+    /** Repeat dots horizontal offset from barline (px) @plannedFor v3.0 */
     REPEAT_DOT_OFFSET: 12,
+    
+    /** Repeat dots radius (px) @plannedFor v3.0 */
+    REPEAT_DOT_RADIUS: 3,
+    
+    /** Hook height for volta brackets (px) @plannedFor v3.0 */
+    HOOK_HEIGHT: 10,
     
     /** Rest symbol reference height (quarter note) (px) */
     REST_HEIGHT_QUARTER: 30,
@@ -214,9 +244,6 @@ export const NOTATION = {
     
     /** Sixty-fourth rest target height (px) */
     REST_HEIGHT_SIXTY_FOURTH: 32,
-    
-    /** Hook/flag height for coda symbols (px) */
-    HOOK_HEIGHT: 10,
     
     /** Upbow symbol width (px) */
     UPBOW_WIDTH: 24.2,

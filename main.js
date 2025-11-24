@@ -1191,7 +1191,15 @@ var LAYOUT = {
   /** Base measure width (px) */
   BASE_MEASURE_WIDTH: 240,
   /** Extra breathing room at end of multi-note segments (px) */
-  SEGMENT_END_PADDING: 8
+  SEGMENT_END_PADDING: 8,
+  /** Repeat symbol height (px) @plannedFor v3.0 */
+  REPEAT_SYMBOL_HEIGHT: 30,
+  /** Repeat count font size (px) @plannedFor v3.0 */
+  REPEAT_COUNT_FONT_SIZE: 22,
+  /** Repeat count width (approximate, px) @plannedFor v3.0 */
+  REPEAT_COUNT_WIDTH: 30,
+  /** Chord vertical offset (px) @plannedFor v3.0 */
+  CHORD_VERTICAL_OFFSET: 30
 };
 var TYPOGRAPHY = {
   /** Default font size for chord symbols (px) */
@@ -1220,8 +1228,12 @@ var VISUAL = {
   COLOR_BLACK: "#000",
   /** Standard line stroke width (px) */
   STROKE_WIDTH_THIN: 1,
+  /** Medium line stroke width (px) @plannedFor v3.0 */
+  STROKE_WIDTH_MEDIUM: 1.5,
   /** Thick line stroke width (barlines) (px) */
-  STROKE_WIDTH_THICK: 2,
+  STROKE_WIDTH_THICK: 3,
+  /** Final barline stroke width (px) @plannedFor v3.0 */
+  STROKE_WIDTH_FINAL: 5,
   /** Extra thick stroke width (note slashes) (px) */
   STROKE_WIDTH_EXTRA_THICK: 3,
   /** Beam stroke width (px) */
@@ -1229,7 +1241,11 @@ var VISUAL = {
   /** Dot radius for dotted notes (px) */
   DOT_RADIUS: 2,
   /** Barline width for special barlines (px) */
-  BARLINE_WIDTH_SPECIAL: 10
+  BARLINE_WIDTH_SPECIAL: 10,
+  /** Separator color (chord-only mode) @plannedFor v3.0 */
+  COLOR_SEPARATOR: "#999",
+  /** Repeat symbol color @plannedFor v3.0 */
+  COLOR_REPEAT_SYMBOL: "#444"
 };
 var NOTATION = {
   /** Staff line Y offset from measure top (px) */
@@ -1264,8 +1280,12 @@ var NOTATION = {
   DOT_OFFSET_Y: 4,
   /** Repeat dots spacing above/below staff line (px) */
   REPEAT_DOT_SPACING: 12,
-  /** Repeat dots horizontal offset from barline (px) */
+  /** Repeat dots horizontal offset from barline (px) @plannedFor v3.0 */
   REPEAT_DOT_OFFSET: 12,
+  /** Repeat dots radius (px) @plannedFor v3.0 */
+  REPEAT_DOT_RADIUS: 3,
+  /** Hook height for volta brackets (px) @plannedFor v3.0 */
+  HOOK_HEIGHT: 10,
   /** Rest symbol reference height (quarter note) (px) */
   REST_HEIGHT_QUARTER: 30,
   /** Eighth rest target height (px) */
@@ -1276,8 +1296,6 @@ var NOTATION = {
   REST_HEIGHT_THIRTY_SECOND: 28,
   /** Sixty-fourth rest target height (px) */
   REST_HEIGHT_SIXTY_FOURTH: 32,
-  /** Hook/flag height for coda symbols (px) */
-  HOOK_HEIGHT: 10,
   /** Upbow symbol width (px) */
   UPBOW_WIDTH: 24.2,
   /** Upbow target display height (px) */
@@ -1848,23 +1866,23 @@ var MeasureRenderer = class {
     this.noteRenderer = new NoteRenderer(this.stemsDirection, this.placeAndSizeManager);
   }
   /**
-   * Dessine la mesure complète dans le SVG.
+   * Draw the complete measure in the SVG.
    * 
-   * Cette méthode orchestre le rendu de tous les éléments de la mesure :
-   * 1. Barres de mesure (gauche avec éventuelle reprise)
-   * 2. Ligne de portée
-   * 3. Segments d'accords avec leurs beats
-   * 4. Notes et silences avec ligatures
-   * 5. Barre de mesure de fin (avec éventuelle reprise ou double barre)
+   * This method orchestrates rendering of all measure elements:
+   * 1. Barlines (left with possible repeat)
+   * 2. Staff line
+   * 3. Chord segments with their beats
+   * 4. Notes and rests with beams
+   * 5. Right barline (with possible repeat or double bar)
    * 
-   * @param svg - Élément SVG parent
-   * @param measureIndex - Index de la mesure dans la grille (pour numérotation)
-   * @param notePositions - Tableau collectant les positions de toutes les notes (pour liaisons)
-   * @param grid - Grille complète (pour contexte de signature temporelle, etc.)
+   * @param svg - Parent SVG element
+   * @param measureIndex - Measure index in the grid (for numbering)
+   * @param notePositions - Array collecting positions of all notes (for ties)
+   * @param grid - Complete grid (for time signature context, etc.)
    */
   drawMeasure(svg, measureIndex, notePositions, grid) {
     const leftBarX = this.x;
-    const rightBarX = this.x + this.width - 2;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
     if (this.measure.__isEmpty) {
       this.drawEmptyMeasure(svg, measureIndex);
       return;
@@ -1874,25 +1892,25 @@ var MeasureRenderer = class {
       return;
     }
     if (this.measure.isRepeatStart) {
-      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
-      this.drawBar(svg, leftBarX, this.y, 120, measureIndex, "left");
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    const staffLineY = this.y + 80;
+    const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
     const staffLine = document.createElementNS(SVG_NS, "line");
-    staffLine.setAttribute("x1", (this.x + 10).toString());
+    staffLine.setAttribute("x1", (this.x + LAYOUT.BASE_LEFT_PADDING).toString());
     staffLine.setAttribute("y1", staffLineY.toString());
-    staffLine.setAttribute("x2", (this.x + this.width - 10).toString());
+    staffLine.setAttribute("x2", (this.x + this.width - LAYOUT.BASE_LEFT_PADDING).toString());
     staffLine.setAttribute("y2", staffLineY.toString());
-    staffLine.setAttribute("stroke", "#000");
-    staffLine.setAttribute("stroke-width", "1");
+    staffLine.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    staffLine.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THIN.toString());
     svg.appendChild(staffLine);
     if (this.placeAndSizeManager) {
       this.placeAndSizeManager.registerElement("staff-line", {
-        x: this.x + 10,
-        y: staffLineY - 1,
-        width: this.width - 20,
-        height: 2
+        x: this.x + LAYOUT.BASE_LEFT_PADDING,
+        y: staffLineY - VISUAL.STROKE_WIDTH_THIN,
+        width: this.width - LAYOUT.BASE_LEFT_PADDING * 2,
+        height: VISUAL.STROKE_WIDTH_THIN * 2
       }, 0, {
         exactX: this.x + this.width / 2,
         // Center X of the staff line
@@ -1904,46 +1922,46 @@ var MeasureRenderer = class {
       this.measure.__hasRepeatSymbol = true;
       this.drawRepeatSymbol(svg);
       if (this.measure.isRepeatEnd) {
-        this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+        this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
         if (this.measure.repeatCount !== void 0) {
           this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
         }
       } else if (this.measure.barline === "||") {
-        this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+        this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
       } else {
-        this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
+        this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
       }
       return;
     }
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
     const segmentNoteCursor = new Array(segments.length).fill(0);
     const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
-    const separatorWidth = 12;
+    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
     const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + (idx > 0 && seg.leadingSpace ? 1 : 0), 0);
-    const innerPaddingPerSegment = 20;
+    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
     const totalInnerPadding = innerPaddingPerSegment * segments.length;
     const totalSeparatorPixels = separatorsCount * separatorWidth;
-    const extraLeftPadding = this.measure.isRepeatStart ? 15 : 0;
+    const extraLeftPadding = this.measure.isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
     const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
-    const headHalfMax = 6;
+    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
     const valueMinSpacing = (v) => {
-      if (v >= 64) return 16;
-      if (v >= 32) return 20;
-      if (v >= 16) return 26;
-      if (v >= 8) return 24;
-      return 20;
+      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+      if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+      if (v >= 8) return NOTE_SPACING.EIGHTH;
+      return NOTE_SPACING.QUARTER_AND_LONGER;
     };
     const requiredBeatWidth = (beat) => {
       var _a;
       const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
-      if (noteCount <= 1) return 28 + 10 + headHalfMax;
+      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
       const spacing = Math.max(
         ...beat.notes.map((n) => {
           const base = valueMinSpacing(n.value);
           return n.isRest ? base + 4 : base;
         })
       );
-      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + 8;
     };
     const perSegmentRequired = segments.map((seg) => {
       const reqs = (seg.beats || []).map((b) => requiredBeatWidth(b));
@@ -1961,7 +1979,7 @@ var MeasureRenderer = class {
       const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
       const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
       const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
-      const segmentX = currentX + 10;
+      const segmentX = currentX + LAYOUT.BASE_LEFT_PADDING;
       const beatsWidth = segmentWidth - innerPaddingPerSegment;
       let beatCursorX = segmentX;
       segment.beats.forEach((beat, beatIndex) => {
@@ -1973,19 +1991,19 @@ var MeasureRenderer = class {
       currentX += segmentWidth;
     }
     if (this.measure.isRepeatEnd) {
-      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
     } else if (this.measure.barline === "||") {
-      this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
     } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
-      this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
     }
   }
   /**
-   * Dessine le rythme (notes) d'un beat.
-   * Délègue le rendu au NoteRenderer.
+   * Draw the rhythm (notes) of a beat.
+   * Delegates rendering to NoteRenderer.
    */
   drawRhythm(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
     return this.noteRenderer.drawBeat(
@@ -2023,15 +2041,15 @@ var MeasureRenderer = class {
       thickBar.setAttribute("x2", x.toString());
       thickBar.setAttribute("y2", (y + height).toString());
       thickBar.setAttribute("stroke", "#000");
-      thickBar.setAttribute("stroke-width", "3");
+      thickBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THICK.toString());
       svg.appendChild(thickBar);
       const thinBar = document.createElementNS(SVG_NS, "line");
-      thinBar.setAttribute("x1", (x + 6).toString());
+      thinBar.setAttribute("x1", (x + NOTATION.REPEAT_DOT_OFFSET).toString());
       thinBar.setAttribute("y1", y.toString());
-      thinBar.setAttribute("x2", (x + 6).toString());
+      thinBar.setAttribute("x2", (x + NOTATION.REPEAT_DOT_OFFSET).toString());
       thinBar.setAttribute("y2", (y + height).toString());
-      thinBar.setAttribute("stroke", "#000");
-      thinBar.setAttribute("stroke-width", "1.5");
+      thinBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thinBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
       svg.appendChild(thinBar);
     } else {
       const thinBar = document.createElementNS(SVG_NS, "line");
@@ -2039,21 +2057,21 @@ var MeasureRenderer = class {
       thinBar.setAttribute("y1", y.toString());
       thinBar.setAttribute("x2", x.toString());
       thinBar.setAttribute("y2", (y + height).toString());
-      thinBar.setAttribute("stroke", "#000");
-      thinBar.setAttribute("stroke-width", "1.5");
+      thinBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thinBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
       svg.appendChild(thinBar);
       const thickBar = document.createElementNS(SVG_NS, "line");
-      thickBar.setAttribute("x1", (x + 6).toString());
+      thickBar.setAttribute("x1", (x + NOTATION.REPEAT_DOT_OFFSET).toString());
       thickBar.setAttribute("y1", y.toString());
-      thickBar.setAttribute("x2", (x + 6).toString());
+      thickBar.setAttribute("x2", (x + NOTATION.REPEAT_DOT_OFFSET).toString());
       thickBar.setAttribute("y2", (y + height).toString());
-      thickBar.setAttribute("stroke", "#000");
-      thickBar.setAttribute("stroke-width", "3");
+      thickBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thickBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THICK.toString());
       svg.appendChild(thickBar);
     }
-    const dotOffset = isStart ? 12 : -12;
-    const staffLineY = y + 80;
-    const dotSpacing = 12;
+    const dotOffset = isStart ? NOTATION.REPEAT_DOT_OFFSET : -NOTATION.REPEAT_DOT_OFFSET;
+    const staffLineY = y + NOTATION.STAFF_LINE_Y_OFFSET;
+    const dotSpacing = NOTATION.REPEAT_DOT_OFFSET;
     const dot1Y = staffLineY - dotSpacing;
     const dot2Y = staffLineY + dotSpacing;
     [dot1Y, dot2Y].forEach((dotY) => {
@@ -2061,8 +2079,8 @@ var MeasureRenderer = class {
       const dotX = x + dotOffset;
       circle.setAttribute("cx", dotX.toString());
       circle.setAttribute("cy", dotY.toString());
-      circle.setAttribute("r", "3");
-      circle.setAttribute("fill", "#000");
+      circle.setAttribute("r", NOTATION.REPEAT_DOT_RADIUS.toString());
+      circle.setAttribute("fill", VISUAL.COLOR_BLACK);
       svg.appendChild(circle);
     });
   }
@@ -2072,16 +2090,16 @@ var MeasureRenderer = class {
     bar1.setAttribute("y1", y.toString());
     bar1.setAttribute("x2", x.toString());
     bar1.setAttribute("y2", (y + height).toString());
-    bar1.setAttribute("stroke", "#000");
-    bar1.setAttribute("stroke-width", "1.5");
+    bar1.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    bar1.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
     svg.appendChild(bar1);
     const bar2 = document.createElementNS(SVG_NS, "line");
-    bar2.setAttribute("x1", (x + 6).toString());
+    bar2.setAttribute("x1", (x + NOTATION.REPEAT_DOT_OFFSET).toString());
     bar2.setAttribute("y1", y.toString());
-    bar2.setAttribute("x2", (x + 6).toString());
+    bar2.setAttribute("x2", (x + NOTATION.REPEAT_DOT_OFFSET).toString());
     bar2.setAttribute("y2", (y + height).toString());
-    bar2.setAttribute("stroke", "#000");
-    bar2.setAttribute("stroke-width", "5");
+    bar2.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    bar2.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_FINAL.toString());
     svg.appendChild(bar2);
   }
   /**
@@ -2091,20 +2109,20 @@ var MeasureRenderer = class {
    * @param count - Number of repeats
    */
   drawRepeatCount(svg, x, count) {
-    const textX = x + 10;
+    const textX = x + LAYOUT.BASE_LEFT_PADDING;
     const textY = this.y + 5;
-    const fontSize = 22;
+    const fontSize = LAYOUT.REPEAT_COUNT_FONT_SIZE;
     const text = document.createElementNS(SVG_NS, "text");
     text.setAttribute("x", textX.toString());
     text.setAttribute("y", textY.toString());
     text.setAttribute("font-family", "Arial, sans-serif");
     text.setAttribute("font-size", `${fontSize}px`);
     text.setAttribute("font-weight", "normal");
-    text.setAttribute("fill", "#000");
+    text.setAttribute("fill", VISUAL.COLOR_BLACK);
     text.textContent = `x${count}`;
     svg.appendChild(text);
     if (this.placeAndSizeManager) {
-      const textWidth = count >= 10 ? 40 : 30;
+      const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH;
       this.placeAndSizeManager.registerElement("repeat-count", {
         x: textX,
         y: textY - fontSize,
@@ -2132,23 +2150,23 @@ var MeasureRenderer = class {
    * @param isClosed - Whether to draw the right hook (closed bracket)
    */
   drawVoltaBracket(svg, startX, endX, text, isClosed) {
-    const y = this.y + 10;
-    const hookHeight = 10;
+    const y = this.y + LAYOUT.BASE_LEFT_PADDING;
+    const hookHeight = NOTATION.HOOK_HEIGHT;
     const horizontalLine = document.createElementNS(SVG_NS, "line");
     horizontalLine.setAttribute("x1", startX.toString());
     horizontalLine.setAttribute("y1", y.toString());
     horizontalLine.setAttribute("x2", endX.toString());
     horizontalLine.setAttribute("y2", y.toString());
-    horizontalLine.setAttribute("stroke", "#000");
-    horizontalLine.setAttribute("stroke-width", "1.5");
+    horizontalLine.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    horizontalLine.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
     svg.appendChild(horizontalLine);
     const leftHook = document.createElementNS(SVG_NS, "line");
     leftHook.setAttribute("x1", startX.toString());
     leftHook.setAttribute("y1", y.toString());
     leftHook.setAttribute("x2", startX.toString());
     leftHook.setAttribute("y2", (y + hookHeight).toString());
-    leftHook.setAttribute("stroke", "#000");
-    leftHook.setAttribute("stroke-width", "1.5");
+    leftHook.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    leftHook.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
     svg.appendChild(leftHook);
     if (isClosed) {
       const rightHook = document.createElementNS(SVG_NS, "line");
@@ -2156,20 +2174,20 @@ var MeasureRenderer = class {
       rightHook.setAttribute("y1", y.toString());
       rightHook.setAttribute("x2", endX.toString());
       rightHook.setAttribute("y2", (y + hookHeight).toString());
-      rightHook.setAttribute("stroke", "#000");
-      rightHook.setAttribute("stroke-width", "1.5");
+      rightHook.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      rightHook.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
       svg.appendChild(rightHook);
     }
-    const voltaText = this.createText(text, startX + 5, y - 2, "14px", "normal");
+    const voltaText = this.createText(text, startX + 5, y - VISUAL.STROKE_WIDTH_THIN * 2, "14px", "normal");
     voltaText.setAttribute("text-anchor", "start");
     svg.appendChild(voltaText);
     if (this.placeAndSizeManager) {
       this.placeAndSizeManager.registerElement("volta-bracket", {
         x: startX,
-        y: y - 20,
+        y: y - LAYOUT.INNER_PADDING_PER_SEGMENT,
         // Include text height
         width: endX - startX,
-        height: hookHeight + 20
+        height: hookHeight + LAYOUT.INNER_PADDING_PER_SEGMENT
       }, 1, { text, isClosed });
     }
   }
@@ -2187,30 +2205,30 @@ var MeasureRenderer = class {
    */
   drawEmptyMeasure(svg, measureIndex) {
     const leftBarX = this.x;
-    const rightBarX = this.x + this.width - 2;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
     if (this.measure.isRepeatStart) {
-      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
-      this.drawBar(svg, leftBarX, this.y, 120, measureIndex, "left");
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
     if (this.measure.isRepeatEnd) {
-      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
     } else if (this.measure.barline === "||") {
-      this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
     } else {
-      this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
     }
   }
   drawChordOnlyMeasure(svg, measureIndex) {
     const leftBarX = this.x;
-    const rightBarX = this.x + this.width - 2;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
     if (this.measure.isRepeatStart) {
-      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true, measureIndex);
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
-      this.drawBar(svg, leftBarX, this.y, 120, measureIndex, "left");
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
     const segments = this.measure.chordSegments || [];
     const chordCount = segments.length;
@@ -2218,7 +2236,7 @@ var MeasureRenderer = class {
       const slashStartX = leftBarX + 5;
       const slashStartY = this.y + 110;
       const slashEndX = rightBarX - 5;
-      const slashEndY = this.y + 10;
+      const slashEndY = this.y + LAYOUT.BASE_LEFT_PADDING;
       const diagonalLine = document.createElementNS(SVG_NS, "line");
       diagonalLine.setAttribute("x1", slashStartX.toString());
       diagonalLine.setAttribute("y1", slashStartY.toString());
