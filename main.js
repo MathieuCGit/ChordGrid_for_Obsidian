@@ -227,6 +227,34 @@ var _ChordGridParser = class _ChordGridParser {
       }
       allMeasures.push(...measures);
     }
+    for (let i = 0; i < allMeasures.length; i++) {
+      const measure = allMeasures[i];
+      if (measure.voltaStart) {
+        const voltaInfo = measure.voltaStart;
+        let endIndex = i;
+        let foundExplicitEnd = false;
+        for (let j = i + 1; j < allMeasures.length; j++) {
+          const nextMeasure = allMeasures[j];
+          if (nextMeasure.voltaEndMarker) {
+            endIndex = j;
+            foundExplicitEnd = true;
+            delete nextMeasure.voltaEndMarker;
+            break;
+          }
+          if (!voltaInfo.isClosed) {
+            continue;
+          }
+          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
+            break;
+          }
+          endIndex = j;
+          if (nextMeasure.isRepeatEnd) {
+            break;
+          }
+        }
+        allMeasures[endIndex].voltaEnd = voltaInfo;
+      }
+    }
     const renderedLines = this.groupIntoLines(allMeasures, 4);
     const grid = {
       timeSignature,
@@ -664,34 +692,6 @@ var _ChordGridParser = class _ChordGridParser {
         }
       }
       lastExplicitMeasure = newMeasure;
-    }
-    for (let i = 0; i < measures.length; i++) {
-      const measure = measures[i];
-      if (measure.voltaStart) {
-        const voltaInfo = measure.voltaStart;
-        let endIndex = i;
-        let foundExplicitEnd = false;
-        for (let j = i + 1; j < measures.length; j++) {
-          const nextMeasure = measures[j];
-          if (nextMeasure.voltaEndMarker) {
-            endIndex = j;
-            foundExplicitEnd = true;
-            delete nextMeasure.voltaEndMarker;
-            break;
-          }
-          if (!voltaInfo.isClosed) {
-            continue;
-          }
-          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
-            break;
-          }
-          endIndex = j;
-          if (nextMeasure.isRepeatEnd) {
-            break;
-          }
-        }
-        measures[endIndex].voltaEnd = voltaInfo;
-      }
     }
     return measures;
   }

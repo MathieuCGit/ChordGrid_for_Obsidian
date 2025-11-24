@@ -202,6 +202,60 @@ export class ChordGridParser {
       allMeasures.push(...measures);
     }
     
+    // POST-PROCESSING: Determine volta spanning (voltaEnd)
+    // Must be done AFTER all lines are parsed, not per-line
+    // A volta spans from where it starts until:
+    // - An explicit |. end marker is encountered
+    // - The next volta starts (different volta)  
+    // - A repeat start barline is encountered (||:)
+    // - End of measures
+    // Note: A volta CAN include the measure with :|| (repeat end)
+    
+    for (let i = 0; i < allMeasures.length; i++) {
+      const measure = allMeasures[i] as any;
+      if (measure.voltaStart) {
+        const voltaInfo = measure.voltaStart;
+        
+        // Find the end of this volta
+        let endIndex = i;
+        let foundExplicitEnd = false;
+        
+        // Always search for explicit end marker, even for open voltas
+        for (let j = i + 1; j < allMeasures.length; j++) {
+          const nextMeasure = allMeasures[j] as any;
+          
+          // Check for explicit end marker (|.) - has highest priority
+          if (nextMeasure.voltaEndMarker) {
+            endIndex = j;
+            foundExplicitEnd = true;
+            delete nextMeasure.voltaEndMarker; // Clean up marker
+            break;
+          }
+          
+          // For open voltas (isClosed = false), only look for explicit markers
+          // Don't auto-extend to following measures
+          if (!voltaInfo.isClosed) {
+            continue; // Keep searching for |. marker
+          }
+          
+          // For closed voltas (isClosed = true), auto-extend with normal rules
+          // Stop BEFORE a new volta or repeat start
+          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
+            break;
+          }
+          endIndex = j;
+          
+          // Stop AFTER a repeat end (include it in the volta)
+          if (nextMeasure.isRepeatEnd) {
+            break;
+          }
+        }
+        
+        // Mark the end measure with voltaEnd (same volta info)
+        (allMeasures[endIndex] as any).voltaEnd = voltaInfo;
+      }
+    }
+    
     // Grouper en lignes de 4 mesures pour le rendu
     const renderedLines = this.groupIntoLines(allMeasures, 4);
 
@@ -882,58 +936,6 @@ export class ChordGridParser {
       
       // Update reference to last explicit measure (for % notation)
       lastExplicitMeasure = newMeasure;
-    }
-
-    // POST-PROCESSING: Determine volta spanning (voltaEnd)
-    // A volta spans from where it starts until:
-    // - An explicit |. end marker is encountered
-    // - The next volta starts (different volta)  
-    // - A repeat start barline is encountered (||:)
-    // - End of measures
-    // Note: A volta CAN include the measure with :|| (repeat end)
-    for (let i = 0; i < measures.length; i++) {
-      const measure = measures[i] as any;
-      if (measure.voltaStart) {
-        const voltaInfo = measure.voltaStart;
-        
-        // Find the end of this volta
-        let endIndex = i;
-        let foundExplicitEnd = false;
-        
-        // Always search for explicit end marker, even for open voltas
-        for (let j = i + 1; j < measures.length; j++) {
-          const nextMeasure = measures[j] as any;
-          
-          // Check for explicit end marker (|.) - has highest priority
-          if (nextMeasure.voltaEndMarker) {
-            endIndex = j;
-            foundExplicitEnd = true;
-            delete nextMeasure.voltaEndMarker; // Clean up marker
-            break;
-          }
-          
-          // For open voltas (isClosed = false), only look for explicit markers
-          // Don't auto-extend to following measures
-          if (!voltaInfo.isClosed) {
-            continue; // Keep searching for |. marker
-          }
-          
-          // For closed voltas (isClosed = true), auto-extend with normal rules
-          // Stop BEFORE a new volta or repeat start
-          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
-            break;
-          }
-          endIndex = j;
-          
-          // Stop AFTER a repeat end (include it in the volta)
-          if (nextMeasure.isRepeatEnd) {
-            break;
-          }
-        }
-        
-        // Mark the end measure with voltaEnd (same volta info)
-        (measures[endIndex] as any).voltaEnd = voltaInfo;
-      }
     }
 
     return measures;
