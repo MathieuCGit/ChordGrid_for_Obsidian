@@ -2405,6 +2405,223 @@ var TieManager = class {
   }
 };
 
+// src/utils/VoltaManager.ts
+var VoltaManager = class {
+  constructor() {
+    __publicField(this, "allMeasurePositions", []);
+    __publicField(this, "allBarlines", []);
+  }
+  /**
+   * Registers a measure position for volta rendering.
+   * 
+   * Should be called for each measure as it's rendered, in order.
+   * 
+   * @param mp - Measure position with coordinates and line information
+   */
+  addMeasurePosition(mp) {
+    this.allMeasurePositions.push(mp);
+  }
+  /**
+   * Registers barlines from a line before PlaceAndSizeManager.clearAll().
+   * 
+   * Since PlaceAndSizeManager is cleared after each line for collision management,
+   * we need to save barline positions before they're lost.
+   * 
+   * @param barlines - Array of barline information from the current line
+   */
+  addBarlines(barlines) {
+    this.allBarlines.push(...barlines);
+  }
+  /**
+   * Renders all volta brackets with global context.
+   * 
+   * This method must be called AFTER all lines have been processed,
+   * so it has a complete view of all measures and can correctly
+   * render voltas that span multiple lines.
+   * 
+   * @param svg - Parent SVG element
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  renderVoltas(svg, placeAndSizeManager) {
+    const measurePositions = this.allMeasurePositions;
+    const allBarlines = this.allBarlines;
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure;
+      if (measure.voltaStart) {
+        let endMeasureIndex = i;
+        for (let j = i; j < measurePositions.length; j++) {
+          const endMeasure = measurePositions[j].measure;
+          if (endMeasure.voltaEnd && endMeasure.voltaEnd.text === measure.voltaStart.text) {
+            endMeasureIndex = j;
+            break;
+          }
+        }
+        const startMP = measurePositions[i];
+        const endMP = measurePositions[endMeasureIndex];
+        if (startMP.x !== void 0 && endMP.x !== void 0 && startMP.y !== void 0) {
+          const voltaInfo = measure.voltaStart;
+          const hookHeight = 15;
+          const textSize = 14;
+          const voltaMeasures = measurePositions.slice(i, endMeasureIndex + 1);
+          const lineGroups = /* @__PURE__ */ new Map();
+          voltaMeasures.forEach((mp2) => {
+            if (!lineGroups.has(mp2.lineIndex)) {
+              lineGroups.set(mp2.lineIndex, []);
+            }
+            lineGroups.get(mp2.lineIndex).push(mp2);
+          });
+          lineGroups.forEach((lineMeasures, lineIndex) => {
+            var _a, _b, _c, _d, _e, _f, _g;
+            const isFirstLine = lineIndex === startMP.lineIndex;
+            const isLastLine = lineIndex === endMP.lineIndex;
+            const firstMeasureOnLine = lineMeasures[0];
+            const lastMeasureOnLine = lineMeasures[lineMeasures.length - 1];
+            let startX;
+            let startBarline;
+            if (isFirstLine && i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+              const prevMeasureIndex = measurePositions[i - 1].globalIndex;
+              startBarline = allBarlines.find(
+                (bl) => bl.measureIndex === prevMeasureIndex && bl.side === "right"
+              );
+              startX = (_a = startBarline == null ? void 0 : startBarline.exactX) != null ? _a : firstMeasureOnLine.x + firstMeasureOnLine.width - 2;
+            } else {
+              startBarline = allBarlines.find(
+                (bl) => bl.measureIndex === firstMeasureOnLine.globalIndex && bl.side === "left"
+              );
+              startX = (_b = startBarline == null ? void 0 : startBarline.exactX) != null ? _b : firstMeasureOnLine.x;
+            }
+            const endRightBarline = allBarlines.find(
+              (bl) => bl.measureIndex === lastMeasureOnLine.globalIndex && bl.side === "right"
+            );
+            let endX = (_d = (_c = endRightBarline == null ? void 0 : endRightBarline.visualEndX) != null ? _c : endRightBarline == null ? void 0 : endRightBarline.exactX) != null ? _d : lastMeasureOnLine.x + lastMeasureOnLine.width - 2;
+            const y = (_e = startBarline == null ? void 0 : startBarline.y) != null ? _e : firstMeasureOnLine.y;
+            const horizontalLine = document.createElementNS(SVG_NS, "line");
+            horizontalLine.setAttribute("x1", startX.toString());
+            horizontalLine.setAttribute("y1", y.toString());
+            horizontalLine.setAttribute("x2", endX.toString());
+            horizontalLine.setAttribute("y2", y.toString());
+            horizontalLine.setAttribute("stroke", "#000");
+            horizontalLine.setAttribute("stroke-width", "1.5");
+            horizontalLine.setAttribute("data-volta", "horizontal");
+            svg.appendChild(horizontalLine);
+            if (isFirstLine) {
+              const leftHook = document.createElementNS(SVG_NS, "line");
+              leftHook.setAttribute("x1", startX.toString());
+              leftHook.setAttribute("y1", y.toString());
+              leftHook.setAttribute("x2", startX.toString());
+              leftHook.setAttribute("y2", (y + hookHeight).toString());
+              leftHook.setAttribute("stroke", "#000");
+              leftHook.setAttribute("stroke-width", "1.5");
+              leftHook.setAttribute("data-volta", "left-hook");
+              svg.appendChild(leftHook);
+            }
+            if (isLastLine && voltaInfo.isClosed) {
+              const rightHook = document.createElementNS(SVG_NS, "line");
+              rightHook.setAttribute("x1", endX.toString());
+              rightHook.setAttribute("y1", y.toString());
+              rightHook.setAttribute("x2", endX.toString());
+              rightHook.setAttribute("y2", (y + hookHeight).toString());
+              rightHook.setAttribute("stroke", "#000");
+              rightHook.setAttribute("stroke-width", "1.5");
+              rightHook.setAttribute("data-volta", "right-hook");
+              svg.appendChild(rightHook);
+            }
+            if (isFirstLine) {
+              const textY = y + textSize + 2;
+              const registeredVoltaTexts = placeAndSizeManager.getElements().filter(
+                (el) => {
+                  var _a2;
+                  return el.type === "volta-text" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === i;
+                }
+              );
+              const registeredText = registeredVoltaTexts[0];
+              const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+              const leftPadding = (_g = (_f = registeredText == null ? void 0 : registeredText.metadata) == null ? void 0 : _f.leftPadding) != null ? _g : LAYOUT.VOLTA_TEXT_LEFT_PADDING;
+              const textX = registeredText ? registeredText.bbox.x + textMargin + leftPadding : startX + LAYOUT.VOLTA_TEXT_OFFSET + textMargin;
+              const voltaText = document.createElementNS(SVG_NS, "text");
+              voltaText.setAttribute("x", textX.toString());
+              voltaText.setAttribute("y", textY.toString());
+              voltaText.setAttribute("font-family", "Arial, sans-serif");
+              voltaText.setAttribute("font-size", `${textSize}px`);
+              voltaText.setAttribute("font-weight", "normal");
+              voltaText.setAttribute("fill", "#000");
+              voltaText.setAttribute("text-anchor", "start");
+              voltaText.setAttribute("data-volta", "text");
+              voltaText.textContent = voltaInfo.text;
+              svg.appendChild(voltaText);
+              let realTextWidth = voltaInfo.text.length * (textSize * 0.6);
+              let realTextHeight = textSize;
+              try {
+                const textBBox = voltaText.getBBox();
+                realTextWidth = textBBox.width;
+                realTextHeight = textBBox.height;
+              } catch (e) {
+              }
+              placeAndSizeManager.registerElement("volta-bracket", {
+                x: startX,
+                y,
+                width: endX - startX,
+                height: hookHeight + realTextHeight + 4
+              }, 1, {
+                text: voltaInfo.text,
+                isClosed: voltaInfo.isClosed,
+                exactX: (startX + endX) / 2,
+                exactY: y + hookHeight / 2,
+                horizontalLineY: y,
+                leftHookX: startX,
+                rightHookX: endX,
+                hookHeight,
+                visualStartX: startX,
+                visualEndX: endX,
+                visualTopY: y,
+                visualBottomY: y + hookHeight + realTextHeight + 4,
+                measureStartIndex: i,
+                measureEndIndex: endMeasureIndex,
+                isFirstLine: true
+              });
+            } else {
+              placeAndSizeManager.registerElement("volta-bracket", {
+                x: startX,
+                y,
+                width: endX - startX,
+                height: hookHeight
+              }, 1, {
+                text: voltaInfo.text,
+                isClosed: voltaInfo.isClosed && isLastLine,
+                exactX: (startX + endX) / 2,
+                exactY: y + hookHeight / 2,
+                horizontalLineY: y,
+                leftHookX: isFirstLine ? startX : void 0,
+                rightHookX: isLastLine && voltaInfo.isClosed ? endX : void 0,
+                hookHeight,
+                visualStartX: startX,
+                visualEndX: endX,
+                visualTopY: y,
+                visualBottomY: y + hookHeight,
+                measureStartIndex: firstMeasureOnLine.globalIndex,
+                measureEndIndex: lastMeasureOnLine.globalIndex,
+                isFirstLine: false,
+                lineIndex
+              });
+            }
+          });
+        }
+      }
+    }
+  }
+  /**
+   * Clears all accumulated data.
+   * 
+   * Should be called before starting a new render to ensure
+   * no stale data from previous renders remains.
+   */
+  clear() {
+    this.allMeasurePositions = [];
+    this.allBarlines = [];
+  }
+};
+
 // src/analyzer/MusicAnalyzer.ts
 var DebugLogger2;
 try {
@@ -4085,6 +4302,7 @@ var SVGRenderer = class {
     svg.setAttribute("xmlns", SVG_NS);
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
     const tieManager = new TieManager();
+    const voltaManager = new VoltaManager();
     const notePositions = [];
     const bg = document.createElementNS(SVG_NS, "rect");
     bg.setAttribute("x", "0");
@@ -4155,8 +4373,6 @@ var SVGRenderer = class {
       analyzedMeasures = [];
     }
     let globalMeasureIndex = 0;
-    const allMeasurePositions = [];
-    const allBarlines = [];
     renderLines.forEach((line, lineIndex) => {
       placeAndSizeManager.clearAll();
       if (lineIndex === 0) {
@@ -4188,7 +4404,7 @@ var SVGRenderer = class {
           y: lineY
         };
         lineMeasurePositions.push(mp);
-        allMeasurePositions.push(mp);
+        voltaManager.addMeasurePosition(mp);
         currentX += mWidth;
       });
       this.registerBarlines(lineMeasurePositions, placeAndSizeManager);
@@ -4261,9 +4477,9 @@ var SVGRenderer = class {
         measureIndex: el.metadata.measureIndex,
         side: el.metadata.side
       }));
-      allBarlines.push(...lineBarlines);
+      voltaManager.addBarlines(lineBarlines);
     });
-    this.drawVoltaBrackets(svg, allMeasurePositions, allBarlines, placeAndSizeManager);
+    voltaManager.renderVoltas(svg, placeAndSizeManager);
     const bounds = placeAndSizeManager.getGlobalBounds();
     if (options.debugPlacement) {
       placeAndSizeManager.logDiagnosticReport();
@@ -4709,183 +4925,6 @@ var SVGRenderer = class {
             leftPadding,
             measureIndex: i
             // Add measureIndex so drawVoltaBrackets can find it
-          });
-        }
-      }
-    }
-  }
-  /**
-   * Draw volta brackets above measures.
-   * 
-   * Scans all measures for voltaStart/voltaEnd properties and draws brackets
-   * spanning the appropriate measures.
-   * 
-   * @param svg - SVG parent element
-   * @param measurePositions - Array of measure positions with coordinates
-   * @param allBarlines - Array of all barlines from all lines
-   * @param placeAndSizeManager - Manager for registering collision boxes
-   */
-  drawVoltaBrackets(svg, measurePositions, allBarlines, placeAndSizeManager) {
-    for (let i = 0; i < measurePositions.length; i++) {
-      const mp = measurePositions[i];
-      const measure = mp.measure;
-      if (measure.voltaStart) {
-        let endMeasureIndex = i;
-        for (let j = i; j < measurePositions.length; j++) {
-          const endMeasure = measurePositions[j].measure;
-          if (endMeasure.voltaEnd && endMeasure.voltaEnd.text === measure.voltaStart.text) {
-            endMeasureIndex = j;
-            break;
-          }
-        }
-        const startMP = measurePositions[i];
-        const endMP = measurePositions[endMeasureIndex];
-        if (startMP.x !== void 0 && endMP.x !== void 0 && startMP.y !== void 0) {
-          const voltaInfo = measure.voltaStart;
-          const hookHeight = 15;
-          const textSize = 14;
-          const voltaMeasures = measurePositions.slice(i, endMeasureIndex + 1);
-          const lineGroups = /* @__PURE__ */ new Map();
-          voltaMeasures.forEach((mp2) => {
-            if (!lineGroups.has(mp2.lineIndex)) {
-              lineGroups.set(mp2.lineIndex, []);
-            }
-            lineGroups.get(mp2.lineIndex).push(mp2);
-          });
-          lineGroups.forEach((lineMeasures, lineIndex) => {
-            var _a, _b, _c, _d, _e, _f, _g;
-            const isFirstLine = lineIndex === startMP.lineIndex;
-            const isLastLine = lineIndex === endMP.lineIndex;
-            const firstMeasureOnLine = lineMeasures[0];
-            const lastMeasureOnLine = lineMeasures[lineMeasures.length - 1];
-            let startX;
-            let startBarline;
-            if (isFirstLine && i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
-              const prevMeasureIndex = measurePositions[i - 1].globalIndex;
-              startBarline = allBarlines.find(
-                (bl) => bl.measureIndex === prevMeasureIndex && bl.side === "right"
-              );
-              startX = (_a = startBarline == null ? void 0 : startBarline.exactX) != null ? _a : firstMeasureOnLine.x + firstMeasureOnLine.width - 2;
-            } else {
-              startBarline = allBarlines.find(
-                (bl) => bl.measureIndex === firstMeasureOnLine.globalIndex && bl.side === "left"
-              );
-              startX = (_b = startBarline == null ? void 0 : startBarline.exactX) != null ? _b : firstMeasureOnLine.x;
-            }
-            const endRightBarline = allBarlines.find(
-              (bl) => bl.measureIndex === lastMeasureOnLine.globalIndex && bl.side === "right"
-            );
-            let endX = (_d = (_c = endRightBarline == null ? void 0 : endRightBarline.visualEndX) != null ? _c : endRightBarline == null ? void 0 : endRightBarline.exactX) != null ? _d : lastMeasureOnLine.x + lastMeasureOnLine.width - 2;
-            const y = (_e = startBarline == null ? void 0 : startBarline.y) != null ? _e : firstMeasureOnLine.y;
-            const horizontalLine = document.createElementNS(SVG_NS, "line");
-            horizontalLine.setAttribute("x1", startX.toString());
-            horizontalLine.setAttribute("y1", y.toString());
-            horizontalLine.setAttribute("x2", endX.toString());
-            horizontalLine.setAttribute("y2", y.toString());
-            horizontalLine.setAttribute("stroke", "#000");
-            horizontalLine.setAttribute("stroke-width", "1.5");
-            horizontalLine.setAttribute("data-volta", "horizontal");
-            svg.appendChild(horizontalLine);
-            if (isFirstLine) {
-              const leftHook = document.createElementNS(SVG_NS, "line");
-              leftHook.setAttribute("x1", startX.toString());
-              leftHook.setAttribute("y1", y.toString());
-              leftHook.setAttribute("x2", startX.toString());
-              leftHook.setAttribute("y2", (y + hookHeight).toString());
-              leftHook.setAttribute("stroke", "#000");
-              leftHook.setAttribute("stroke-width", "1.5");
-              leftHook.setAttribute("data-volta", "left-hook");
-              svg.appendChild(leftHook);
-            }
-            if (isLastLine && voltaInfo.isClosed) {
-              const rightHook = document.createElementNS(SVG_NS, "line");
-              rightHook.setAttribute("x1", endX.toString());
-              rightHook.setAttribute("y1", y.toString());
-              rightHook.setAttribute("x2", endX.toString());
-              rightHook.setAttribute("y2", (y + hookHeight).toString());
-              rightHook.setAttribute("stroke", "#000");
-              rightHook.setAttribute("stroke-width", "1.5");
-              rightHook.setAttribute("data-volta", "right-hook");
-              svg.appendChild(rightHook);
-            }
-            if (isFirstLine) {
-              const textY = y + textSize + 2;
-              const registeredVoltaTexts = placeAndSizeManager.getElements().filter(
-                (el) => {
-                  var _a2;
-                  return el.type === "volta-text" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === i;
-                }
-              );
-              const registeredText = registeredVoltaTexts[0];
-              const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
-              const leftPadding = (_g = (_f = registeredText == null ? void 0 : registeredText.metadata) == null ? void 0 : _f.leftPadding) != null ? _g : LAYOUT.VOLTA_TEXT_LEFT_PADDING;
-              const textX = registeredText ? registeredText.bbox.x + textMargin + leftPadding : startX + LAYOUT.VOLTA_TEXT_OFFSET + textMargin;
-              const voltaText = document.createElementNS(SVG_NS, "text");
-              voltaText.setAttribute("x", textX.toString());
-              voltaText.setAttribute("y", textY.toString());
-              voltaText.setAttribute("font-family", "Arial, sans-serif");
-              voltaText.setAttribute("font-size", `${textSize}px`);
-              voltaText.setAttribute("font-weight", "normal");
-              voltaText.setAttribute("fill", "#000");
-              voltaText.setAttribute("text-anchor", "start");
-              voltaText.setAttribute("data-volta", "text");
-              voltaText.textContent = voltaInfo.text;
-              svg.appendChild(voltaText);
-              let realTextWidth = voltaInfo.text.length * (textSize * 0.6);
-              let realTextHeight = textSize;
-              try {
-                const textBBox = voltaText.getBBox();
-                realTextWidth = textBBox.width;
-                realTextHeight = textBBox.height;
-              } catch (e) {
-              }
-              placeAndSizeManager.registerElement("volta-bracket", {
-                x: startX,
-                y,
-                width: endX - startX,
-                height: hookHeight + realTextHeight + 4
-              }, 1, {
-                text: voltaInfo.text,
-                isClosed: voltaInfo.isClosed,
-                exactX: (startX + endX) / 2,
-                exactY: y + hookHeight / 2,
-                horizontalLineY: y,
-                leftHookX: startX,
-                rightHookX: endX,
-                hookHeight,
-                visualStartX: startX,
-                visualEndX: endX,
-                visualTopY: y,
-                visualBottomY: y + hookHeight + realTextHeight + 4,
-                measureStartIndex: i,
-                measureEndIndex: endMeasureIndex,
-                isFirstLine: true
-              });
-            } else {
-              placeAndSizeManager.registerElement("volta-bracket", {
-                x: startX,
-                y,
-                width: endX - startX,
-                height: hookHeight
-              }, 1, {
-                text: voltaInfo.text,
-                isClosed: voltaInfo.isClosed && isLastLine,
-                exactX: (startX + endX) / 2,
-                exactY: y + hookHeight / 2,
-                horizontalLineY: y,
-                leftHookX: isFirstLine ? startX : void 0,
-                rightHookX: isLastLine && voltaInfo.isClosed ? endX : void 0,
-                hookHeight,
-                visualStartX: startX,
-                visualEndX: endX,
-                visualTopY: y,
-                visualBottomY: y + hookHeight,
-                measureStartIndex: firstMeasureOnLine.globalIndex,
-                measureEndIndex: lastMeasureOnLine.globalIndex,
-                isFirstLine: false,
-                lineIndex
-              });
-            }
           });
         }
       }
