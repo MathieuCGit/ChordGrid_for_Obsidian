@@ -121,7 +121,7 @@ export class NoteRenderer {
         stem.setAttribute('x2', stemStartX.toString());
         stem.setAttribute('y2', stemEndY.toString());
         stem.setAttribute('stroke', VISUAL.COLOR_BLACK);
-        stem.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THICK));
+        stem.setAttribute('stroke-width', String(VISUAL.STEM_STROKE_WIDTH));
         svg.appendChild(stem);
 
         // Return actual top and bottom values

@@ -152,6 +152,9 @@ export const VISUAL = {
     /** Beam stroke width (px) */
     BEAM_STROKE_WIDTH: 2,
     
+    /** Stem stroke width (px) @plannedFor v3.0 */
+    STEM_STROKE_WIDTH: 2,
+    
     /** Dot radius for dotted notes (px) */
     DOT_RADIUS: 2,
     

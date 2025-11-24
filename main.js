@@ -1238,6 +1238,8 @@ var VISUAL = {
   STROKE_WIDTH_EXTRA_THICK: 3,
   /** Beam stroke width (px) */
   BEAM_STROKE_WIDTH: 2,
+  /** Stem stroke width (px) @plannedFor v3.0 */
+  STEM_STROKE_WIDTH: 2,
   /** Dot radius for dotted notes (px) */
   DOT_RADIUS: 2,
   /** Barline width for special barlines (px) */
@@ -1602,7 +1604,7 @@ var NoteRenderer = class {
     stem.setAttribute("x2", stemStartX.toString());
     stem.setAttribute("y2", stemEndY.toString());
     stem.setAttribute("stroke", VISUAL.COLOR_BLACK);
-    stem.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THICK));
+    stem.setAttribute("stroke-width", String(VISUAL.STEM_STROKE_WIDTH));
     svg.appendChild(stem);
     return {
       x: stemStartX,

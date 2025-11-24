@@ -50,7 +50,7 @@ ChordGrid_for_Obsidian/
 │   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer
 │   │   ├── ChordRenderer.ts         # Chord symbol rendering
 │   │   ├── PlaceAndSizeManager.ts   # Placement & collision management
-│   │   └── constants.ts             # SVG/layout constants
+│   │   └── constants.ts             # Centralized rendering constants (v3 preparation)
 │   └── utils/
 │       ├── TieManager.ts            # Cross-measure tie management
 │       └── DebugLogger.ts           # Debug logging system
@@ -480,21 +480,147 @@ ts-node ./test/run_integration_analyzer.ts
 
 ## Contribution
 
-Pour contribuer au projet :
-1. Consulter cette documentation
-2. Lire les commentaires JSDoc dans le code
-3. Ajouter des tests pour nouvelles fonctionnalités
-4. Maintenir la cohérence de style (voir conventions ci-dessous)
+For contributing to the project:
+1. Consult this documentation
+2. Read JSDoc comments in code
+3. Add tests for new features
+4. Maintain style consistency (see conventions below)
 
-### Conventions de code :
-- Classes en PascalCase
-- Méthodes/propriétés en camelCase
-- Constantes en UPPER_SNAKE_CASE
-- Interfaces préfixées avec `I` si nécessaire
-- Documentation JSDoc pour toutes les API publiques
+### Code conventions:
+- Classes in PascalCase
+- Methods/properties in camelCase
+- Constants in UPPER_SNAKE_CASE
+- Interfaces prefixed with `I` if needed
+- JSDoc documentation for all public APIs
 
 ---
 
-**Dernière mise à jour** : 11 novembre 2025  
-**Version** : 1.1.0  
-**Auteur** : MathieuCGit
+## Constants System (v2.2+)
+
+### Overview
+
+Version 2.2 introduces a centralized constants system in `src/renderer/constants.ts` to prepare for v3.0 user-configurable options. All hardcoded rendering values have been extracted and organized into thematic categories.
+
+### Constant Categories
+
+**1. LAYOUT** - Spacing, padding, margins
+```typescript
+LAYOUT.BASE_LEFT_PADDING: 10          // Left padding for segments
+LAYOUT.SEPARATOR_WIDTH: 12            // Space between chord segments
+LAYOUT.MEASURE_HEIGHT: 120            // Standard measure height
+LAYOUT.REPEAT_SYMBOL_HEIGHT: 30       // % symbol height
+```
+
+**2. TYPOGRAPHY** - Font sizes, text ratios
+```typescript
+TYPOGRAPHY.CHORD_FONT_SIZE: 24        // Chord symbol font size
+TYPOGRAPHY.CHAR_WIDTH_RATIO: 0.53     // Character width estimation
+TYPOGRAPHY.BASS_NOTE_SIZE_RATIO: 0.83 // Bass note relative size
+```
+
+**3. VISUAL** - Colors, stroke widths
+```typescript
+VISUAL.COLOR_BLACK: '#000'            // Standard black
+VISUAL.STROKE_WIDTH_THIN: 1           // Thin lines
+VISUAL.STROKE_WIDTH_THICK: 3          // Barlines
+VISUAL.COLOR_SEPARATOR: '#999'        // Chord-only separators
+```
+
+**4. NOTATION** - Musical element dimensions
+```typescript
+NOTATION.STAFF_LINE_Y_OFFSET: 80      // Staff line position
+NOTATION.STEM_HEIGHT: 30              // Note stem height
+NOTATION.DIAMOND_SIZE: 6              // Note head radius
+NOTATION.REPEAT_DOT_RADIUS: 3         // Repeat dot size
+NOTATION.REST_HEIGHT_EIGHTH: 24       // Eighth rest height
+```
+
+**5. POSITIONING** - Vertical offsets
+```typescript
+POSITIONING.CHORD_VERTICAL_OFFSET: 30 // Chord symbol Y offset
+POSITIONING.STEM_CLEARANCE: 12        // Stem-to-chord clearance
+```
+
+**6. NOTE_SPACING** - Duration-based spacing
+```typescript
+NOTE_SPACING.SIXTY_FOURTH: 16         // Fastest notes
+NOTE_SPACING.EIGHTH: 24               // Eighth notes
+NOTE_SPACING.QUARTER_AND_LONGER: 20   // Quarter and longer
+```
+
+**7. SEGMENT_WIDTH** - Width calculations
+```typescript
+SEGMENT_WIDTH.SINGLE_NOTE_BASE: 28    // Single note width
+SEGMENT_WIDTH.HEAD_HALF_MAX: 6        // Note head half-width
+```
+
+**8. COLLISION** - Collision detection
+```typescript
+COLLISION.MAX_ATTEMPTS: 100           // Max collision iterations
+COLLISION.BASE_PRIORITY: 5            // Default priority
+```
+
+**9. SVG_VIEWPORT** - Viewport settings
+```typescript
+SVG_VIEWPORT.MIN_PADDING_X: 30        // Minimum X padding
+SVG_VIEWPORT.MIN_PADDING_Y: 20        // Minimum Y padding
+```
+
+### Usage Pattern
+
+All renderer files import constants from `constants.ts`:
+
+```typescript
+import { 
+    SVG_NS, 
+    LAYOUT, 
+    NOTATION, 
+    VISUAL 
+} from './constants';
+
+// Instead of: const staffY = y + 80;
+const staffY = y + NOTATION.STAFF_LINE_Y_OFFSET;
+
+// Instead of: fontSize = 24;
+fontSize = TYPOGRAPHY.CHORD_FONT_SIZE;
+```
+
+### Benefits
+
+- **Centralization**: All rendering values in one place
+- **Documentation**: Constants annotated with `@plannedFor v3.0`
+- **Type Safety**: TypeScript readonly objects
+- **Consistency**: Shared values across renderer files
+- **Future-Ready**: Easy migration to user options
+
+### Adding New Constants
+
+When adding hardcoded values:
+
+1. **Identify category**: Which constant group fits?
+2. **Choose name**: Descriptive, UPPER_SNAKE_CASE
+3. **Add to constants.ts**: With JSDoc comment
+4. **Mark for v3**: Add `@plannedFor v3.0` tag
+5. **Update imports**: Add to renderer file imports
+6. **Replace usage**: Use constant instead of hardcoded value
+
+Example:
+```typescript
+// In constants.ts
+export const NOTATION = {
+    // ... existing constants
+    
+    /** New element height (px) @plannedFor v3.0 */
+    NEW_ELEMENT_HEIGHT: 15,
+} as const;
+
+// In renderer file
+import { NOTATION } from './constants';
+const height = NOTATION.NEW_ELEMENT_HEIGHT;
+```
+
+---
+
+**Last update**: January 2025  
+**Version**: 2.2.0  
+**Author**: MathieuCGit
