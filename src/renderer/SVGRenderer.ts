@@ -598,13 +598,13 @@ export class SVGRenderer {
         // 6. SAVE BARLINES before PlaceAndSizeManager is cleared
         // (needed for global volta rendering)
         const lineBarlines = placeAndSizeManager.getElements()
-            .filter(el => el.type === 'barline' && el.metadata?.exactX !== undefined)
+            .filter(el => el.type === 'barline' && el.metadata?.exactX !== undefined && el.metadata?.measureIndex !== undefined)
             .map(el => ({
                 exactX: el.metadata!.exactX,
                 visualStartX: el.metadata!.visualStartX,
                 visualEndX: el.metadata!.visualEndX,
                 y: el.bbox.y,
-                measureIndex: el.metadata!.measureIndex,
+                measureIndex: el.metadata!.measureIndex!,
                 side: el.metadata!.side
             }));
         voltaManager.addBarlines(lineBarlines);
