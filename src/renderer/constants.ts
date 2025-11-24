@@ -85,6 +85,30 @@ export const LAYOUT = {
     
     /** Spacing between double barlines (px) @plannedFor v3.0 */
     DOUBLE_BAR_SPACING: 6,
+    
+    /** Measures per line (default layout) @plannedFor v3.0 */
+    DEFAULT_MEASURES_PER_LINE: 4,
+    
+    /** Time signature margin after metric (px) @plannedFor v3.0 */
+    TIME_SIG_MARGIN: 4,
+    
+    /** Default line start padding (px) @plannedFor v3.0 */
+    DEFAULT_LINE_START_PADDING: 40,
+    
+    /** Final margin at bottom of SVG (px) @plannedFor v3.0 */
+    BOTTOM_SVG_MARGIN: 40,
+    
+    /** Additional width for SVG right margin (px) @plannedFor v3.0 */
+    RIGHT_SVG_MARGIN: 20,
+    
+    /** Top margin for chord symbols (px) @plannedFor v3.0 */
+    TOP_MARGIN_FOR_CHORDS: 50,
+    
+    /** Y offset for measures in line (px) @plannedFor v3.0 */
+    MEASURE_Y_OFFSET: 40,
+    
+    /** Side margin for availableWidth calculation (px) @plannedFor v3.0 */
+    AVAILABLE_WIDTH_SIDE_MARGIN: 60,
 } as const;
 
 // =============================================================================
@@ -355,6 +379,9 @@ export const NOTE_SPACING = {
     
     /** Spacing for quarter notes and longer (px) */
     QUARTER_AND_LONGER: 20,
+    
+    /** Extra spacing for rest symbols (px) @plannedFor v3.0 */
+    REST_EXTRA_SPACING: 4,
 } as const;
 
 // =============================================================================

@@ -1201,7 +1201,23 @@ var LAYOUT = {
   /** Chord vertical offset (px) @plannedFor v3.0 */
   CHORD_VERTICAL_OFFSET: 30,
   /** Spacing between double barlines (px) @plannedFor v3.0 */
-  DOUBLE_BAR_SPACING: 6
+  DOUBLE_BAR_SPACING: 6,
+  /** Measures per line (default layout) @plannedFor v3.0 */
+  DEFAULT_MEASURES_PER_LINE: 4,
+  /** Time signature margin after metric (px) @plannedFor v3.0 */
+  TIME_SIG_MARGIN: 4,
+  /** Default line start padding (px) @plannedFor v3.0 */
+  DEFAULT_LINE_START_PADDING: 40,
+  /** Final margin at bottom of SVG (px) @plannedFor v3.0 */
+  BOTTOM_SVG_MARGIN: 40,
+  /** Additional width for SVG right margin (px) @plannedFor v3.0 */
+  RIGHT_SVG_MARGIN: 20,
+  /** Top margin for chord symbols (px) @plannedFor v3.0 */
+  TOP_MARGIN_FOR_CHORDS: 50,
+  /** Y offset for measures in line (px) @plannedFor v3.0 */
+  MEASURE_Y_OFFSET: 40,
+  /** Side margin for availableWidth calculation (px) @plannedFor v3.0 */
+  AVAILABLE_WIDTH_SIDE_MARGIN: 60
 };
 var TYPOGRAPHY = {
   /** Default font size for chord symbols (px) */
@@ -1361,7 +1377,9 @@ var NOTE_SPACING = {
   /** Spacing for 8th notes (px) */
   EIGHTH: 24,
   /** Spacing for quarter notes and longer (px) */
-  QUARTER_AND_LONGER: 20
+  QUARTER_AND_LONGER: 20,
+  /** Extra spacing for rest symbols (px) @plannedFor v3.0 */
+  REST_EXTRA_SPACING: 4
 };
 var SEGMENT_WIDTH = {
   /** Base width for single note (px) */
@@ -3838,7 +3856,7 @@ var SVGRenderer = class {
     return NOTE_SPACING.QUARTER_AND_LONGER;
   }
   /**
-   * Calcule la largeur requise pour un temps (beat).
+   * Calculate the required width for a beat.
    */
   calculateBeatWidth(beat) {
     var _a;
@@ -3847,7 +3865,7 @@ var SVGRenderer = class {
     const spacing = Math.max(
       ...beat.notes.map((n) => {
         const base = this.getMinSpacingForValue(n.value);
-        return n.isRest ? base + 4 : base;
+        return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
       })
     );
     return SEGMENT_WIDTH.MULTI_NOTE_LEFT_PADDING + SEGMENT_WIDTH.MULTI_NOTE_RIGHT_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX + (noteCount - 1) * spacing + SEGMENT_WIDTH.MULTI_NOTE_END_MARGIN;
@@ -3975,36 +3993,36 @@ var SVGRenderer = class {
     return this.createSVG(grid, stemsDir, options);
   }
   createSVG(grid, stemsDirection, options) {
-    const measuresPerLine = 4;
-    const baseMeasureWidth = 240;
-    const measureHeight = 120;
+    const measuresPerLine = LAYOUT.DEFAULT_MEASURES_PER_LINE;
+    const baseMeasureWidth = LAYOUT.BASE_MEASURE_WIDTH;
+    const measureHeight = LAYOUT.MEASURE_HEIGHT;
     const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-    const timeSigFontSize = 18;
-    const timeSigAvgCharFactor = 0.53;
+    const timeSigFontSize = TYPOGRAPHY.TIME_SIG_NUMERATOR_SIZE;
+    const timeSigAvgCharFactor = TYPOGRAPHY.CHAR_WIDTH_RATIO;
     const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
-    const baseLeftPadding = 10;
-    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4;
-    const separatorWidth = 12;
-    const innerPaddingPerSegment = 20;
-    const headHalfMax = 6;
+    const baseLeftPadding = LAYOUT.BASE_LEFT_PADDING;
+    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + LAYOUT.TIME_SIG_MARGIN;
+    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
+    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
+    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
     const valueMinSpacing = (v) => {
-      if (v >= 64) return 16;
-      if (v >= 32) return 20;
-      if (v >= 16) return 26;
-      if (v >= 8) return 24;
-      return 20;
+      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+      if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+      if (v >= 8) return NOTE_SPACING.EIGHTH;
+      return NOTE_SPACING.QUARTER_AND_LONGER;
     };
     const requiredBeatWidth = (beat) => {
       var _a;
       const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
-      if (noteCount <= 1) return 28 + 10 + headHalfMax;
+      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
       const spacing = Math.max(
         ...beat.notes.map((n) => {
           const base = valueMinSpacing(n.value);
-          return n.isRest ? base + 4 : base;
+          return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
         })
       );
-      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + LAYOUT.SEGMENT_END_PADDING;
     };
     const requiredMeasureWidth = (measure) => {
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
@@ -4020,7 +4038,7 @@ var SVGRenderer = class {
     let maxLineWidth;
     if (options.measuresPerLine) {
       const targetSVGWidth = 1e3;
-      const availableWidth = targetSVGWidth - dynamicLineStartPadding - 60;
+      const availableWidth = targetSVGWidth - dynamicLineStartPadding - LAYOUT.AVAILABLE_WIDTH_SIDE_MARGIN;
       maxLineWidth = availableWidth;
     } else {
       maxLineWidth = measuresPerLine * baseMeasureWidth;
@@ -4041,7 +4059,7 @@ var SVGRenderer = class {
           globalIndex,
           width: measureWidth,
           x: currentX,
-          y: line.startY + 40
+          y: line.startY + LAYOUT.MEASURE_Y_OFFSET
           // Y offset to leave space for title/signature if needed
         });
         currentX += measureWidth;
@@ -4049,10 +4067,10 @@ var SVGRenderer = class {
       });
     });
     const lines = renderLines.length;
-    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 20;
+    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN;
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
-    const height = layoutBottom + 40;
-    const topMarginForChords = 50;
+    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN;
+    const topMarginForChords = LAYOUT.TOP_MARGIN_FOR_CHORDS;
     const totalHeight = height + topMarginForChords;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
@@ -4069,7 +4087,7 @@ var SVGRenderer = class {
     bg.setAttribute("height", String(totalHeight));
     bg.setAttribute("fill", "white");
     svg.appendChild(bg);
-    const timeSigBaselineY = 40;
+    const timeSigBaselineY = LAYOUT.MEASURE_Y_OFFSET;
     const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, "bold");
     svg.appendChild(timeText);
     svg.__dynamicLineStartPadding = dynamicLineStartPadding;

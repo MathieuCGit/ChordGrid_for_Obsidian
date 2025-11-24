@@ -32,7 +32,8 @@ import {
   LAYOUT, 
   NOTE_SPACING, 
   SEGMENT_WIDTH,
-  SVG_VIEWPORT 
+  SVG_VIEWPORT,
+  TYPOGRAPHY
 } from './constants';
 import { TieManager } from '../utils/TieManager';
 import { ChordGridParser } from '../parser/ChordGridParser';
@@ -87,7 +88,7 @@ export class SVGRenderer {
   }
 
   /**
-   * Calcule la largeur requise pour un temps (beat).
+   * Calculate the required width for a beat.
    */
   private calculateBeatWidth(beat: any): number {
     const noteCount = beat?.notes?.length || 0;
@@ -96,7 +97,7 @@ export class SVGRenderer {
     const spacing = Math.max(
       ...beat.notes.map((n: any) => {
         const base = this.getMinSpacingForValue(n.value);
-        return n.isRest ? base + 4 : base;
+        return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
       })
     );
     return SEGMENT_WIDTH.MULTI_NOTE_LEFT_PADDING + SEGMENT_WIDTH.MULTI_NOTE_RIGHT_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX + (noteCount - 1) * spacing + SEGMENT_WIDTH.MULTI_NOTE_END_MARGIN;
@@ -268,40 +269,40 @@ export class SVGRenderer {
   }
 
   private createSVG(grid: ChordGrid, stemsDirection: 'up' | 'down', options: RenderOptions): SVGElement {
-    const measuresPerLine = 4;
-    const baseMeasureWidth = 240; // increased fallback minimum width per measure for readability
-    const measureHeight = 120;
+    const measuresPerLine = LAYOUT.DEFAULT_MEASURES_PER_LINE;
+    const baseMeasureWidth = LAYOUT.BASE_MEASURE_WIDTH; // increased fallback minimum width per measure for readability
+    const measureHeight = LAYOUT.MEASURE_HEIGHT;
 
     // Pre-compute dynamic widths per measure based on rhythmic density
     // (Time signature width factored into initial padding later)
     const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-    const timeSigFontSize = 18;
-    const timeSigAvgCharFactor = 0.53; // further reduced for tighter spacing
+    const timeSigFontSize = TYPOGRAPHY.TIME_SIG_NUMERATOR_SIZE;
+    const timeSigAvgCharFactor = TYPOGRAPHY.CHAR_WIDTH_RATIO; // further reduced for tighter spacing
     const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
-    const baseLeftPadding = 10;
-    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4; // minimal margin after metric
-    const separatorWidth = 12;
-    const innerPaddingPerSegment = 20;
-    const headHalfMax = 6; // for diamond
+    const baseLeftPadding = LAYOUT.BASE_LEFT_PADDING;
+    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + LAYOUT.TIME_SIG_MARGIN; // minimal margin after metric
+    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
+    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
+    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX; // for diamond
     // Minimum horizontal spacing between consecutive note centers based on rhythmic subdivision.
     // Increased values to improve legibility of dense patterns (user request).
     const valueMinSpacing = (v: number) => {
-      if (v >= 64) return 16;   // was 12
-      if (v >= 32) return 20;   // was 14
-      if (v >= 16) return 26;   // was 20 (16816 needs more air)
-      if (v >= 8)  return 24;   // was 20
-      return 20;                // was 16 for quarters & longer
+      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;   // was 12
+      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;   // was 14
+      if (v >= 16) return NOTE_SPACING.SIXTEENTH;   // was 20 (16816 needs more air)
+      if (v >= 8)  return NOTE_SPACING.EIGHTH;   // was 20
+      return NOTE_SPACING.QUARTER_AND_LONGER;                // was 16 for quarters & longer
     };
     const requiredBeatWidth = (beat: any) => {
       const noteCount = beat?.notes?.length || 0;
-      if (noteCount <= 1) return 28 + 10 + headHalfMax; // increased minimal single-note width
+      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax; // increased minimal single-note width
       const spacing = Math.max(
         ...beat.notes.map((n: any) => {
           const base = valueMinSpacing(n.value);
-          return n.isRest ? base + 4 : base; // give short rests a bit more room when estimating width
+          return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base; // give short rests a bit more room when estimating width
         })
       );
-      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8; // +8 extra breathing room
+      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + LAYOUT.SEGMENT_END_PADDING; // +8 extra breathing room
     };
     const requiredMeasureWidth = (measure: any) => {
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
@@ -322,7 +323,7 @@ export class SVGRenderer {
     if (options.measuresPerLine) {
       // Target SVG width (typical for Obsidian) minus margins
       const targetSVGWidth = 1000; // Standard width of an Obsidian block
-      const availableWidth = targetSVGWidth - dynamicLineStartPadding - 60; // Minus margins
+      const availableWidth = targetSVGWidth - dynamicLineStartPadding - LAYOUT.AVAILABLE_WIDTH_SIDE_MARGIN; // Minus margins
       maxLineWidth = availableWidth; // Full available width for the line
     } else {
       maxLineWidth = measuresPerLine * baseMeasureWidth; // Automatic mode
@@ -349,7 +350,7 @@ export class SVGRenderer {
                 globalIndex,
                 width: measureWidth,
                 x: currentX,
-                y: line.startY + 40 // Y offset to leave space for title/signature if needed
+                y: line.startY + LAYOUT.MEASURE_Y_OFFSET // Y offset to leave space for title/signature if needed
             });
             currentX += measureWidth;
             globalIndex++;
@@ -358,13 +359,13 @@ export class SVGRenderer {
 
     const lines = renderLines.length;
     // Total width (including initial padding): take the widest line after compression
-    const width = Math.max(...renderLines.map(l => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + 20;
+    const width = Math.max(...renderLines.map(l => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN;
     // Actual height: maximum of (startY + height) of lines + bottom margin
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
-    const height = layoutBottom + 40; // final margin
+    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN; // final margin
     
     // Add space above for chord symbols (they are rendered at measureY - verticalOffset)
-    const topMarginForChords = 50; // Space for chord symbols above staff
+    const topMarginForChords = LAYOUT.TOP_MARGIN_FOR_CHORDS; // Space for chord symbols above staff
     const totalHeight = height + topMarginForChords;
 
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -388,7 +389,7 @@ export class SVGRenderer {
   svg.appendChild(bg);
 
     // time signature text (already measured before layout)
-    const timeSigBaselineY = 40;
+    const timeSigBaselineY = LAYOUT.MEASURE_Y_OFFSET;
     const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, 'bold');
     svg.appendChild(timeText);
     (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
@@ -595,7 +596,7 @@ export class SVGRenderer {
     // We use the width/height calculated by layout instead, which covers all lines correctly
     const bounds = placeAndSizeManager.getGlobalBounds();
     
-    // Afficher le rapport de diagnostic si mode debug activé
+    // Display diagnostic report if debug mode enabled
     if (options.debugPlacement) {
         placeAndSizeManager.logDiagnosticReport();
     }
@@ -1824,14 +1825,14 @@ export class SVGRenderer {
     for (const measure of grid.measures) {
       // Map groupId -> baseLen (maximum numerical value encountered in the group)
       const groupBase: Record<string, number> = {};
-      // Première passe: collecter baseLen
+      // First pass: collect baseLen
       for (const seg of (measure.chordSegments || [])) {
         for (const beat of seg.beats) {
           for (const n of beat.notes) {
             if (n.tuplet) {
               const gid = n.tuplet.groupId;
               const prev = groupBase[gid] ?? 0;
-              // baseLen = plus petite durée => plus grand nombre (16 < 8 en durée, mais valeur 16 > 8)
+              // baseLen = shortest duration => largest number (16 < 8 in duration, but value 16 > 8)
               groupBase[gid] = Math.max(prev, n.value);
             }
           }
@@ -1888,12 +1889,12 @@ export class SVGRenderer {
             for (let j = i + 1; j < allNotes.length; j++) {
                 const target = allNotes[j];
                 if (target.note.tieEnd) {
-                    // Trouvé ! Vérifier si changement de ligne
+                    // Found! Check for line change
                     if (current.lineIndex !== target.lineIndex) {
                         current.note.tieToVoid = true;
                         target.note.tieFromVoid = true;
                     }
-                    break; // On a trouvé la cible, on arrête de chercher pour ce tieStart
+                    break; // Found target, stop searching for this tieStart
                 }
             }
         }
