@@ -32,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.0] - 2025-11-20
 
 ### Added
+- **VoltaManager for multi-line volta brackets** (architectural refactoring)
+  - Dedicated `VoltaManager.ts` class in `src/utils/` following TieManager pattern
+  - Accumulate-execute architecture: collects data during multi-line rendering, executes with global context
+  - Handles volta brackets spanning multiple rendering lines with visual continuity
+  - Coordinates with PlaceAndSizeManager for volta metadata persistence
+  - Methods: `addMeasurePosition()`, `addBarlines()`, `renderVoltas()`, `clear()`
+  - Moved 220 lines of volta logic from SVGRenderer to dedicated manager
+- **Empty measure support**
+  - `| |` syntax now renders empty measures without requiring `measures-per-line` directive
+  - Parser creates measures with `__isEmpty` flag when content is intentionally empty
+  - Renderer calculates special width for empty measures (BASE_MEASURE_WIDTH * 0.5)
+  - `MeasureRenderer.drawEmptyMeasure()` renders only barlines, no staff line
+  - Full test coverage in `test/empty_measures.spec.ts` (4 tests)
+  - Supports voltas on empty measures and consecutive empty measures
 - **Repeat measure notation with visual symbol**
   - `%` syntax to repeat previous measure's rhythm
   - `Chord[%]` syntax to repeat rhythm with new chord
@@ -61,16 +75,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Comprehensive test suite for new features**
   - `test/renderer_stems_direction.spec.ts` - validates stem direction rendering and positioning
   - `test/renderer_responsive_svg.spec.ts` - validates responsive SVG attributes
-  - All 178 existing tests continue to pass (full backward compatibility)
+  - `test/empty_measures.spec.ts` - validates empty measure parsing and rendering
+  - All 284+ tests passing (full backward compatibility)
 
 ### Changed
 - **Parser enhancement** (`ChordGridParser.ts`)
   - Now parses `stems-up` and `stems-down` keywords from first line(s)
   - Returns `stemsDirection` in `ParseResult` interface
   - Handles both single-line (`stems-down 4/4`) and multi-line (`stems-down\n4/4`) formats
+  - Enhanced empty measure creation: works without measures-per-line directive
+  - Creates empty measures when content has spaces OR not first token
 - **Renderer architecture updated**
   - `main.ts` now passes `result.stemsDirection` to `renderer.render()`
   - `SVGRenderer` propagates stem direction to all sub-renderers
+  - `SVGRenderer.calculateMeasureWidth()` handles empty measures (special case)
+  - `SVGRenderer` now initializes and orchestrates VoltaManager alongside TieManager
+  - VoltaManager receives filtered barlines (only those with defined measureIndex)
   - `MeasureRenderer` uses stem direction for correct stem, beam, and note positioning
   - `AnalyzerBeamOverlay` uses `stemTopY` for stems-up or `stemBottomY` for stems-down
 - **Musical notation standards enforcement**
@@ -79,6 +99,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Default behavior matches standard treble clef/solo notation (stems up)
 
 ### Fixed
+- **Barline filtering for volta brackets**
+  - Filter barlines with undefined `measureIndex` before passing to VoltaManager
+  - Prevents type errors when barlines lack measure metadata
+  - Ensures VoltaManager only processes valid barlines with complete information
+- **Empty measures rendering**
+  - Fixed empty measures not rendering despite correct parsing
+  - `calculateMeasureWidth()` now returns proper width for `__isEmpty` flag
+  - Empty measures render with half the base measure width for visual consistency
 - Corrected stem positioning logic that was causing stems to render in wrong direction
 - Fixed beam attachment points to use correct end of stem based on direction
 - Fixed tie curve positioning to respect stem direction
