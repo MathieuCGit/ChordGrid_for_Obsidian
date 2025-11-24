@@ -6,7 +6,7 @@
 
 **Version :** 2.2.0 · **Licence :** GPL-3.0 · **Statut :** Stable
 
-**Dernière version :** [v2.2.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.2.0) - **NOUVEAU : Contrôle de la direction des hampes & rendu SVG responsive**
+**Dernière version :** [v2.2.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.2.0) - **NOUVEAU : Architecture VoltaManager, support mesures vides, et notation de répétition améliorée**
 
 Ce plugin analyse une syntaxe textuelle légère et la transforme en mesures musicales structurées (accords, groupes rythmiques, liaisons, silences), puis les rend avec une logique de ligature automatique via une architecture propre en 3 étapes : **Parser → Analyseur → Rendu**.
 
@@ -332,6 +332,9 @@ L'espace avant `G` casse la ligature.
 
 - ✅ Rendu SVG vectoriel
 - ✅ Grilles d'accords avec notation rythmique
+- ✅ **Architecture VoltaManager** (v2.2.0) – gestionnaire dédié pour crochets de volta multi-lignes avec pattern accumulate-execute
+- ✅ **Support des mesures vides** (v2.2.0) – syntaxe `| |` rend des mesures vides sans directive measures-per-line
+- ✅ **Notation de mesure répétée** (v2.2.0) – syntaxe `%` avec directive optionnelle `show%` pour symbole de répétition classique
 - ✅ **Contrôle de la direction des hampes** (v2.2.0) – mots-clés stems-up/stems-down respectant les standards de notation musicale
 - ✅ **Rendu SVG responsive** (v2.2.0) – adaptation automatique à la largeur du conteneur avec ratio d'aspect préservé
 - ✅ **Coups de médiator (pick strokes)** (Unreleased) – alternance automatique down/up basée sur la subdivision avec alignement horizontal propre
@@ -342,6 +345,7 @@ L'espace avant `G` casse la ligature.
 - ✅ **Ligatures inter-segments via analyseur** (v2.0.0) – ligatures continues au-delà des frontières d'accords
 - ✅ **Tuplets & signatures rythmiques complexes** (v2.1.0) – triolets, quintolets, ratios personnalisables
 - ✅ Barres de reprise & types de barres
+- ✅ **Crochets de volta** (v2.2.0) – reprises 1.|2. avec support multi-lignes
 - ✅ Support de signatures rythmiques (12+ signatures : 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 6/8, 7/8, 9/8, 11/8, 12/8, 15/16)
 - ✅ 4 mesures par ligne (automatique, avec sauts de ligne manuels)
 - ✅ Largeur de mesure dynamique basée sur la densité rythmique

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models**, **Utilities**, and an intelligent **CollisionManager** system. The v2.1.0 release is **complete**, with full tuplet support, complex time signatures (12+), and professional collision avoidance integrated.
+This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models**, **Utilities**, and an intelligent **CollisionManager** system. The v2.2.0 release includes **VoltaManager** for multi-line volta brackets, **empty measure support**, and enhanced **repeat notation** with full tuplet support, complex time signatures (12+), and professional collision avoidance integrated.
 
 ## Project Structure
 
@@ -53,6 +53,7 @@ ChordGrid_for_Obsidian/
 │   │   └── constants.ts             # Centralized rendering constants (v3 preparation)
 │   └── utils/
 │       ├── TieManager.ts            # Cross-measure tie management
+│       ├── VoltaManager.ts          # Multi-line volta bracket management
 │       └── DebugLogger.ts           # Debug logging system
 └── test/                            # Unit tests (40 test files, 275 tests)
     ├── *.spec.ts                    # Jest test files
@@ -97,6 +98,7 @@ flowchart LR
     E --> G[NoteRenderer]
     E --> H[RestRenderer]
     E --> I[TieManager]
+    E --> K[VoltaManager]
     C --> J[AnalyzerBeamOverlay]
     J --> E
     I --> E
@@ -224,9 +226,10 @@ NoteRenderer / RestRenderer (par note)
 - Calculer la taille globale du SVG avec espacement dynamique
 - Positionner les mesures sur la grille (4 par ligne, adaptatif)
 - Gérer les sauts de ligne (automatiques et manuels)
-- Initialiser CollisionManager et TieManager
+- Initialiser CollisionManager, TieManager, et VoltaManager (v2.2.0)
 - Calculer largeur dynamique de la signature rythmique
 - Dessiner les liaisons entre mesures avec évitement de collision
+- Coordonner rendu des voltas multi-lignes avec VoltaManager (v2.2.0)
 - Appliquer ajustements de collision (courbes de liaison, numéros de tuplets)
 
 **Paramètres de layout :**
@@ -366,6 +369,51 @@ NoteRenderer / RestRenderer (par note)
 - Algorithme : `controlY_new = baseY - max(6, baseAmplitude * 0.6)`
 - Enregistrer bbox de liaison dans CollisionManager après ajustement
 
+### VoltaManager
+
+**Responsabilités (v2.2.0) :**
+- Gérer crochets de volta traversant plusieurs lignes de rendu
+- Stocker positions de mesures durant rendu multi-ligne
+- Stocker informations barlines avant nettoyage de PlaceAndSizeManager
+- Rendre toutes les voltas avec contexte global après rendu de toutes les lignes
+- Coordonner avec PlaceAndSizeManager pour récupération de métadonnées de voltas
+
+**Architecture Pattern :**
+Suit le même pattern que TieManager : **accumulate → execute**
+- Phase 1 (accumulation) : collecter données durant rendu ligne par ligne
+- Phase 2 (execution) : rendre toutes les voltas avec contexte global complet
+
+**Workflow :**
+1. Pendant rendu de chaque ligne :
+   - `addMeasurePosition(mp)` pour chaque mesure
+   - `addBarlines(barlines)` pour stocker barlines filtrées (avant clearAll())
+2. Après rendu de toutes les lignes :
+   - `renderVoltas(svg, placeAndSizeManager)` dessine tous les crochets de volta
+3. Entre rendus : `clear()` pour réinitialiser l'état
+
+**Méthodes clés :**
+- `addMeasurePosition(mp: MeasurePosition)` : enregistrer position d'une mesure
+  - `MeasurePosition` contient : x, y, width, measureIndex, lineIndex, measure (référence)
+- `addBarlines(barlines: BarlineInfo[])` : sauvegarder barlines avec volta metadata
+  - Appelé **avant** `PlaceAndSizeManager.clearAll()` pour conserver données
+  - Filtre barlines avec `measureIndex !== undefined` pour éviter erreurs
+- `renderVoltas(svg, placeAndSizeManager)` : rendu de tous les crochets de volta
+  - Récupère volta metadata via `placeAndSizeManager.getVoltaBrackets()`
+  - Dessine crochets spanning multiples lignes si nécessaire
+  - Gère voltas multi-lignes avec continuité visuelle
+- `clear()` : réinitialiser état entre rendus
+
+**Gestion des voltas multi-lignes (v2.2.0) :**
+- Détection automatique de voltas spanning plusieurs lignes de rendu
+- Calcul de positions start/end pour chaque ligne traversée
+- Rendu avec continuité visuelle (pas de vertical bar au début/fin si continue)
+- Positionnement label uniquement au début de la volta (première ligne)
+
+**Cas d'usage spécifiques :**
+- Volta 1.|2. spanning 2 lignes : crochet continu avec label "1." sur première ligne
+- Voltas avec barlines de différentes mesures sur différentes lignes
+- Coordination avec PlaceAndSizeManager pour métadonnées persistantes
+
 ## Validation et erreurs
 
 ### ValidationError
@@ -416,7 +464,7 @@ Le parser construit progressivement la structure ChordGrid en accumulant les mes
 Différents renderers (NoteRenderer, RestRenderer) pour différents types d'éléments; Analyzer interchangeable sous forme de service.
 
 ### Observer Pattern
-Le TieManager observe les notes avec liaisons et résout les références cross-mesure.
+Le TieManager et VoltaManager (v2.2.0) observent les notes avec liaisons / mesures avec voltas et résolvent les références cross-mesure / cross-ligne.
 
 ## Extension future
 

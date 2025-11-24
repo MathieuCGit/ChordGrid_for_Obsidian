@@ -5,9 +5,9 @@
 > Display clean chord grids with precise rhythmic notation rendered as crisp, scalable SVG inside your Obsidian notes.
 
 <!-- Badges (manual style to avoid external services) -->
-**Version:** 2.1.0 · **License:** GPL-3.0 · **Status:** Stable
+**Version:** 2.2.0 · **License:** GPL-3.0 · **Status:** Stable
 
-**Latest Release:** [v2.1.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.1.0) - **NEW: Collision management system for professional-quality layout**
+**Latest Release:** [v2.2.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.2.0) - **NEW: VoltaManager architecture, empty measures support, and enhanced repeat notation**
 
 This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic using a clean 3‑stage pipeline: **Parser → Analyzer → Renderer**.
 
@@ -384,6 +384,9 @@ chord-grid/
 
 - ✅ Vector SVG rendering
 - ✅ Chord charts with rhythmic notation
+- ✅ **VoltaManager architecture** (v2.2.0) – dedicated manager for multi-line volta brackets with accumulate-execute pattern
+- ✅ **Empty measure support** (v2.2.0) – `| |` syntax renders empty measures without measures-per-line directive
+- ✅ **Repeat measure notation** (v2.2.0) – `%` syntax with optional `show%` directive for classical repeat symbol
 - ✅ **Stem direction control** (v2.2.0) – stems-up/stems-down keywords following musical notation standards
 - ✅ **Responsive SVG rendering** (v2.2.0) – automatic adaptation to container width with proper aspect ratio
 - ✅ **Pick stroke (mediator) markers** (Unreleased) – automatic down/up alternation with subdivision timeline and collision-safe alignment
@@ -394,6 +397,7 @@ chord-grid/
 - ✅ **Analyzer-based cross-segment beaming** (v2.0.0) – continuous beams across chord boundaries
 - ✅ **Tuplets & complex time signatures** (v2.1.0) – triplets, quintuplets, customizable ratios
 - ✅ Repeat bars & barline types
+- ✅ **Volta brackets** (v2.2.0) – 1.|2. endings with multi-line support
 - ✅ Time signature support (12+ signatures: 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 6/8, 7/8, 9/8, 11/8, 12/8, 15/16)
 - ✅ 4 measures per line (automatic, with manual line breaks)
 - ✅ Dynamic measure width based on rhythmic density

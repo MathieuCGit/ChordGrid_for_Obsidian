@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Ce plugin Obsidian (version 2.1.0) permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de quatre modules principaux : **Parsing**, **Analyse**, **Modèles**, et **Rendu**. La version 2.1.0 introduit un système complet de gestion des collisions pour un rendu optimal et automatique des éléments visuels.
+Ce plugin Obsidian (version 2.2.0) permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de quatre modules principaux : **Parsing**, **Analyse**, **Modèles**, et **Rendu**. La version 2.2.0 introduit le **VoltaManager** pour gérer les crochets de volta multi-lignes, le **support des mesures vides**, et des améliorations de la notation de répétition, en plus du système complet de gestion des collisions de la v2.1.0.
 
 ## Structure du projet
 
@@ -53,6 +53,7 @@ ChordGrid_for_Obsidian/
 │   │   └── constants.ts             # Constantes SVG
 │   └── utils/
 │       ├── TieManager.ts            # Gestion liaisons cross-mesure
+│       ├── VoltaManager.ts          # Gestion crochets volta multi-lignes
 │       └── DebugLogger.ts           # Logs de débogage
 └── test/                            # Tests unitaires (40 fichiers, 275 tests)
     ├── *.spec.ts                    # Fichiers de test Jest
