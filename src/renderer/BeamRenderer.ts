@@ -1,14 +1,14 @@
 /**
  * @file BeamRenderer.ts
- * @description Rendu SVG des ligatures (beams) entre notes musicales.
+ * @description SVG rendering of beams between musical notes.
  * 
- * Ce renderer est responsable de :
- * - Dessiner les barres de ligature entre notes
- * - Gérer les ligatures multi-niveaux (8e, 16e, 32e, 64e)
- * - Gérer les ligatures partielles (beamlets)
- * - Adapter la position selon la direction des hampes
+ * This renderer is responsible for:
+ * - Drawing beam bars between notes
+ * - Managing multi-level beams (8th, 16th, 32nd, 64th)
+ * - Managing partial beams (beamlets)
+ * - Adapting position according to stem direction
  */
-import { SVG_NS } from './constants';
+import { SVG_NS, NOTATION, VISUAL } from './constants';
 import { BeamGroup, AnalyzedMeasure } from '../analyzer/analyzer-types';
 
 export interface NotePositionRef {
@@ -19,27 +19,25 @@ export interface NotePositionRef {
   segmentNoteIndex?: number; // set by MeasureRenderer
   stemTopY?: number;
   stemBottomY?: number;
-  stemsDirection?: 'up' | 'down'; // Direction des hampes
+  stemsDirection?: 'up' | 'down'; // Stem direction
 }
 
 /**
- * Dessine les ligatures pour une mesure analysée.
+ * Draws beams for an analyzed measure.
  * 
- * @param svg - Élément SVG parent
- * @param analyzed - Mesure analysée avec groupes de ligatures
- * @param measureIndex - Index de la mesure
- * @param notePositions - Positions des notes avec métadonnées de hampes
- * @param stemsDirection - Direction des hampes ('up' ou 'down')
+ * @param svg - Parent SVG element
+ * @param analyzed - Analyzed measure with beam groups
+ * @param measureIndex - Measure index
+ * @param notePositions - Note positions with stem metadata
+ * @param stemsDirection - Stem direction ('up' or 'down')
  */
 export function drawBeams(
   svg: SVGElement,
   analyzed: AnalyzedMeasure,
   measureIndex: number,
   notePositions: NotePositionRef[],
-  stemsDirection: 'up' | 'down' = 'up'
+  stemsDirection: 'up' | 'down'
 ) {
-  const beamGap = 5;
-
   // Build a set of notes that are connected by a primary (level 1) beam of length >= 2
   const level1Beamed = new Set<string>();
   for (const g of analyzed.beamGroups) {
@@ -66,18 +64,18 @@ export function drawBeams(
     const valid = refs.filter(r => r.pos);
     if (valid.length === 0) continue;
 
-    // Calculer la position des ligatures en fonction de la direction des hampes
+    // Calculate beam position based on stem direction
     let beamY: number;
     if (stemsDirection === 'up') {
-      // Hampes vers le haut : ligatures au sommet (stemTopY, valeur y la plus petite)
-      const stemTops = valid.map(v => v.pos!.stemTopY || (v.pos!.y - 30));
-      const baseStemTop = stemTops.length ? Math.min(...stemTops) : (valid[0].pos!.y - 30);
-      beamY = baseStemTop + (level - 1) * beamGap;
+      // Stems up: beams at the top (stemTopY, smallest y value)
+      const stemTops = valid.map(v => v.pos!.stemTopY || (v.pos!.y - NOTATION.STEM_HEIGHT));
+      const baseStemTop = stemTops.length ? Math.min(...stemTops) : (valid[0].pos!.y - NOTATION.STEM_HEIGHT);
+      beamY = baseStemTop + (level - 1) * NOTATION.BEAM_GAP;
     } else {
-      // Hampes vers le bas : ligatures au bas (stemBottomY, valeur y la plus grande)
-      const stemBottoms = valid.map(v => v.pos!.stemBottomY || (v.pos!.y + 30));
-      const baseStemBottom = stemBottoms.length ? Math.max(...stemBottoms) : (valid[0].pos!.y + 30);
-      beamY = baseStemBottom - (level - 1) * beamGap;
+      // Stems down: beams at the bottom (stemBottomY, largest y value)
+      const stemBottoms = valid.map(v => v.pos!.stemBottomY || (v.pos!.y + NOTATION.STEM_HEIGHT));
+      const baseStemBottom = stemBottoms.length ? Math.max(...stemBottoms) : (valid[0].pos!.y + NOTATION.STEM_HEIGHT);
+      beamY = baseStemBottom - (level - 1) * NOTATION.BEAM_GAP;
     }
 
     if (group.isPartial) {
@@ -92,11 +90,9 @@ export function drawBeams(
           return; // skip beamlet; flags will be drawn later
         }
       }
-      // Position de la hampe selon la direction (cohérent avec NoteRenderer)
-      const slashLength = 10;
-      const startX = stemsDirection === 'up' ? (p.x + slashLength/2) : (p.x - slashLength/2);
-      const beamletLength = 8;
-      const endX = group.direction === 'right' ? (startX + beamletLength) : (startX - beamletLength);
+      // Stem position according to direction (consistent with NoteRenderer)
+      const startX = stemsDirection === 'up' ? (p.x + NOTATION.SLASH_LENGTH / 2) : (p.x - NOTATION.SLASH_LENGTH / 2);
+      const endX = group.direction === 'right' ? (startX + NOTATION.BEAMLET_LENGTH) : (startX - NOTATION.BEAMLET_LENGTH);
 
       const beamlet = document.createElementNS(SVG_NS, 'line');
       beamlet.setAttribute('x1', String(startX));
@@ -104,15 +100,14 @@ export function drawBeams(
       beamlet.setAttribute('x2', String(endX));
       beamlet.setAttribute('y2', String(beamY));
       beamlet.setAttribute('stroke', '#000');
-      beamlet.setAttribute('stroke-width', '2');
+      beamlet.setAttribute('stroke-width', String(VISUAL.BEAM_STROKE_WIDTH));
       svg.appendChild(beamlet);
     } else {
       // Full beam: line between first and last
       const first = valid[0].pos!;
       const last = valid[valid.length - 1].pos!;
-      const slashLength = 10;
-      const startX = stemsDirection === 'up' ? (first.x + slashLength/2) : (first.x - slashLength/2);
-      const endX = stemsDirection === 'up' ? (last.x + slashLength/2) : (last.x - slashLength/2);
+      const startX = stemsDirection === 'up' ? (first.x + NOTATION.SLASH_LENGTH / 2) : (first.x - NOTATION.SLASH_LENGTH / 2);
+      const endX = stemsDirection === 'up' ? (last.x + NOTATION.SLASH_LENGTH / 2) : (last.x - NOTATION.SLASH_LENGTH / 2);
 
       const beam = document.createElementNS(SVG_NS, 'line');
       beam.setAttribute('x1', String(startX));
@@ -120,7 +115,7 @@ export function drawBeams(
       beam.setAttribute('x2', String(endX));
       beam.setAttribute('y2', String(beamY));
       beam.setAttribute('stroke', '#000');
-      beam.setAttribute('stroke-width', '2');
+      beam.setAttribute('stroke-width', String(VISUAL.BEAM_STROKE_WIDTH));
       svg.appendChild(beam);
     }
   }

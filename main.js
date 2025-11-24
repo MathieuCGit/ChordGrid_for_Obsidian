@@ -1167,6 +1167,192 @@ var BeamAndTieAnalyzer = class {
 
 // src/renderer/constants.ts
 var SVG_NS = "http://www.w3.org/2000/svg";
+var LAYOUT = {
+  /** Base left padding inside measures (px) */
+  BASE_LEFT_PADDING: 10,
+  /** Right padding inside measures (px) */
+  BASE_RIGHT_PADDING: 10,
+  /** Inner padding per chord segment (px) */
+  INNER_PADDING_PER_SEGMENT: 20,
+  /** Gap width when source had a space between segments (px) */
+  SEPARATOR_WIDTH: 12,
+  /** Extra left padding for repeat-start barlines (px) */
+  EXTRA_LEFT_PADDING_REPEAT: 15,
+  /** Vertical spacing between lines (px) */
+  LINE_VERTICAL_SPACING: 20,
+  /** Top margin before first line (px) */
+  TOP_MARGIN: 20,
+  /** Bottom margin after last line (px) */
+  BOTTOM_MARGIN: 40,
+  /** Side margin for SVG container (px) */
+  SIDE_MARGIN: 60,
+  /** Measure height for layout calculation (px) */
+  MEASURE_HEIGHT: 120,
+  /** Base measure width (px) */
+  BASE_MEASURE_WIDTH: 240,
+  /** Extra breathing room at end of multi-note segments (px) */
+  SEGMENT_END_PADDING: 8
+};
+var TYPOGRAPHY = {
+  /** Default font size for chord symbols (px) */
+  CHORD_FONT_SIZE: 24,
+  /** Font size for chord-only mode (larger) (px) */
+  CHORD_ONLY_FONT_SIZE: 28,
+  /** Estimated character width to font size ratio */
+  CHAR_WIDTH_RATIO: 0.53,
+  /** Font size for time signature numerator (px) */
+  TIME_SIG_NUMERATOR_SIZE: 24,
+  /** Font size for time signature denominator (px) */
+  TIME_SIG_DENOMINATOR_SIZE: 20,
+  /** Width for single-digit measure count (px) */
+  MEASURE_COUNT_WIDTH_SINGLE: 30,
+  /** Width for double-digit measure count (px) */
+  MEASURE_COUNT_WIDTH_DOUBLE: 40,
+  /** Superstructure font size ratio (relative to main) */
+  SUPERSTRUCTURE_SIZE_RATIO: 0.75,
+  /** Bass note font size ratio (relative to main) */
+  BASS_NOTE_SIZE_RATIO: 0.83,
+  /** Parentheses font size ratio (relative to main) */
+  PARENTHESES_SIZE_RATIO: 0.65
+};
+var VISUAL = {
+  /** Default stroke color */
+  COLOR_BLACK: "#000",
+  /** Standard line stroke width (px) */
+  STROKE_WIDTH_THIN: 1,
+  /** Thick line stroke width (barlines) (px) */
+  STROKE_WIDTH_THICK: 2,
+  /** Extra thick stroke width (note slashes) (px) */
+  STROKE_WIDTH_EXTRA_THICK: 3,
+  /** Beam stroke width (px) */
+  BEAM_STROKE_WIDTH: 2,
+  /** Dot radius for dotted notes (px) */
+  DOT_RADIUS: 2,
+  /** Barline width for special barlines (px) */
+  BARLINE_WIDTH_SPECIAL: 10
+};
+var NOTATION = {
+  /** Staff line Y offset from measure top (px) */
+  STAFF_LINE_Y_OFFSET: 80,
+  /** Note head diamond size (radius) (px) */
+  DIAMOND_SIZE: 6,
+  /** Slash note head length (px) */
+  SLASH_LENGTH: 10,
+  /** Standard stem height (px) */
+  STEM_HEIGHT: 30,
+  /** Beam gap between levels (8th, 16th, etc.) (px) */
+  BEAM_GAP: 5,
+  /** Beamlet length for partial beams (px) */
+  BEAMLET_LENGTH: 8,
+  /** Dot horizontal offset from note head (px) */
+  DOT_OFFSET_X: 6,
+  /** Dot vertical offset for dotted notes (px) */
+  DOT_OFFSET_Y: 4,
+  /** Repeat dots spacing above/below staff line (px) */
+  REPEAT_DOT_SPACING: 12,
+  /** Repeat dots horizontal offset from barline (px) */
+  REPEAT_DOT_OFFSET: 12,
+  /** Rest symbol reference height (quarter note) (px) */
+  REST_HEIGHT_QUARTER: 30,
+  /** Eighth rest target height (px) */
+  REST_HEIGHT_EIGHTH: 24,
+  /** Sixteenth rest target height (px) */
+  REST_HEIGHT_SIXTEENTH: 24,
+  /** Thirty-second rest target height (px) */
+  REST_HEIGHT_THIRTY_SECOND: 28,
+  /** Sixty-fourth rest target height (px) */
+  REST_HEIGHT_SIXTY_FOURTH: 32,
+  /** Hook/flag height for coda symbols (px) */
+  HOOK_HEIGHT: 10,
+  /** Upbow symbol width (px) */
+  UPBOW_WIDTH: 24.2,
+  /** Upbow target display height (px) */
+  UPBOW_HEIGHT: 12,
+  /** Tie curve amplitude base (px) */
+  TIE_BASE_AMPLITUDE: 40,
+  /** Tie curve minimum amplitude (px) */
+  TIE_MIN_AMPLITUDE: 8,
+  /** Tie curve extra amplitude for cross-line ties (px) */
+  TIE_CROSS_LINE_EXTRA_AMP: 10,
+  /** Percent symbol target height (px) */
+  PERCENT_SYMBOL_HEIGHT: 30
+};
+var POSITIONING = {
+  /** Default vertical offset for chords above staff (px) */
+  CHORD_VERTICAL_OFFSET: 30,
+  /** Chord vertical offset when measuring from baseline (px) */
+  CHORD_VERTICAL_OFFSET_ALT: 40,
+  /** Clearance between chord and stems (px) */
+  STEM_CLEARANCE: 12,
+  /** Chord-only mode vertical center (no staff) (px) */
+  CHORD_ONLY_Y_CENTER: 60,
+  /** Space above staff for chord symbols (px) */
+  TOP_MARGIN_FOR_CHORDS: 50,
+  /** Time signature baseline Y position (px) */
+  TIME_SIG_BASELINE_Y: 40,
+  /** Dynamic line start padding (default/fallback) (px) */
+  DYNAMIC_LINE_START_PADDING: 40,
+  /** Measure count X offset from barline (px) */
+  MEASURE_COUNT_X_OFFSET: 10,
+  /** Hook/coda Y position above staff (px) */
+  HOOK_Y_OFFSET: 10,
+  /** Hook text Y offset (include text height) (px) */
+  HOOK_TEXT_Y_OFFSET: 20,
+  /** Slash diagonal start Y for chord-only (px) */
+  SLASH_START_Y: 30,
+  /** Slash diagonal end Y for chord-only (px) */
+  SLASH_END_Y: 90,
+  /** Slash horizontal width for chord-only (px) */
+  SLASH_WIDTH: 10,
+  /** Chord-only 2-chord first X ratio */
+  CHORD_ONLY_2_FIRST_X: 0.35,
+  /** Chord-only 2-chord second X ratio */
+  CHORD_ONLY_2_SECOND_X: 0.65,
+  /** Chord-only 2-chord first Y position (px) */
+  CHORD_ONLY_2_FIRST_Y: 25,
+  /** Chord-only 2-chord second Y position (px) */
+  CHORD_ONLY_2_SECOND_Y: 95,
+  /** Spacing between stacked parentheses in chords (px) */
+  CHORD_PARENTHESES_SPACING: 12
+};
+var NOTE_SPACING = {
+  /** Spacing for 64th notes (px) */
+  SIXTY_FOURTH: 16,
+  /** Spacing for 32nd notes (px) */
+  THIRTY_SECOND: 20,
+  /** Spacing for 16th notes (px) */
+  SIXTEENTH: 26,
+  /** Spacing for 8th notes (px) */
+  EIGHTH: 24,
+  /** Spacing for quarter notes and longer (px) */
+  QUARTER_AND_LONGER: 20
+};
+var SEGMENT_WIDTH = {
+  /** Base width for single note (px) */
+  SINGLE_NOTE_BASE: 28,
+  /** Extra padding for single note (px) */
+  SINGLE_NOTE_PADDING: 10,
+  /** Left padding for multi-note segments (px) */
+  MULTI_NOTE_LEFT_PADDING: 10,
+  /** Right padding for multi-note segments (px) */
+  MULTI_NOTE_RIGHT_PADDING: 10,
+  /** Rest bbox width for whole/half rests (px) */
+  REST_WIDTH_LONG: 10,
+  /** Rest bbox width for quarter rests (px) */
+  REST_WIDTH_QUARTER: 8,
+  /** Rest bbox width for eighth/shorter rests (px) */
+  REST_WIDTH_SHORT: 10,
+  /** Rest bbox width for sixty-fourth rests (px) */
+  REST_WIDTH_SIXTY_FOURTH: 12,
+  /** Note head half width maximum (px) */
+  HEAD_HALF_MAX: 6,
+  /** Extra spacing margin at the end of multi-note segments (px) */
+  MULTI_NOTE_END_MARGIN: 8,
+  /** Minimum spacing ratio for readability (70% = too tight) */
+  MIN_SPACING_RATIO: 0.7,
+  /** Maximum spacing ratio for readability (150% = too spread) */
+  MAX_SPACING_RATIO: 1.5
+};
 
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
@@ -2594,8 +2780,7 @@ var MusicAnalyzer = class {
 };
 
 // src/renderer/BeamRenderer.ts
-function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection = "up") {
-  const beamGap = 5;
+function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection) {
   const level1Beamed = /* @__PURE__ */ new Set();
   for (const g of analyzed.beamGroups) {
     if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
@@ -2616,13 +2801,13 @@ function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection = 
     if (valid.length === 0) continue;
     let beamY;
     if (stemsDirection === "up") {
-      const stemTops = valid.map((v) => v.pos.stemTopY || v.pos.y - 30);
-      const baseStemTop = stemTops.length ? Math.min(...stemTops) : valid[0].pos.y - 30;
-      beamY = baseStemTop + (level - 1) * beamGap;
+      const stemTops = valid.map((v) => v.pos.stemTopY || v.pos.y - NOTATION.STEM_HEIGHT);
+      const baseStemTop = stemTops.length ? Math.min(...stemTops) : valid[0].pos.y - NOTATION.STEM_HEIGHT;
+      beamY = baseStemTop + (level - 1) * NOTATION.BEAM_GAP;
     } else {
-      const stemBottoms = valid.map((v) => v.pos.stemBottomY || v.pos.y + 30);
-      const baseStemBottom = stemBottoms.length ? Math.max(...stemBottoms) : valid[0].pos.y + 30;
-      beamY = baseStemBottom - (level - 1) * beamGap;
+      const stemBottoms = valid.map((v) => v.pos.stemBottomY || v.pos.y + NOTATION.STEM_HEIGHT);
+      const baseStemBottom = stemBottoms.length ? Math.max(...stemBottoms) : valid[0].pos.y + NOTATION.STEM_HEIGHT;
+      beamY = baseStemBottom - (level - 1) * NOTATION.BEAM_GAP;
     }
     if (group.isPartial) {
       const p = valid[0].pos;
@@ -2633,31 +2818,28 @@ function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection = 
           return;
         }
       }
-      const slashLength = 10;
-      const startX = stemsDirection === "up" ? p.x + slashLength / 2 : p.x - slashLength / 2;
-      const beamletLength = 8;
-      const endX = group.direction === "right" ? startX + beamletLength : startX - beamletLength;
+      const startX = stemsDirection === "up" ? p.x + NOTATION.SLASH_LENGTH / 2 : p.x - NOTATION.SLASH_LENGTH / 2;
+      const endX = group.direction === "right" ? startX + NOTATION.BEAMLET_LENGTH : startX - NOTATION.BEAMLET_LENGTH;
       const beamlet = document.createElementNS(SVG_NS, "line");
       beamlet.setAttribute("x1", String(startX));
       beamlet.setAttribute("y1", String(beamY));
       beamlet.setAttribute("x2", String(endX));
       beamlet.setAttribute("y2", String(beamY));
       beamlet.setAttribute("stroke", "#000");
-      beamlet.setAttribute("stroke-width", "2");
+      beamlet.setAttribute("stroke-width", String(VISUAL.BEAM_STROKE_WIDTH));
       svg.appendChild(beamlet);
     } else {
       const first = valid[0].pos;
       const last = valid[valid.length - 1].pos;
-      const slashLength = 10;
-      const startX = stemsDirection === "up" ? first.x + slashLength / 2 : first.x - slashLength / 2;
-      const endX = stemsDirection === "up" ? last.x + slashLength / 2 : last.x - slashLength / 2;
+      const startX = stemsDirection === "up" ? first.x + NOTATION.SLASH_LENGTH / 2 : first.x - NOTATION.SLASH_LENGTH / 2;
+      const endX = stemsDirection === "up" ? last.x + NOTATION.SLASH_LENGTH / 2 : last.x - NOTATION.SLASH_LENGTH / 2;
       const beam = document.createElementNS(SVG_NS, "line");
       beam.setAttribute("x1", String(startX));
       beam.setAttribute("y1", String(beamY));
       beam.setAttribute("x2", String(endX));
       beam.setAttribute("y2", String(beamY));
       beam.setAttribute("stroke", "#000");
-      beam.setAttribute("stroke-width", "2");
+      beam.setAttribute("stroke-width", String(VISUAL.BEAM_STROKE_WIDTH));
       svg.appendChild(beam);
     }
   }
@@ -3222,36 +3404,31 @@ var PlaceAndSizeManager = class {
 };
 
 // src/renderer/ChordRenderer.ts
-var SVG_NS2 = "http://www.w3.org/2000/svg";
 var ChordRenderer = class {
-  // Estimation largeur char/fontSize
   /**
-   * Constructeur du ChordRenderer.
+   * ChordRenderer constructor.
    */
   constructor() {
-    __publicField(this, "DEFAULT_FONT_SIZE", 24);
-    __publicField(this, "DEFAULT_VERTICAL_OFFSET", 30);
-    __publicField(this, "CHAR_WIDTH_RATIO", 0.53);
   }
   /**
-   * Estime la largeur d'un texte d'accord.
+   * Estimates the width of a chord text.
    * 
-   * @param text - Texte de l'accord
-   * @param fontSize - Taille de police
-   * @returns Largeur estimée en pixels
+   * @param text - Chord text
+   * @param fontSize - Font size
+   * @returns Estimated width in pixels
    */
   estimateTextWidth(text, fontSize) {
-    return Math.ceil(text.length * fontSize * this.CHAR_WIDTH_RATIO);
+    return Math.ceil(text.length * fontSize * TYPOGRAPHY.CHAR_WIDTH_RATIO);
   }
   /**
-   * Trouve la position X du début de la première note d'un segment.
-   * Utilise les métadonnées enregistrées dans PlaceAndSizeManager.
-   * Retourne headLeftX (début gauche de la tête de note) pour un alignement visuel optimal.
+   * Finds the X position of the start of the first note in a segment.
+   * Uses metadata registered in PlaceAndSizeManager.
+   * Returns headLeftX (left edge of note head) for optimal visual alignment.
    * 
-   * @param placeAndSizeManager - Gestionnaire de placement
-   * @param measureIndex - Index de la mesure
-   * @param chordIndex - Index du segment/accord
-   * @returns Position X du début de la première note, ou null si non trouvée
+   * @param placeAndSizeManager - Placement manager
+   * @param measureIndex - Measure index
+   * @param chordIndex - Segment/chord index
+   * @returns X position of the first note's start, or null if not found
    */
   findFirstNoteX(placeAndSizeManager, measureIndex, chordIndex) {
     const notes = placeAndSizeManager.getElementsByMeasure(measureIndex).filter((el) => el.type === "note").filter((el) => {
@@ -3270,13 +3447,13 @@ var ChordRenderer = class {
     return firstNote.bbox.x;
   }
   /**
-   * Calcule la position Y sécurisée pour un accord en évitant les collisions avec les stems.
+   * Calculates safe Y position for a chord to avoid collisions with stems.
    * 
-   * @param placeAndSizeManager - Gestionnaire de placement
-   * @param measureIndex - Index de la mesure
-   * @param staffLineY - Position Y de la ligne de staff
-   * @param baseVerticalOffset - Offset vertical de base (minimum)
-   * @returns Position Y ajustée pour éviter les stems
+   * @param placeAndSizeManager - Placement manager
+   * @param measureIndex - Measure index
+   * @param staffLineY - Staff line Y position
+   * @param baseVerticalOffset - Base vertical offset (minimum)
+   * @returns Adjusted Y position to avoid stems
    */
   calculateSafeChordY(placeAndSizeManager, measureIndex, staffLineY, baseVerticalOffset) {
     const measureElements = placeAndSizeManager.getElementsByMeasure(measureIndex);
@@ -3294,31 +3471,31 @@ var ChordRenderer = class {
         }
       }
     });
-    const STEM_CLEARANCE = 12;
+    const stemClearance = POSITIONING.STEM_CLEARANCE;
     const safeY = Math.min(
       staffLineY - baseVerticalOffset,
-      highestStemY - STEM_CLEARANCE
+      highestStemY - stemClearance
     );
     return safeY;
   }
   /**
-   * Rend tous les accords pour les mesures données.
+   * Renders all chords for the given measures.
    * 
-   * Cette méthode est appelée APRÈS que toutes les notes/stems ont été rendues
-   * et enregistrées dans le PlaceAndSizeManager, permettant un alignement précis
-   * avec les hampes.
+   * This method is called AFTER all notes/stems have been rendered
+   * and registered in PlaceAndSizeManager, allowing precise alignment
+   * with stems.
    * 
-   * @param svg - Élément SVG parent
-   * @param measurePositions - Positions des mesures
-   * @param placeAndSizeManager - Gestionnaire de placement
-   * @param options - Options de rendu
+   * @param svg - Parent SVG element
+   * @param measurePositions - Measure positions
+   * @param placeAndSizeManager - Placement manager
+   * @param options - Rendering options
    */
   renderChords(svg, measurePositions, placeAndSizeManager, options = {}) {
     var _a, _b, _c;
-    const fontSize = (_a = options.fontSize) != null ? _a : this.DEFAULT_FONT_SIZE;
-    const baseVerticalOffset = (_b = options.verticalOffset) != null ? _b : this.DEFAULT_VERTICAL_OFFSET;
+    const fontSize = (_a = options.fontSize) != null ? _a : TYPOGRAPHY.CHORD_FONT_SIZE;
+    const baseVerticalOffset = (_b = options.verticalOffset) != null ? _b : POSITIONING.CHORD_VERTICAL_OFFSET;
     const displayRepeatSymbol = (_c = options.displayRepeatSymbol) != null ? _c : false;
-    const STAFF_LINE_OFFSET = 80;
+    const STAFF_LINE_OFFSET = NOTATION.STAFF_LINE_Y_OFFSET;
     measurePositions.forEach((mp) => {
       if (!mp.x || !mp.y) return;
       const measure = mp.measure;
@@ -3360,7 +3537,7 @@ var ChordRenderer = class {
           );
         } else if (measure.__hasRepeatSymbol) {
           if (segments.length === 1) {
-            const defaultNoteX = measureX + 20;
+            const defaultNoteX = measureX + LAYOUT.BASE_LEFT_PADDING;
             this.renderChordSymbol(
               svg,
               chordSymbol,
@@ -3374,7 +3551,7 @@ var ChordRenderer = class {
             );
           } else {
             const segmentWidth = mp.width / segments.length;
-            const chordX = measureX + segmentIndex * segmentWidth + 20;
+            const chordX = measureX + segmentIndex * segmentWidth + LAYOUT.BASE_LEFT_PADDING;
             this.renderChordSymbol(
               svg,
               chordSymbol,
@@ -3409,23 +3586,23 @@ var ChordRenderer = class {
     });
   }
   /**
-   * Rend un symbole d'accord à la position donnée.
+   * Renders a chord symbol at the given position.
    * 
-   * @param svg - Élément SVG parent
-   * @param chordSymbol - Symbole de l'accord (ex: "C", "Am7", "G/B")
-   * @param x - Position X
-   * @param y - Position Y (baseline)
-   * @param fontSize - Taille de police
-   * @param textAnchor - Mode d'ancrage du texte
-   * @param placeAndSizeManager - Gestionnaire de placement
-   * @param measureIndex - Index de la mesure
-   * @param chordIndex - Index du segment
+   * @param svg - Parent SVG element
+   * @param chordSymbol - Chord symbol (e.g., "C", "Am7", "G/B")
+   * @param x - X position
+   * @param y - Y position (baseline)
+   * @param fontSize - Font size
+   * @param textAnchor - Text anchor mode
+   * @param placeAndSizeManager - Placement manager
+   * @param measureIndex - Measure index
+   * @param chordIndex - Segment index
    */
   renderChordSymbol(svg, chordSymbol, x, y, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex) {
     let processedChord = chordSymbol.replace(/#/g, "\u266F").replace(/\bb\b/g, "\u266D");
     processedChord = processedChord.replace(/b([0-9])/g, "\u266D$1");
     processedChord = processedChord.replace(/([A-G])b([^0-9]|$)/g, "$1\u266D$2");
-    const chordText = document.createElementNS(SVG_NS2, "text");
+    const chordText = document.createElementNS(SVG_NS, "text");
     chordText.setAttribute("x", x.toString());
     chordText.setAttribute("y", y.toString());
     chordText.setAttribute("font-family", "Arial, sans-serif");
@@ -3463,16 +3640,16 @@ var ChordRenderer = class {
         const firstParenIndex = qualityAndSuper.indexOf("(");
         const beforeParens = qualityAndSuper.substring(0, firstParenIndex);
         if (beforeParens.length > 0) {
-          const beforeSpan = document.createElementNS(SVG_NS2, "tspan");
+          const beforeSpan = document.createElementNS(SVG_NS, "tspan");
           beforeSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
           beforeSpan.textContent = beforeParens;
           chordText.appendChild(beforeSpan);
         }
-        const mainTextWidth = this.estimateTextWidth(root + beforeParens, fontSize * 0.75);
-        const stackX = x + mainTextWidth + 12;
+        const mainTextWidth = this.estimateTextWidth(root + beforeParens, fontSize * TYPOGRAPHY.SUPERSTRUCTURE_SIZE_RATIO);
+        const stackX = x + mainTextWidth + POSITIONING.CHORD_PARENTHESES_SPACING;
         parenGroups.forEach((group, index) => {
-          const parenSpan = document.createElementNS(SVG_NS2, "tspan");
-          parenSpan.setAttribute("font-size", `${Math.round(fontSize * 0.65)}px`);
+          const parenSpan = document.createElementNS(SVG_NS, "tspan");
+          parenSpan.setAttribute("font-size", `${Math.round(fontSize * TYPOGRAPHY.PARENTHESES_SIZE_RATIO)}px`);
           parenSpan.setAttribute("x", stackX.toString());
           if (index === 0) {
             parenSpan.setAttribute("dy", "-0.5em");
@@ -3483,15 +3660,15 @@ var ChordRenderer = class {
           chordText.appendChild(parenSpan);
         });
       } else {
-        const superSpan = document.createElementNS(SVG_NS2, "tspan");
-        superSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
+        const superSpan = document.createElementNS(SVG_NS, "tspan");
+        superSpan.setAttribute("font-size", `${Math.round(fontSize * TYPOGRAPHY.SUPERSTRUCTURE_SIZE_RATIO)}px`);
         superSpan.textContent = qualityAndSuper;
         chordText.appendChild(superSpan);
       }
     }
     if (bass.length > 0) {
-      const bassSpan = document.createElementNS(SVG_NS2, "tspan");
-      bassSpan.setAttribute("font-size", `${Math.round(fontSize * 0.83)}px`);
+      const bassSpan = document.createElementNS(SVG_NS, "tspan");
+      bassSpan.setAttribute("font-size", `${Math.round(fontSize * TYPOGRAPHY.BASS_NOTE_SIZE_RATIO)}px`);
       bassSpan.textContent = bass;
       chordText.appendChild(bassSpan);
     }
@@ -3551,8 +3728,8 @@ var ChordRenderer = class {
     } else if (chordCount === 1) {
       const chord = segments[0].chord;
       const chordX = measureX + measureWidth / 2;
-      const chordY = measureY + 60;
-      const fontSize = 28;
+      const chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+      const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
       this.renderChordSymbol(
         svg,
         chord,
@@ -3565,10 +3742,10 @@ var ChordRenderer = class {
         0
       );
     } else if (chordCount === 2) {
-      const fontSize = 28;
+      const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
       const chord1 = segments[0].chord;
-      const chord1X = measureX + measureWidth * 0.35;
-      const chord1Y = measureY + 25;
+      const chord1X = measureX + measureWidth * POSITIONING.CHORD_ONLY_2_FIRST_X;
+      const chord1Y = measureY + POSITIONING.CHORD_ONLY_2_FIRST_Y;
       this.renderChordSymbol(
         svg,
         chord1,
@@ -3581,8 +3758,8 @@ var ChordRenderer = class {
         0
       );
       const chord2 = segments[1].chord;
-      const chord2X = measureX + measureWidth * 0.65;
-      const chord2Y = measureY + 95;
+      const chord2X = measureX + measureWidth * POSITIONING.CHORD_ONLY_2_SECOND_X;
+      const chord2Y = measureY + POSITIONING.CHORD_ONLY_2_SECOND_Y;
       this.renderChordSymbol(
         svg,
         chord2,
@@ -3595,14 +3772,14 @@ var ChordRenderer = class {
         1
       );
     } else {
-      const availableWidth = measureWidth - 20;
+      const availableWidth = measureWidth - LAYOUT.BASE_LEFT_PADDING - LAYOUT.BASE_RIGHT_PADDING;
       const chordSpacing = availableWidth / chordCount;
-      const fontSize = 28;
+      const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
       segments.forEach((segment, idx) => {
         const chord = segment.chord;
         if (!chord) return;
-        const chordX = measureX + 10 + chordSpacing * (idx + 0.5);
-        const chordY = measureY + 60;
+        const chordX = measureX + LAYOUT.BASE_LEFT_PADDING + chordSpacing * (idx + 0.5);
+        const chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
         this.renderChordSymbol(
           svg,
           chord,
@@ -3622,29 +3799,19 @@ var ChordRenderer = class {
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
   constructor() {
-    // Layout calculation constants
-    __publicField(this, "BASE_MEASURE_WIDTH", 240);
-    __publicField(this, "SEPARATOR_WIDTH", 12);
-    __publicField(this, "INNER_PADDING_PER_SEGMENT", 20);
-    __publicField(this, "HEAD_HALF_MAX", 6);
-    __publicField(this, "MEASURE_HEIGHT", 120);
-    __publicField(this, "LINE_VERTICAL_SPACING", 20);
-    // Space between lines
     // Dynamic spacing limits for readability
-    __publicField(this, "MIN_SPACING_RATIO", 0.7);
-    // Below this: illegible (too tight)
-    __publicField(this, "MAX_SPACING_RATIO", 1.5);
+    __publicField(this, "MIN_SPACING_RATIO", SEGMENT_WIDTH.MIN_SPACING_RATIO);
+    __publicField(this, "MAX_SPACING_RATIO", SEGMENT_WIDTH.MAX_SPACING_RATIO);
   }
-  // Above this: illegible (too spread out)
   /**
    * Calculate the minimum spacing for a given rhythmic value.
    */
   getMinSpacingForValue(v) {
-    if (v >= 64) return 16;
-    if (v >= 32) return 20;
-    if (v >= 16) return 26;
-    if (v >= 8) return 24;
-    return 20;
+    if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+    if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+    if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+    if (v >= 8) return NOTE_SPACING.EIGHTH;
+    return NOTE_SPACING.QUARTER_AND_LONGER;
   }
   /**
    * Calcule la largeur requise pour un temps (beat).
@@ -3652,14 +3819,14 @@ var SVGRenderer = class {
   calculateBeatWidth(beat) {
     var _a;
     const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
-    if (noteCount <= 1) return 28 + 10 + this.HEAD_HALF_MAX;
+    if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + SEGMENT_WIDTH.SINGLE_NOTE_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX;
     const spacing = Math.max(
       ...beat.notes.map((n) => {
         const base = this.getMinSpacingForValue(n.value);
         return n.isRest ? base + 4 : base;
       })
     );
-    return 10 + 10 + this.HEAD_HALF_MAX + (noteCount - 1) * spacing + 8;
+    return SEGMENT_WIDTH.MULTI_NOTE_LEFT_PADDING + SEGMENT_WIDTH.MULTI_NOTE_RIGHT_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX + (noteCount - 1) * spacing + SEGMENT_WIDTH.MULTI_NOTE_END_MARGIN;
   }
   /**
    * Calcule la largeur totale requise pour une mesure.
@@ -3668,11 +3835,11 @@ var SVGRenderer = class {
     const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
     let width = 0;
     segments.forEach((seg, idx) => {
-      if (idx > 0 && seg.leadingSpace) width += this.SEPARATOR_WIDTH;
+      if (idx > 0 && seg.leadingSpace) width += LAYOUT.SEPARATOR_WIDTH;
       const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + this.calculateBeatWidth(b), 0);
-      width += beatsWidth + this.INNER_PADDING_PER_SEGMENT;
+      width += beatsWidth + LAYOUT.INNER_PADDING_PER_SEGMENT;
     });
-    return Math.max(this.BASE_MEASURE_WIDTH, Math.ceil(width));
+    return Math.max(LAYOUT.BASE_MEASURE_WIDTH, Math.ceil(width));
   }
   /**
    * Effective width used for rendering, accounting for the potential compression ratio.
@@ -3715,19 +3882,19 @@ var SVGRenderer = class {
         lines.push({
           measures: currentLineMeasures,
           width: currentLineWidth,
-          height: this.MEASURE_HEIGHT,
+          height: LAYOUT.MEASURE_HEIGHT,
           startY: currentY
         });
         currentLineMeasures = [];
         currentLineWidth = 0;
-        currentY += this.MEASURE_HEIGHT + this.LINE_VERTICAL_SPACING;
+        currentY += LAYOUT.MEASURE_HEIGHT + LAYOUT.LINE_VERTICAL_SPACING;
       }
     }
     if (currentLineMeasures.length > 0) {
       lines.push({
         measures: currentLineMeasures,
         width: currentLineWidth,
-        height: this.MEASURE_HEIGHT,
+        height: LAYOUT.MEASURE_HEIGHT,
         startY: currentY
       });
     }
@@ -4944,16 +5111,16 @@ var SVGRenderer = class {
 // main.ts
 var ChordGridPlugin = class extends import_obsidian.Plugin {
   /**
-   * Méthode appelée lors du chargement du plugin.
+   * Method called when the plugin is loaded.
    * 
-   * Enregistre le processeur de blocs de code pour le langage `chordgrid`.
-   * Ce processeur :
-   * 1. Parse le contenu du bloc avec ChordGridParser
-   * 2. Valide la durée des mesures par rapport à la signature temporelle
-   * 3. Affiche les erreurs de validation le cas échéant
-   * 4. Rend la grille en SVG avec SVGRenderer
+   * Registers the code block processor for the `chordgrid` language.
+   * This processor:
+   * 1. Parses the block content with ChordGridParser
+   * 2. Validates measure durations against the time signature
+   * 3. Displays validation errors if any
+   * 4. Renders the grid as SVG with SVGRenderer
    * 
-   * En cas d'erreur de parsing, affiche un message d'erreur formaté.
+   * In case of parsing error, displays a formatted error message.
    */
   async onload() {
     console.log("Loading Chord Grid Plugin");
@@ -4980,7 +5147,7 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
         } catch (err) {
           const error = err;
           el.createEl("pre", {
-            text: `Erreur: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,
+            text: `Error: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,
             cls: "chord-grid-error"
           });
         }
@@ -4988,9 +5155,9 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     );
   }
   /**
-   * Méthode appelée lors du déchargement du plugin.
+   * Method called when the plugin is unloaded.
    * 
-   * Permet de nettoyer les ressources si nécessaire.
+   * Allows cleaning up resources if necessary.
    */
   onunload() {
     console.log("Unloading Chord Grid Plugin");

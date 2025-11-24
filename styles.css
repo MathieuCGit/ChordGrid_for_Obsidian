@@ -1,6 +1,23 @@
-/* Styles pour le plugin Chord Grid */
+/**
+ * Chord Grid Plugin Styles
+ * 
+ * This stylesheet provides visual styling for the Chord Grid plugin,
+ * including debug output, error messages, and SVG container presentation.
+ * All colors use Obsidian theme variables for seamless light/dark theme support.
+ * 
+ * Classes:
+ * - .chord-grid-debug: Collapsible debug container (used by DebugLogger)
+ * - .chord-grid-debug-content: Debug log content area with monospace font
+ * - .chord-grid-error: Error message container (used by main.ts for parse/validation errors)
+ * - svg.chord-grid: SVG element container (optional, can be added to rendered SVGs)
+ */
 
-/* Conteneur de debug */
+/* ==========================================================================
+   Debug Container
+   Used by: src/utils/DebugLogger.ts
+   Purpose: Collapsible <details> element containing debug logs
+   ========================================================================== */
+
 .chord-grid-debug {
   margin: 10px 0;
   border: 1px solid var(--background-modifier-border);
@@ -27,6 +44,10 @@
   border-radius: 6px 6px 0 0;
 }
 
+/* Debug log content area
+   - Monospace font for code/data display
+   - Scrollable with max height limit
+   - Pre-formatted text with word wrapping */
 .chord-grid-debug-content {
   font-family: var(--font-monospace);
   font-size: 11px;
@@ -42,7 +63,12 @@
   border-radius: 0 0 6px 6px !important;
 }
 
-/* Messages d'erreur */
+/* ==========================================================================
+   Error Messages
+   Used by: main.ts (lines 70, 88)
+   Purpose: Display parse/validation errors with red accent
+   ========================================================================== */
+
 .chord-grid-error {
   padding: 12px;
   margin: 10px 0;
@@ -54,7 +80,12 @@
   color: var(--text-error);
 }
 
-/* SVG container */
+/* ==========================================================================
+   SVG Container (Optional)
+   Purpose: Visual container for rendered chord grid SVG
+   Note: Class must be manually added to SVG element in SVGRenderer if desired
+   ========================================================================== */
+
 svg.chord-grid {
   display: block;
   margin: 10px auto;

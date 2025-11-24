@@ -27,7 +27,13 @@
 import { ChordGrid, Measure } from '../parser/type';
 import { Beat } from '../models/Beat';
 import { MeasureRenderer } from './MeasureRenderer';
-import { SVG_NS } from './constants';
+import { 
+  SVG_NS, 
+  LAYOUT, 
+  NOTE_SPACING, 
+  SEGMENT_WIDTH,
+  SVG_VIEWPORT 
+} from './constants';
 import { TieManager } from '../utils/TieManager';
 import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
@@ -65,27 +71,19 @@ export interface RenderLine {
  * Main class for SVG rendering of chord grids.
  */
 export class SVGRenderer {
-  // Layout calculation constants
-  private readonly BASE_MEASURE_WIDTH = 240;
-  private readonly SEPARATOR_WIDTH = 12;
-  private readonly INNER_PADDING_PER_SEGMENT = 20;
-  private readonly HEAD_HALF_MAX = 6;
-  private readonly MEASURE_HEIGHT = 120;
-  private readonly LINE_VERTICAL_SPACING = 20; // Space between lines
-  
   // Dynamic spacing limits for readability
-  private readonly MIN_SPACING_RATIO = 0.7;  // Below this: illegible (too tight)
-  private readonly MAX_SPACING_RATIO = 1.5;  // Above this: illegible (too spread out)
+  private readonly MIN_SPACING_RATIO = SEGMENT_WIDTH.MIN_SPACING_RATIO;
+  private readonly MAX_SPACING_RATIO = SEGMENT_WIDTH.MAX_SPACING_RATIO;
 
   /**
    * Calculate the minimum spacing for a given rhythmic value.
    */
   private getMinSpacingForValue(v: number): number {
-    if (v >= 64) return 16;
-    if (v >= 32) return 20;
-    if (v >= 16) return 26;
-    if (v >= 8)  return 24;
-    return 20;
+    if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+    if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+    if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+    if (v >= 8)  return NOTE_SPACING.EIGHTH;
+    return NOTE_SPACING.QUARTER_AND_LONGER;
   }
 
   /**
@@ -93,7 +91,7 @@ export class SVGRenderer {
    */
   private calculateBeatWidth(beat: any): number {
     const noteCount = beat?.notes?.length || 0;
-    if (noteCount <= 1) return 28 + 10 + this.HEAD_HALF_MAX;
+    if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + SEGMENT_WIDTH.SINGLE_NOTE_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX;
     
     const spacing = Math.max(
       ...beat.notes.map((n: any) => {
@@ -101,7 +99,7 @@ export class SVGRenderer {
         return n.isRest ? base + 4 : base;
       })
     );
-    return 10 + 10 + this.HEAD_HALF_MAX + (noteCount - 1) * spacing + 8;
+    return SEGMENT_WIDTH.MULTI_NOTE_LEFT_PADDING + SEGMENT_WIDTH.MULTI_NOTE_RIGHT_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX + (noteCount - 1) * spacing + SEGMENT_WIDTH.MULTI_NOTE_END_MARGIN;
   }
 
   /**
@@ -112,12 +110,12 @@ export class SVGRenderer {
     let width = 0;
     
     segments.forEach((seg: any, idx: number) => {
-      if (idx > 0 && seg.leadingSpace) width += this.SEPARATOR_WIDTH;
+      if (idx > 0 && seg.leadingSpace) width += LAYOUT.SEPARATOR_WIDTH;
       const beatsWidth = (seg.beats || []).reduce((acc: number, b: any) => acc + this.calculateBeatWidth(b), 0);
-      width += beatsWidth + this.INNER_PADDING_PER_SEGMENT;
+      width += beatsWidth + LAYOUT.INNER_PADDING_PER_SEGMENT;
     });
     
-    return Math.max(this.BASE_MEASURE_WIDTH, Math.ceil(width));
+    return Math.max(LAYOUT.BASE_MEASURE_WIDTH, Math.ceil(width));
   }
 
   /**
@@ -179,14 +177,14 @@ export class SVGRenderer {
         lines.push({
           measures: currentLineMeasures,
           width: currentLineWidth,
-          height: this.MEASURE_HEIGHT,
+          height: LAYOUT.MEASURE_HEIGHT,
           startY: currentY
         });
 
         // Prepare the new line
         currentLineMeasures = [];
         currentLineWidth = 0;
-        currentY += this.MEASURE_HEIGHT + this.LINE_VERTICAL_SPACING;
+        currentY += LAYOUT.MEASURE_HEIGHT + LAYOUT.LINE_VERTICAL_SPACING;
       }
     }
 
@@ -195,7 +193,7 @@ export class SVGRenderer {
       lines.push({
         measures: currentLineMeasures,
         width: currentLineWidth,
-        height: this.MEASURE_HEIGHT,
+        height: LAYOUT.MEASURE_HEIGHT,
         startY: currentY
       });
     }

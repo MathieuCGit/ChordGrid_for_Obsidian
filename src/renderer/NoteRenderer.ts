@@ -1,22 +1,22 @@
 /**
  * @file NoteRenderer.ts
- * @description Rendu SVG des éléments liés aux notes musicales.
+ * @description SVG rendering of musical note elements.
  * 
- * Ce renderer est responsable de :
- * - Têtes de notes (diamond, slash)
- * - Hampes (stems) avec direction up/down
- * - Crochets (flags) pour notes isolées
- * - Points (dots) pour notes pointées
- * - Enregistrement des métadonnées dans PlaceAndSizeManager
+ * This renderer is responsible for:
+ * - Note heads (diamond, slash)
+ * - Stems with direction up/down
+ * - Flags for isolated notes
+ * - Dots for dotted notes
+ * - Recording metadata in PlaceAndSizeManager
  */
 
 import { NoteElement, Beat } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { RestRenderer } from './RestRenderer';
-import { SVG_NS } from './constants';
+import { SVG_NS, NOTATION, VISUAL } from './constants';
 
 /**
- * Position d'une note avec ses métadonnées pour les liaisons.
+ * Position of a note with metadata for ties.
  */
 export interface NotePosition {
     x: number;
@@ -39,7 +39,7 @@ export interface NotePosition {
 }
 
 /**
- * Classe responsable du rendu des notes musicales.
+ * Class responsible for rendering musical notes.
  */
 export class NoteRenderer {
     private restRenderer: RestRenderer;

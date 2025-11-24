@@ -1,19 +1,388 @@
 /**
  * @file constants.ts
- * @description Constantes utilisées pour le rendu SVG.
+ * @description Constants used for SVG rendering.
  * 
- * Ce fichier centralise les valeurs constantes nécessaires au rendu,
- * notamment l'espace de noms XML pour les éléments SVG.
+ * This file centralizes constant values needed for rendering,
+ * organized by category for easy maintenance and future customization.
  * 
- * Peut être étendu avec d'autres constantes de rendu comme :
- * - Tailles de police par défaut
- * - Espacements standards
- * - Couleurs
- * - Épaisseurs de ligne
+ * Categories:
+ * - SVG: XML namespace
+ * - LAYOUT: Spacing, padding, margins
+ * - TYPOGRAPHY: Font sizes, weights, ratios
+ * - VISUAL: Colors, stroke widths
+ * - NOTATION: Musical notation dimensions (stems, notes, beams)
+ * - POSITIONING: Vertical/horizontal offsets, clearances
+ * 
+ * @version 2.2.0
+ * @plannedFor v3.0 - User-configurable options
  */
 
+// =============================================================================
+// SVG NAMESPACE
+// =============================================================================
+
 /**
- * Espace de noms XML pour les éléments SVG.
- * Requis pour créer des éléments SVG avec document.createElementNS().
+ * XML namespace for SVG elements.
+ * Required to create SVG elements with document.createElementNS().
  */
 export const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// =============================================================================
+// LAYOUT CONSTANTS
+// =============================================================================
+
+/**
+ * Horizontal spacing between measures and segments
+ */
+export const LAYOUT = {
+    /** Base left padding inside measures (px) */
+    BASE_LEFT_PADDING: 10,
+    
+    /** Right padding inside measures (px) */
+    BASE_RIGHT_PADDING: 10,
+    
+    /** Inner padding per chord segment (px) */
+    INNER_PADDING_PER_SEGMENT: 20,
+    
+    /** Gap width when source had a space between segments (px) */
+    SEPARATOR_WIDTH: 12,
+    
+    /** Extra left padding for repeat-start barlines (px) */
+    EXTRA_LEFT_PADDING_REPEAT: 15,
+    
+    /** Vertical spacing between lines (px) */
+    LINE_VERTICAL_SPACING: 20,
+    
+    /** Top margin before first line (px) */
+    TOP_MARGIN: 20,
+    
+    /** Bottom margin after last line (px) */
+    BOTTOM_MARGIN: 40,
+    
+    /** Side margin for SVG container (px) */
+    SIDE_MARGIN: 60,
+    
+    /** Measure height for layout calculation (px) */
+    MEASURE_HEIGHT: 120,
+    
+    /** Base measure width (px) */
+    BASE_MEASURE_WIDTH: 240,
+    
+    /** Extra breathing room at end of multi-note segments (px) */
+    SEGMENT_END_PADDING: 8,
+} as const;
+
+// =============================================================================
+// TYPOGRAPHY CONSTANTS
+// =============================================================================
+
+/**
+ * Font sizes and text-related dimensions
+ */
+export const TYPOGRAPHY = {
+    /** Default font size for chord symbols (px) */
+    CHORD_FONT_SIZE: 24,
+    
+    /** Font size for chord-only mode (larger) (px) */
+    CHORD_ONLY_FONT_SIZE: 28,
+    
+    /** Estimated character width to font size ratio */
+    CHAR_WIDTH_RATIO: 0.53,
+    
+    /** Font size for time signature numerator (px) */
+    TIME_SIG_NUMERATOR_SIZE: 24,
+    
+    /** Font size for time signature denominator (px) */
+    TIME_SIG_DENOMINATOR_SIZE: 20,
+    
+    /** Width for single-digit measure count (px) */
+    MEASURE_COUNT_WIDTH_SINGLE: 30,
+    
+    /** Width for double-digit measure count (px) */
+    MEASURE_COUNT_WIDTH_DOUBLE: 40,
+    
+    /** Superstructure font size ratio (relative to main) */
+    SUPERSTRUCTURE_SIZE_RATIO: 0.75,
+    
+    /** Bass note font size ratio (relative to main) */
+    BASS_NOTE_SIZE_RATIO: 0.83,
+    
+    /** Parentheses font size ratio (relative to main) */
+    PARENTHESES_SIZE_RATIO: 0.65,
+} as const;
+
+// =============================================================================
+// VISUAL CONSTANTS
+// =============================================================================
+
+/**
+ * Colors, stroke widths, and visual properties
+ */
+export const VISUAL = {
+    /** Default stroke color */
+    COLOR_BLACK: '#000',
+    
+    /** Standard line stroke width (px) */
+    STROKE_WIDTH_THIN: 1,
+    
+    /** Thick line stroke width (barlines) (px) */
+    STROKE_WIDTH_THICK: 2,
+    
+    /** Extra thick stroke width (note slashes) (px) */
+    STROKE_WIDTH_EXTRA_THICK: 3,
+    
+    /** Beam stroke width (px) */
+    BEAM_STROKE_WIDTH: 2,
+    
+    /** Dot radius for dotted notes (px) */
+    DOT_RADIUS: 2,
+    
+    /** Barline width for special barlines (px) */
+    BARLINE_WIDTH_SPECIAL: 10,
+} as const;
+
+// =============================================================================
+// NOTATION CONSTANTS
+// =============================================================================
+
+/**
+ * Musical notation element dimensions
+ */
+export const NOTATION = {
+    /** Staff line Y offset from measure top (px) */
+    STAFF_LINE_Y_OFFSET: 80,
+    
+    /** Note head diamond size (radius) (px) */
+    DIAMOND_SIZE: 6,
+    
+    /** Slash note head length (px) */
+    SLASH_LENGTH: 10,
+    
+    /** Standard stem height (px) */
+    STEM_HEIGHT: 30,
+    
+    /** Beam gap between levels (8th, 16th, etc.) (px) */
+    BEAM_GAP: 5,
+    
+    /** Beamlet length for partial beams (px) */
+    BEAMLET_LENGTH: 8,
+    
+    /** Dot horizontal offset from note head (px) */
+    DOT_OFFSET_X: 6,
+    
+    /** Dot vertical offset for dotted notes (px) */
+    DOT_OFFSET_Y: 4,
+    
+    /** Repeat dots spacing above/below staff line (px) */
+    REPEAT_DOT_SPACING: 12,
+    
+    /** Repeat dots horizontal offset from barline (px) */
+    REPEAT_DOT_OFFSET: 12,
+    
+    /** Rest symbol reference height (quarter note) (px) */
+    REST_HEIGHT_QUARTER: 30,
+    
+    /** Eighth rest target height (px) */
+    REST_HEIGHT_EIGHTH: 24,
+    
+    /** Sixteenth rest target height (px) */
+    REST_HEIGHT_SIXTEENTH: 24,
+    
+    /** Thirty-second rest target height (px) */
+    REST_HEIGHT_THIRTY_SECOND: 28,
+    
+    /** Sixty-fourth rest target height (px) */
+    REST_HEIGHT_SIXTY_FOURTH: 32,
+    
+    /** Hook/flag height for coda symbols (px) */
+    HOOK_HEIGHT: 10,
+    
+    /** Upbow symbol width (px) */
+    UPBOW_WIDTH: 24.2,
+    
+    /** Upbow target display height (px) */
+    UPBOW_HEIGHT: 12,
+    
+    /** Tie curve amplitude base (px) */
+    TIE_BASE_AMPLITUDE: 40,
+    
+    /** Tie curve minimum amplitude (px) */
+    TIE_MIN_AMPLITUDE: 8,
+    
+    /** Tie curve extra amplitude for cross-line ties (px) */
+    TIE_CROSS_LINE_EXTRA_AMP: 10,
+    
+    /** Percent symbol target height (px) */
+    PERCENT_SYMBOL_HEIGHT: 30,
+} as const;
+
+// =============================================================================
+// POSITIONING CONSTANTS
+// =============================================================================
+
+/**
+ * Vertical and horizontal positioning offsets
+ */
+export const POSITIONING = {
+    /** Default vertical offset for chords above staff (px) */
+    CHORD_VERTICAL_OFFSET: 30,
+    
+    /** Chord vertical offset when measuring from baseline (px) */
+    CHORD_VERTICAL_OFFSET_ALT: 40,
+    
+    /** Clearance between chord and stems (px) */
+    STEM_CLEARANCE: 12,
+    
+    /** Chord-only mode vertical center (no staff) (px) */
+    CHORD_ONLY_Y_CENTER: 60,
+    
+    /** Space above staff for chord symbols (px) */
+    TOP_MARGIN_FOR_CHORDS: 50,
+    
+    /** Time signature baseline Y position (px) */
+    TIME_SIG_BASELINE_Y: 40,
+    
+    /** Dynamic line start padding (default/fallback) (px) */
+    DYNAMIC_LINE_START_PADDING: 40,
+    
+    /** Measure count X offset from barline (px) */
+    MEASURE_COUNT_X_OFFSET: 10,
+    
+    /** Hook/coda Y position above staff (px) */
+    HOOK_Y_OFFSET: 10,
+    
+    /** Hook text Y offset (include text height) (px) */
+    HOOK_TEXT_Y_OFFSET: 20,
+    
+    /** Slash diagonal start Y for chord-only (px) */
+    SLASH_START_Y: 30,
+    
+    /** Slash diagonal end Y for chord-only (px) */
+    SLASH_END_Y: 90,
+    
+    /** Slash horizontal width for chord-only (px) */
+    SLASH_WIDTH: 10,
+    
+    /** Chord-only 2-chord first X ratio */
+    CHORD_ONLY_2_FIRST_X: 0.35,
+    
+    /** Chord-only 2-chord second X ratio */
+    CHORD_ONLY_2_SECOND_X: 0.65,
+    
+    /** Chord-only 2-chord first Y position (px) */
+    CHORD_ONLY_2_FIRST_Y: 25,
+    
+    /** Chord-only 2-chord second Y position (px) */
+    CHORD_ONLY_2_SECOND_Y: 95,
+    
+    /** Spacing between stacked parentheses in chords (px) */
+    CHORD_PARENTHESES_SPACING: 12,
+} as const;
+
+// =============================================================================
+// NOTE SPACING CONSTANTS
+// =============================================================================
+
+/**
+ * Spacing between notes based on note value (duration)
+ */
+export const NOTE_SPACING = {
+    /** Spacing for 64th notes (px) */
+    SIXTY_FOURTH: 16,
+    
+    /** Spacing for 32nd notes (px) */
+    THIRTY_SECOND: 20,
+    
+    /** Spacing for 16th notes (px) */
+    SIXTEENTH: 26,
+    
+    /** Spacing for 8th notes (px) */
+    EIGHTH: 24,
+    
+    /** Spacing for quarter notes and longer (px) */
+    QUARTER_AND_LONGER: 20,
+} as const;
+
+// =============================================================================
+// SEGMENT WIDTH CALCULATION
+// =============================================================================
+
+/**
+ * Constants for calculating segment widths
+ */
+export const SEGMENT_WIDTH = {
+    /** Base width for single note (px) */
+    SINGLE_NOTE_BASE: 28,
+    
+    /** Extra padding for single note (px) */
+    SINGLE_NOTE_PADDING: 10,
+    
+    /** Left padding for multi-note segments (px) */
+    MULTI_NOTE_LEFT_PADDING: 10,
+    
+    /** Right padding for multi-note segments (px) */
+    MULTI_NOTE_RIGHT_PADDING: 10,
+    
+    /** Rest bbox width for whole/half rests (px) */
+    REST_WIDTH_LONG: 10,
+    
+    /** Rest bbox width for quarter rests (px) */
+    REST_WIDTH_QUARTER: 8,
+    
+    /** Rest bbox width for eighth/shorter rests (px) */
+    REST_WIDTH_SHORT: 10,
+    
+    /** Rest bbox width for sixty-fourth rests (px) */
+    REST_WIDTH_SIXTY_FOURTH: 12,
+    
+    /** Note head half width maximum (px) */
+    HEAD_HALF_MAX: 6,
+    
+    /** Extra spacing margin at the end of multi-note segments (px) */
+    MULTI_NOTE_END_MARGIN: 8,
+    
+    /** Minimum spacing ratio for readability (70% = too tight) */
+    MIN_SPACING_RATIO: 0.7,
+    
+    /** Maximum spacing ratio for readability (150% = too spread) */
+    MAX_SPACING_RATIO: 1.5,
+} as const;
+
+// =============================================================================
+// COLLISION DETECTION
+// =============================================================================
+
+/**
+ * Constants for collision detection and positioning
+ */
+export const COLLISION = {
+    /** Default element priority (fixed position) */
+    PRIORITY_FIXED: 0,
+    
+    /** Chord element priority */
+    PRIORITY_CHORD: 5,
+    
+    /** Mobile element priority (can be moved) */
+    PRIORITY_MOBILE: 10,
+    
+    /** Maximum positioning attempts to resolve collisions */
+    MAX_POSITIONING_ATTEMPTS: 20,
+    
+    /** Max attempts for specific operations */
+    MAX_ATTEMPTS_ALT: 10,
+} as const;
+
+// =============================================================================
+// SVG VIEWPORT
+// =============================================================================
+
+/**
+ * SVG viewport and sizing
+ */
+export const SVG_VIEWPORT = {
+    /** SVG width attribute (responsive) */
+    WIDTH: '100%',
+    
+    /** Default Z-order for normal elements */
+    Z_ORDER_DEFAULT: 100,
+} as const;
