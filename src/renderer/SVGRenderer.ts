@@ -464,6 +464,8 @@ export class SVGRenderer {
     // We treat each line as a closed universe for collisions
     
     let globalMeasureIndex = 0;
+    const allMeasurePositions: any[] = []; // Accumulate all measure positions across lines
+    const allBarlines: any[] = []; // Accumulate all barlines across lines for volta rendering
 
     renderLines.forEach((line, lineIndex) => {
         // 1. SPATIAL CONTEXT RESET
@@ -494,7 +496,7 @@ export class SVGRenderer {
             const mWidth = this.getRenderedMeasureWidth(measure);
             (measure as any).__isLineStart = (posInLine === 0);
             
-            lineMeasurePositions.push({
+            const mp = {
                 measure,
                 lineIndex,
                 posInLine,
@@ -502,7 +504,9 @@ export class SVGRenderer {
                 width: mWidth,
                 x: currentX,
                 y: lineY
-            });
+            };
+            lineMeasurePositions.push(mp);
+            allMeasurePositions.push(mp); // Also accumulate globally for volta rendering
             
             currentX += mWidth;
         });
@@ -568,7 +572,7 @@ export class SVGRenderer {
         });
 
         // 5. LOCAL DECORATION ELEMENTS DRAWING
-        this.drawVoltaBrackets(svg, lineMeasurePositions, placeAndSizeManager);
+        // NOTE: Volta brackets are drawn GLOBALLY after all lines (see below)
         
         // Render chords AFTER all measures are drawn (so stem metadata is available)
         const chordRenderer = new ChordRenderer();
@@ -590,7 +594,26 @@ export class SVGRenderer {
 
         // Draw Pick-Strokes (Current line only) - AFTER ties to calculate global offset
         this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+        
+        // 6. SAVE BARLINES before PlaceAndSizeManager is cleared
+        // (needed for global volta rendering)
+        const lineBarlines = placeAndSizeManager.getElements()
+            .filter(el => el.type === 'barline' && el.metadata?.exactX !== undefined)
+            .map(el => ({
+                exactX: el.metadata!.exactX,
+                visualStartX: el.metadata!.visualStartX,
+                visualEndX: el.metadata!.visualEndX,
+                y: el.bbox.y,
+                measureIndex: el.metadata!.measureIndex,
+                side: el.metadata!.side
+            }));
+        allBarlines.push(...lineBarlines);
     });
+
+    // ========== GLOBAL VOLTA RENDERING ==========
+    // Draw volta brackets AFTER all lines are processed, so we can see all measures
+    // This allows voltas to span multiple lines correctly
+    this.drawVoltaBrackets(svg, allMeasurePositions, allBarlines, placeAndSizeManager);
 
     // Global bounds from PlaceAndSizeManager (note: currently contains only the last line)
     // We use the width/height calculated by layout instead, which covers all lines correctly
@@ -1235,26 +1258,15 @@ export class SVGRenderer {
    * 
    * @param svg - SVG parent element
    * @param measurePositions - Array of measure positions with coordinates
+   * @param allBarlines - Array of all barlines from all lines
    * @param placeAndSizeManager - Manager for registering collision boxes
    */
   private drawVoltaBrackets(
     svg: SVGElement,
     measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    allBarlines: Array<{ exactX: number; visualStartX?: number; visualEndX?: number; y: number; measureIndex: number; side: string }>,
     placeAndSizeManager: PlaceAndSizeManager
   ): void {
-    // Get all barlines from PlaceAndSizeManager instead of recalculating positions
-    const allBarlines = placeAndSizeManager.getElements()
-      .filter(el => el.type === 'barline' && el.metadata?.exactX !== undefined)
-      .map(el => ({
-        exactX: el.metadata!.exactX,
-        visualStartX: el.metadata!.visualStartX,
-        visualEndX: el.metadata!.visualEndX,
-        y: el.bbox.y,
-        measureIndex: el.metadata!.measureIndex,
-        side: el.metadata!.side,
-        type: el.metadata!.type
-      }));
-
     // Find all volta starts
     for (let i = 0; i < measurePositions.length; i++) {
       const mp = measurePositions[i];
@@ -1334,6 +1346,7 @@ export class SVGRenderer {
             horizontalLine.setAttribute('y2', y.toString());
             horizontalLine.setAttribute('stroke', '#000');
             horizontalLine.setAttribute('stroke-width', '1.5');
+            horizontalLine.setAttribute('data-volta', 'horizontal'); // For testing
             svg.appendChild(horizontalLine);
             
             // Draw left descending hook (only on first line)
@@ -1345,6 +1358,7 @@ export class SVGRenderer {
               leftHook.setAttribute('y2', (y + hookHeight).toString());
               leftHook.setAttribute('stroke', '#000');
               leftHook.setAttribute('stroke-width', '1.5');
+              leftHook.setAttribute('data-volta', 'left-hook'); // For testing
               svg.appendChild(leftHook);
             }
             
@@ -1357,6 +1371,7 @@ export class SVGRenderer {
               rightHook.setAttribute('y2', (y + hookHeight).toString());
               rightHook.setAttribute('stroke', '#000');
               rightHook.setAttribute('stroke-width', '1.5');
+              rightHook.setAttribute('data-volta', 'right-hook'); // For testing
               svg.appendChild(rightHook);
             }
             
@@ -1387,6 +1402,7 @@ export class SVGRenderer {
               voltaText.setAttribute('font-weight', 'normal');
               voltaText.setAttribute('fill', '#000');
               voltaText.setAttribute('text-anchor', 'start');
+              voltaText.setAttribute('data-volta', 'text'); // For testing
               voltaText.textContent = voltaInfo.text;
               svg.appendChild(voltaText);
               

@@ -4155,6 +4155,8 @@ var SVGRenderer = class {
       analyzedMeasures = [];
     }
     let globalMeasureIndex = 0;
+    const allMeasurePositions = [];
+    const allBarlines = [];
     renderLines.forEach((line, lineIndex) => {
       placeAndSizeManager.clearAll();
       if (lineIndex === 0) {
@@ -4176,7 +4178,7 @@ var SVGRenderer = class {
       line.measures.forEach((measure, posInLine) => {
         const mWidth = this.getRenderedMeasureWidth(measure);
         measure.__isLineStart = posInLine === 0;
-        lineMeasurePositions.push({
+        const mp = {
           measure,
           lineIndex,
           posInLine,
@@ -4184,7 +4186,9 @@ var SVGRenderer = class {
           width: mWidth,
           x: currentX,
           y: lineY
-        });
+        };
+        lineMeasurePositions.push(mp);
+        allMeasurePositions.push(mp);
         currentX += mWidth;
       });
       this.registerBarlines(lineMeasurePositions, placeAndSizeManager);
@@ -4234,7 +4238,6 @@ var SVGRenderer = class {
           drawBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
         }
       });
-      this.drawVoltaBrackets(svg, lineMeasurePositions, placeAndSizeManager);
       const chordRenderer = new ChordRenderer();
       chordRenderer.renderChords(svg, lineMeasurePositions, placeAndSizeManager, {
         displayRepeatSymbol: options.displayRepeatSymbol,
@@ -4247,7 +4250,20 @@ var SVGRenderer = class {
       const allowedMeasureIndices = new Set(lineMeasurePositions.map((mp) => mp.globalIndex));
       this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+      const lineBarlines = placeAndSizeManager.getElements().filter((el) => {
+        var _a;
+        return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0;
+      }).map((el) => ({
+        exactX: el.metadata.exactX,
+        visualStartX: el.metadata.visualStartX,
+        visualEndX: el.metadata.visualEndX,
+        y: el.bbox.y,
+        measureIndex: el.metadata.measureIndex,
+        side: el.metadata.side
+      }));
+      allBarlines.push(...lineBarlines);
     });
+    this.drawVoltaBrackets(svg, allMeasurePositions, allBarlines, placeAndSizeManager);
     const bounds = placeAndSizeManager.getGlobalBounds();
     if (options.debugPlacement) {
       placeAndSizeManager.logDiagnosticReport();
@@ -4706,21 +4722,10 @@ var SVGRenderer = class {
    * 
    * @param svg - SVG parent element
    * @param measurePositions - Array of measure positions with coordinates
+   * @param allBarlines - Array of all barlines from all lines
    * @param placeAndSizeManager - Manager for registering collision boxes
    */
-  drawVoltaBrackets(svg, measurePositions, placeAndSizeManager) {
-    const allBarlines = placeAndSizeManager.getElements().filter((el) => {
-      var _a;
-      return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0;
-    }).map((el) => ({
-      exactX: el.metadata.exactX,
-      visualStartX: el.metadata.visualStartX,
-      visualEndX: el.metadata.visualEndX,
-      y: el.bbox.y,
-      measureIndex: el.metadata.measureIndex,
-      side: el.metadata.side,
-      type: el.metadata.type
-    }));
+  drawVoltaBrackets(svg, measurePositions, allBarlines, placeAndSizeManager) {
     for (let i = 0; i < measurePositions.length; i++) {
       const mp = measurePositions[i];
       const measure = mp.measure;
@@ -4779,6 +4784,7 @@ var SVGRenderer = class {
             horizontalLine.setAttribute("y2", y.toString());
             horizontalLine.setAttribute("stroke", "#000");
             horizontalLine.setAttribute("stroke-width", "1.5");
+            horizontalLine.setAttribute("data-volta", "horizontal");
             svg.appendChild(horizontalLine);
             if (isFirstLine) {
               const leftHook = document.createElementNS(SVG_NS, "line");
@@ -4788,6 +4794,7 @@ var SVGRenderer = class {
               leftHook.setAttribute("y2", (y + hookHeight).toString());
               leftHook.setAttribute("stroke", "#000");
               leftHook.setAttribute("stroke-width", "1.5");
+              leftHook.setAttribute("data-volta", "left-hook");
               svg.appendChild(leftHook);
             }
             if (isLastLine && voltaInfo.isClosed) {
@@ -4798,6 +4805,7 @@ var SVGRenderer = class {
               rightHook.setAttribute("y2", (y + hookHeight).toString());
               rightHook.setAttribute("stroke", "#000");
               rightHook.setAttribute("stroke-width", "1.5");
+              rightHook.setAttribute("data-volta", "right-hook");
               svg.appendChild(rightHook);
             }
             if (isFirstLine) {
@@ -4820,6 +4828,7 @@ var SVGRenderer = class {
               voltaText.setAttribute("font-weight", "normal");
               voltaText.setAttribute("fill", "#000");
               voltaText.setAttribute("text-anchor", "start");
+              voltaText.setAttribute("data-volta", "text");
               voltaText.textContent = voltaInfo.text;
               svg.appendChild(voltaText);
               let realTextWidth = voltaInfo.text.length * (textSize * 0.6);
