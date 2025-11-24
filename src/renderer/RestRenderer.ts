@@ -1,69 +1,66 @@
 /**
  * @file RestRenderer.ts
- * @description Rendu SVG des silences musicaux.
+ * @description SVG rendering of musical rests.
  * 
- * Cette classe est spécialisée dans le rendu graphique des différents types
- * de silences (pauses, demi-pauses, soupirs, demi-soupirs, etc.).
+ * This class specializes in graphic rendering of different types
+ * of rests (whole rest, half rest, quarter rest, eighth rest, etc.).
  * 
- * Types de silences supportés :
- * - Pause (1) : rectangle suspendu sous la ligne
- * - Demi-pause (2) : rectangle posé sur la ligne
- * - Soupir (4) : forme en Z stylisée
- * - Demi-soupir (8) : crochet simple
- * - Quart de soupir (16) : double crochet
- * - Huitième de soupir (32) : triple crochet
- * - Seizième de soupir (64) : quadruple crochet
+ * Supported rest types:
+ * - Whole rest (1): rectangle suspended below the line
+ * - Half rest (2): rectangle sitting on the line
+ * - Quarter rest (4): stylized Z shape
+ * - Eighth rest (8): single hook
+ * - Sixteenth rest (16): double hook
+ * - Thirty-second rest (32): triple hook
+ * - Sixty-fourth rest (64): quadruple hook
  * 
- * Tous les silences peuvent être pointés (durée × 1.5).
+ * All rests can be dotted (duration × 1.5).
  */
 
 import { NoteElement } from '../parser/type';
-import { SVG_NS } from './constants';
+import { SVG_NS, NOTATION, VISUAL, SEGMENT_WIDTH } from './constants';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 
 /**
- * Classe de rendu des silences musicaux.
+ * Class for rendering musical rests.
  * 
- * Proportions calibrées sur les notes rythmiques :
- * - Quarter note (4) : slash 10px + stem 25px = 30px total
- * - Tous les silences sont proportionnés à cette référence
+ * Proportions calibrated on rhythmic notes:
+ * - Quarter note (4): slash 10px + stem 25px = 30px total
+ * - All rests are proportioned to this reference
  */
 export class RestRenderer {
-  // Rendering style constants
-  private readonly dotRadius = 1.8;
-  private readonly NOTE_HEIGHT = 30; // Hauteur de référence d'une quarter note (slash + stem)
   constructor(private PlaceAndSizeManager?: PlaceAndSizeManager) {}
   
   /**
-   * Dessine un silence selon sa valeur rythmique.
+   * Draws a rest according to its rhythmic value.
    * 
-   * @param svg - Élément SVG parent
-   * @param note - Note marquée comme silence (isRest=true)
-   * @param x - Position X du silence
-   * @param y - Position Y de référence (ligne de portée)
+   * @param svg - Parent SVG element
+   * @param note - Note marked as rest (isRest=true)
+   * @param x - X position of the rest
+   * @param y - Reference Y position (staff line)
    */
   drawRest(svg: SVGElement, note: NoteElement, x: number, y: number) {
     if (note.value === 1) {
       this.drawWholeRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y, 10, 4, note);
+      this.registerRestBBox(x, y, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 2) {
       this.drawHalfRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 4, 10, 4, note);
+      this.registerRestBBox(x, y - 4, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 4) {
       this.drawQuarterRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 24, 8, 24, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_EIGHTH, SEGMENT_WIDTH.REST_WIDTH_QUARTER, NOTATION.REST_HEIGHT_EIGHTH, note);
     } else if (note.value === 8) {
       this.drawEighthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 18, 8, 18, note);
+      this.registerRestBBox(x, y - 18, SEGMENT_WIDTH.REST_WIDTH_QUARTER, 18, note);
     } else if (note.value === 16) {
       this.drawSixteenthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 24, 10, 24, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTEENTH, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_SIXTEENTH, note);
     } else if (note.value === 32) {
       this.drawThirtySecondRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 28, 10, 28, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_THIRTY_SECOND, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_THIRTY_SECOND, note);
     } else if (note.value === 64) {
       this.drawSixtyFourthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 32, 12, 32, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTY_FOURTH, SEGMENT_WIDTH.REST_WIDTH_SIXTY_FOURTH, NOTATION.REST_HEIGHT_SIXTY_FOURTH, note);
     }
   }
 
@@ -79,45 +76,40 @@ export class RestRenderer {
   }
   
   private drawWholeRest(svg: SVGElement, x: number, y: number, dotted: boolean) {
-    // Pause: rectangle plein suspendu SOUS la ligne de portée, collé à la ligne
-    const width = 10;
-    const height = 4;
+    // Whole rest: filled rectangle suspended BELOW the staff line, touching the line
     const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('x', String(x - width / 2));
-    rect.setAttribute('y', String(y)); // collé sous la ligne (pas d'espace)
-    rect.setAttribute('width', String(width));
-    rect.setAttribute('height', String(height));
-    rect.setAttribute('fill', 'black');
+    rect.setAttribute('x', String(x - SEGMENT_WIDTH.REST_WIDTH_LONG / 2));
+    rect.setAttribute('y', String(y)); // touching below the line (no space)
+    rect.setAttribute('width', String(SEGMENT_WIDTH.REST_WIDTH_LONG));
+    rect.setAttribute('height', '4');
+    rect.setAttribute('fill', VISUAL.COLOR_BLACK);
     svg.appendChild(rect);
 
     if (dotted) {
-      this.drawDot(svg, x + width + 2, y);
+      this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y);
     }
   }
   
   private drawHalfRest(svg: SVGElement, x: number, y: number, dotted: boolean) {
-    // Demi-pause: rectangle plein POSÉ SUR la ligne
-    const width = 10;
-    const height = 4;
+    // Half rest: filled rectangle SITTING ON the line
     const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('x', String(x - width / 2));
-    rect.setAttribute('y', String(y - height)); // posé sur la ligne
-    rect.setAttribute('width', String(width));
-    rect.setAttribute('height', String(height));
-    rect.setAttribute('fill', 'black');
+    rect.setAttribute('x', String(x - SEGMENT_WIDTH.REST_WIDTH_LONG / 2));
+    rect.setAttribute('y', String(y - 4)); // sitting on the line
+    rect.setAttribute('width', String(SEGMENT_WIDTH.REST_WIDTH_LONG));
+    rect.setAttribute('height', '4');
+    rect.setAttribute('fill', VISUAL.COLOR_BLACK);
     svg.appendChild(rect);
 
     if (dotted) {
-      this.drawDot(svg, x + width + 2, y - 2);
+      this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y - 2);
     }
   }
   
   private drawQuarterRest(svg: SVGElement, x: number, y: number, dotted: boolean) {
-    // Soupir (quarter rest) – path canonique centré dans un viewBox de 100x100
-    // Hauteur calibrée pour correspondre à une noire : 30px (slash 10px + stem 25px - 5px overlap)
-    const TARGET_HEIGHT = 24; // Ajusté à 24px
-    const SYMBOL_HEIGHT = 12; // Hauteur approximative du symbole original (71 à 83)
-    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT; // = 2.0
+    // Quarter rest – canonical path centered in a 100x100 viewBox
+    // Height calibrated to match a quarter note: 30px (slash 10px + stem 25px - 5px overlap)
+    const SYMBOL_HEIGHT = 12; // Approximate height of the original symbol (71 to 83)
+    const SCALE = NOTATION.REST_HEIGHT_EIGHTH / SYMBOL_HEIGHT; // = 2.0
     const SYMBOL_CENTER_X = 512;
     const SYMBOL_CENTER_Y = 75;
     
@@ -125,7 +117,7 @@ export class RestRenderer {
     group.setAttribute('transform', `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', 'm 512.254,71.019 c -0.137,0.058 -0.219,0.258 -0.156,0.398 0.019,0.02 0.218,0.258 0.418,0.52 0.457,0.515 0.535,0.637 0.636,0.875 0.399,0.816 0.18,1.855 -0.519,2.512 -0.059,0.078 -0.317,0.296 -0.559,0.476 -0.695,0.598 -1.015,0.938 -1.133,1.238 -0.043,0.079 -0.043,0.157 -0.043,0.278 -0.019,0.277 0,0.301 0.821,1.254 1.113,1.336 1.91,2.273 1.972,2.332 l 0.059,0.058 -0.078,-0.039 c -1.098,-0.457 -2.332,-0.676 -2.75,-0.476 -0.141,0.058 -0.223,0.14 -0.281,0.277 -0.161,0.34 -0.118,0.84 0.121,1.574 0.218,0.66 0.656,1.535 1.093,2.192 0.18,0.281 0.52,0.718 0.559,0.738 0.059,0.059 0.141,0.039 0.199,0 0.059,-0.078 0.059,-0.141 -0.058,-0.277 -0.418,-0.598 -0.617,-1.836 -0.379,-2.493 0.097,-0.296 0.219,-0.457 0.437,-0.558 0.578,-0.258 1.856,0.062 2.391,0.597 0.039,0.04 0.121,0.122 0.16,0.141 0.141,0.059 0.34,-0.019 0.399,-0.16 0.082,-0.141 0.039,-0.238 -0.141,-0.457 -0.336,-0.399 -1.352,-1.594 -1.492,-1.774 -0.36,-0.418 -0.52,-0.816 -0.559,-1.316 -0.019,-0.637 0.238,-1.312 0.719,-1.754 0.058,-0.078 0.316,-0.297 0.555,-0.476 0.738,-0.618 1.039,-0.957 1.156,-1.278 0.082,-0.258 0.043,-0.496 -0.137,-0.715 -0.062,-0.058 -0.758,-0.918 -1.574,-1.894 -1.117,-1.313 -1.516,-1.793 -1.574,-1.813 -0.082,-0.019 -0.18,-0.019 -0.262,0.02 z');
-    path.setAttribute('fill', '#000000');
+    path.setAttribute('fill', VISUAL.COLOR_BLACK);
     group.appendChild(path);
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 12, y - 4);
@@ -211,8 +203,8 @@ export class RestRenderer {
     const circle = document.createElementNS(SVG_NS, 'circle');
     circle.setAttribute('cx', String(x));
     circle.setAttribute('cy', String(y));
-    circle.setAttribute('r', String(this.dotRadius));
-    circle.setAttribute('fill', 'black');
+    circle.setAttribute('r', String(VISUAL.DOT_RADIUS));
+    circle.setAttribute('fill', VISUAL.COLOR_BLACK);
     svg.appendChild(circle);
   }
 }

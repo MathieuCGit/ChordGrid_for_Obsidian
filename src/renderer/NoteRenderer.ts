@@ -56,43 +56,41 @@ export class NoteRenderer {
     }
 
     /**
-     * Dessine une tête de note en losange (diamond).
+     * Draws a diamond note head.
      */
     private drawDiamondNoteHead(svg: SVGElement, x: number, y: number, hollow: boolean): void {
-        const diamondSize = 6;
         const diamond = document.createElementNS(SVG_NS, 'polygon');
         const points = [
-            [x, y - diamondSize],
-            [x + diamondSize, y],
-            [x, y + diamondSize],
-            [x - diamondSize, y]
+            [x, y - NOTATION.DIAMOND_SIZE],
+            [x + NOTATION.DIAMOND_SIZE, y],
+            [x, y + NOTATION.DIAMOND_SIZE],
+            [x - NOTATION.DIAMOND_SIZE, y]
         ];
         diamond.setAttribute('points', points.map(p => `${p[0]},${p[1]}`).join(' '));
         diamond.setAttribute('fill', hollow ? 'white' : 'black');
-        diamond.setAttribute('stroke', '#000');
-        diamond.setAttribute('stroke-width', '1');
+        diamond.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        diamond.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THIN));
         svg.appendChild(diamond);
     }
 
     /**
-     * Dessine une barre de slash (tête de note pour valeurs >= 4).
+     * Draws a slash bar (note head for values >= 4).
      */
     private drawSlash(svg: SVGElement, x: number, y: number): void {
-        const slashLength = 10;
         const slash = document.createElementNS(SVG_NS, 'line');
-        slash.setAttribute('x1', (x + slashLength / 2).toString());
-        slash.setAttribute('y1', (y - slashLength / 2).toString());
-        slash.setAttribute('x2', (x - slashLength / 2).toString());
-        slash.setAttribute('y2', (y + slashLength / 2).toString());
-        slash.setAttribute('stroke', '#000');
-        slash.setAttribute('stroke-width', '3');
+        slash.setAttribute('x1', (x + NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('y1', (y - NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('x2', (x - NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('y2', (y + NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        slash.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_EXTRA_THICK));
         svg.appendChild(slash);
     }
 
     /**
-     * Dessine une hampe orientée selon stemsDirection.
+     * Draws a stem oriented according to stemsDirection.
      * 
-     * @returns Coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
+     * @returns Stem coordinates: x, topY (highest point), bottomY (lowest point)
      */
     private drawStemWithDirection(
         svg: SVGElement,
@@ -101,21 +99,19 @@ export class NoteRenderer {
         height: number,
         direction: 'up' | 'down'
     ): { x: number; topY: number; bottomY: number } {
-        const slashLength = 10;
-        
-        // Position de la hampe selon la direction (notation musicale standard)
-        // Hampes UP : à droite de la note head
-        // Hampes DOWN : à gauche de la note head
-        const stemStartX = direction === 'up' ? (x + slashLength / 2) : (x - slashLength / 2);
+        // Stem position according to direction (standard music notation)
+        // Stems UP: to the right of the note head
+        // Stems DOWN: to the left of the note head
+        const stemStartX = direction === 'up' ? (x + NOTATION.SLASH_LENGTH / 2) : (x - NOTATION.SLASH_LENGTH / 2);
 
         let stemStartY: number, stemEndY: number;
         if (direction === 'up') {
-            // Hampes vers le haut : part du HAUT de la tête de note et monte
-            stemStartY = y - slashLength / 2;
+            // Stems upward: starts from the TOP of the note head and goes up
+            stemStartY = y - NOTATION.SLASH_LENGTH / 2;
             stemEndY = stemStartY - height;
         } else {
-            // Hampes vers le bas : part du BAS de la tête de note et descend
-            stemStartY = y + slashLength / 2;
+            // Stems downward: starts from the BOTTOM of the note head and goes down
+            stemStartY = y + NOTATION.SLASH_LENGTH / 2;
             stemEndY = stemStartY + height;
         }
 
@@ -124,11 +120,11 @@ export class NoteRenderer {
         stem.setAttribute('y1', stemStartY.toString());
         stem.setAttribute('x2', stemStartX.toString());
         stem.setAttribute('y2', stemEndY.toString());
-        stem.setAttribute('stroke', '#000');
-        stem.setAttribute('stroke-width', '2');
+        stem.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        stem.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THICK));
         svg.appendChild(stem);
 
-        // Retourner les vraies valeurs top et bottom
+        // Return actual top and bottom values
         return {
             x: stemStartX,
             topY: Math.min(stemStartY, stemEndY),

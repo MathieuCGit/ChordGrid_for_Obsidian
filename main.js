@@ -1244,6 +1244,20 @@ var NOTATION = {
   BEAM_GAP: 5,
   /** Beamlet length for partial beams (px) */
   BEAMLET_LENGTH: 8,
+  /** Flag spacing between multiple flags on a stem (px) */
+  FLAG_SPACING: 10,
+  /** Flag curve control distance (px) */
+  FLAG_CURVE_DISTANCE: 10,
+  /** Flag curve end offset (px) */
+  FLAG_CURVE_END_OFFSET: 8,
+  /** Flag curve control Y offset (px) */
+  FLAG_CURVE_Y_OFFSET: 5,
+  /** Flag curve total Y distance (px) */
+  FLAG_CURVE_Y_DISTANCE: 12,
+  /** Dot offset from note center (px) */
+  DOT_OFFSET: 10,
+  /** Dot collision box half-size (px) */
+  DOT_COLLISION_HALF: 2,
   /** Dot horizontal offset from note head (px) */
   DOT_OFFSET_X: 6,
   /** Dot vertical offset for dotted notes (px) */
@@ -1356,43 +1370,39 @@ var SEGMENT_WIDTH = {
 
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
-  // Hauteur de référence d'une quarter note (slash + stem)
   constructor(PlaceAndSizeManager2) {
     this.PlaceAndSizeManager = PlaceAndSizeManager2;
-    // Rendering style constants
-    __publicField(this, "dotRadius", 1.8);
-    __publicField(this, "NOTE_HEIGHT", 30);
   }
   /**
-   * Dessine un silence selon sa valeur rythmique.
+   * Draws a rest according to its rhythmic value.
    * 
-   * @param svg - Élément SVG parent
-   * @param note - Note marquée comme silence (isRest=true)
-   * @param x - Position X du silence
-   * @param y - Position Y de référence (ligne de portée)
+   * @param svg - Parent SVG element
+   * @param note - Note marked as rest (isRest=true)
+   * @param x - X position of the rest
+   * @param y - Reference Y position (staff line)
    */
   drawRest(svg, note, x, y) {
     if (note.value === 1) {
       this.drawWholeRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y, 10, 4, note);
+      this.registerRestBBox(x, y, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 2) {
       this.drawHalfRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 4, 10, 4, note);
+      this.registerRestBBox(x, y - 4, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 4) {
       this.drawQuarterRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 24, 8, 24, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_EIGHTH, SEGMENT_WIDTH.REST_WIDTH_QUARTER, NOTATION.REST_HEIGHT_EIGHTH, note);
     } else if (note.value === 8) {
       this.drawEighthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 18, 8, 18, note);
+      this.registerRestBBox(x, y - 18, SEGMENT_WIDTH.REST_WIDTH_QUARTER, 18, note);
     } else if (note.value === 16) {
       this.drawSixteenthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 24, 10, 24, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTEENTH, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_SIXTEENTH, note);
     } else if (note.value === 32) {
       this.drawThirtySecondRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 28, 10, 28, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_THIRTY_SECOND, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_THIRTY_SECOND, note);
     } else if (note.value === 64) {
       this.drawSixtyFourthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 32, 12, 32, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTY_FOURTH, SEGMENT_WIDTH.REST_WIDTH_SIXTY_FOURTH, NOTATION.REST_HEIGHT_SIXTY_FOURTH, note);
     }
   }
   registerRestBBox(x, y, width, height, note) {
@@ -1406,44 +1416,39 @@ var RestRenderer = class {
     });
   }
   drawWholeRest(svg, x, y, dotted) {
-    const width = 10;
-    const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("x", String(x - width / 2));
+    rect.setAttribute("x", String(x - SEGMENT_WIDTH.REST_WIDTH_LONG / 2));
     rect.setAttribute("y", String(y));
-    rect.setAttribute("width", String(width));
-    rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", "black");
+    rect.setAttribute("width", String(SEGMENT_WIDTH.REST_WIDTH_LONG));
+    rect.setAttribute("height", "4");
+    rect.setAttribute("fill", VISUAL.COLOR_BLACK);
     svg.appendChild(rect);
     if (dotted) {
-      this.drawDot(svg, x + width + 2, y);
+      this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y);
     }
   }
   drawHalfRest(svg, x, y, dotted) {
-    const width = 10;
-    const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("x", String(x - width / 2));
-    rect.setAttribute("y", String(y - height));
-    rect.setAttribute("width", String(width));
-    rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", "black");
+    rect.setAttribute("x", String(x - SEGMENT_WIDTH.REST_WIDTH_LONG / 2));
+    rect.setAttribute("y", String(y - 4));
+    rect.setAttribute("width", String(SEGMENT_WIDTH.REST_WIDTH_LONG));
+    rect.setAttribute("height", "4");
+    rect.setAttribute("fill", VISUAL.COLOR_BLACK);
     svg.appendChild(rect);
     if (dotted) {
-      this.drawDot(svg, x + width + 2, y - 2);
+      this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y - 2);
     }
   }
   drawQuarterRest(svg, x, y, dotted) {
-    const TARGET_HEIGHT = 24;
     const SYMBOL_HEIGHT = 12;
-    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SCALE = NOTATION.REST_HEIGHT_EIGHTH / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 512;
     const SYMBOL_CENTER_Y = 75;
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 512.254,71.019 c -0.137,0.058 -0.219,0.258 -0.156,0.398 0.019,0.02 0.218,0.258 0.418,0.52 0.457,0.515 0.535,0.637 0.636,0.875 0.399,0.816 0.18,1.855 -0.519,2.512 -0.059,0.078 -0.317,0.296 -0.559,0.476 -0.695,0.598 -1.015,0.938 -1.133,1.238 -0.043,0.079 -0.043,0.157 -0.043,0.278 -0.019,0.277 0,0.301 0.821,1.254 1.113,1.336 1.91,2.273 1.972,2.332 l 0.059,0.058 -0.078,-0.039 c -1.098,-0.457 -2.332,-0.676 -2.75,-0.476 -0.141,0.058 -0.223,0.14 -0.281,0.277 -0.161,0.34 -0.118,0.84 0.121,1.574 0.218,0.66 0.656,1.535 1.093,2.192 0.18,0.281 0.52,0.718 0.559,0.738 0.059,0.059 0.141,0.039 0.199,0 0.059,-0.078 0.059,-0.141 -0.058,-0.277 -0.418,-0.598 -0.617,-1.836 -0.379,-2.493 0.097,-0.296 0.219,-0.457 0.437,-0.558 0.578,-0.258 1.856,0.062 2.391,0.597 0.039,0.04 0.121,0.122 0.16,0.141 0.141,0.059 0.34,-0.019 0.399,-0.16 0.082,-0.141 0.039,-0.238 -0.141,-0.457 -0.336,-0.399 -1.352,-1.594 -1.492,-1.774 -0.36,-0.418 -0.52,-0.816 -0.559,-1.316 -0.019,-0.637 0.238,-1.312 0.719,-1.754 0.058,-0.078 0.316,-0.297 0.555,-0.476 0.738,-0.618 1.039,-0.957 1.156,-1.278 0.082,-0.258 0.043,-0.496 -0.137,-0.715 -0.062,-0.058 -0.758,-0.918 -1.574,-1.894 -1.117,-1.313 -1.516,-1.793 -1.574,-1.813 -0.082,-0.019 -0.18,-0.019 -0.262,0.02 z");
-    path.setAttribute("fill", "#000000");
+    path.setAttribute("fill", VISUAL.COLOR_BLACK);
     group.appendChild(path);
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 12, y - 4);
@@ -1512,8 +1517,8 @@ var RestRenderer = class {
     const circle = document.createElementNS(SVG_NS, "circle");
     circle.setAttribute("cx", String(x));
     circle.setAttribute("cy", String(y));
-    circle.setAttribute("r", String(this.dotRadius));
-    circle.setAttribute("fill", "black");
+    circle.setAttribute("r", String(VISUAL.DOT_RADIUS));
+    circle.setAttribute("fill", VISUAL.COLOR_BLACK);
     svg.appendChild(circle);
   }
 };
@@ -1529,51 +1534,48 @@ var NoteRenderer = class {
     this.restRenderer = new RestRenderer();
   }
   /**
-   * Dessine une tête de note en losange (diamond).
+   * Draws a diamond note head.
    */
   drawDiamondNoteHead(svg, x, y, hollow) {
-    const diamondSize = 6;
     const diamond = document.createElementNS(SVG_NS, "polygon");
     const points = [
-      [x, y - diamondSize],
-      [x + diamondSize, y],
-      [x, y + diamondSize],
-      [x - diamondSize, y]
+      [x, y - NOTATION.DIAMOND_SIZE],
+      [x + NOTATION.DIAMOND_SIZE, y],
+      [x, y + NOTATION.DIAMOND_SIZE],
+      [x - NOTATION.DIAMOND_SIZE, y]
     ];
     diamond.setAttribute("points", points.map((p) => `${p[0]},${p[1]}`).join(" "));
     diamond.setAttribute("fill", hollow ? "white" : "black");
-    diamond.setAttribute("stroke", "#000");
-    diamond.setAttribute("stroke-width", "1");
+    diamond.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    diamond.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THIN));
     svg.appendChild(diamond);
   }
   /**
-   * Dessine une barre de slash (tête de note pour valeurs >= 4).
+   * Draws a slash bar (note head for values >= 4).
    */
   drawSlash(svg, x, y) {
-    const slashLength = 10;
     const slash = document.createElementNS(SVG_NS, "line");
-    slash.setAttribute("x1", (x + slashLength / 2).toString());
-    slash.setAttribute("y1", (y - slashLength / 2).toString());
-    slash.setAttribute("x2", (x - slashLength / 2).toString());
-    slash.setAttribute("y2", (y + slashLength / 2).toString());
-    slash.setAttribute("stroke", "#000");
-    slash.setAttribute("stroke-width", "3");
+    slash.setAttribute("x1", (x + NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("y1", (y - NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("x2", (x - NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("y2", (y + NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    slash.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_EXTRA_THICK));
     svg.appendChild(slash);
   }
   /**
-   * Dessine une hampe orientée selon stemsDirection.
+   * Draws a stem oriented according to stemsDirection.
    * 
-   * @returns Coordonnées de la hampe : x, topY (point le plus haut), bottomY (point le plus bas)
+   * @returns Stem coordinates: x, topY (highest point), bottomY (lowest point)
    */
   drawStemWithDirection(svg, x, y, height, direction) {
-    const slashLength = 10;
-    const stemStartX = direction === "up" ? x + slashLength / 2 : x - slashLength / 2;
+    const stemStartX = direction === "up" ? x + NOTATION.SLASH_LENGTH / 2 : x - NOTATION.SLASH_LENGTH / 2;
     let stemStartY, stemEndY;
     if (direction === "up") {
-      stemStartY = y - slashLength / 2;
+      stemStartY = y - NOTATION.SLASH_LENGTH / 2;
       stemEndY = stemStartY - height;
     } else {
-      stemStartY = y + slashLength / 2;
+      stemStartY = y + NOTATION.SLASH_LENGTH / 2;
       stemEndY = stemStartY + height;
     }
     const stem = document.createElementNS(SVG_NS, "line");
@@ -1581,8 +1583,8 @@ var NoteRenderer = class {
     stem.setAttribute("y1", stemStartY.toString());
     stem.setAttribute("x2", stemStartX.toString());
     stem.setAttribute("y2", stemEndY.toString());
-    stem.setAttribute("stroke", "#000");
-    stem.setAttribute("stroke-width", "2");
+    stem.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    stem.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THICK));
     svg.appendChild(stem);
     return {
       x: stemStartX,

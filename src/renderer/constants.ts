@@ -167,6 +167,27 @@ export const NOTATION = {
     /** Beamlet length for partial beams (px) */
     BEAMLET_LENGTH: 8,
     
+    /** Flag spacing between multiple flags on a stem (px) */
+    FLAG_SPACING: 10,
+    
+    /** Flag curve control distance (px) */
+    FLAG_CURVE_DISTANCE: 10,
+    
+    /** Flag curve end offset (px) */
+    FLAG_CURVE_END_OFFSET: 8,
+    
+    /** Flag curve control Y offset (px) */
+    FLAG_CURVE_Y_OFFSET: 5,
+    
+    /** Flag curve total Y distance (px) */
+    FLAG_CURVE_Y_DISTANCE: 12,
+    
+    /** Dot offset from note center (px) */
+    DOT_OFFSET: 10,
+    
+    /** Dot collision box half-size (px) */
+    DOT_COLLISION_HALF: 2,
+    
     /** Dot horizontal offset from note head (px) */
     DOT_OFFSET_X: 6,
     
