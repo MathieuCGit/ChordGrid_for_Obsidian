@@ -372,17 +372,25 @@ export class ChordGridParser {
         }
       }
 
-      // Allow a small epsilon for fp rounding
-      const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
-      if (diff > 1e-6) {
-        errors.push({
-          measureIndex: mi,
-          measureSource: measure.source,
-          expectedQuarterNotes,
-          foundQuarterNotes,
-          message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
-        });
+      // Skip rhythm validation for chord-only measures
+      // A measure is "chord-only" if it has no rhythm (beats are empty or have no notes)
+      const hasRhythm = measure.beats.some(beat => beat.notes && beat.notes.length > 0);
+      
+      if (hasRhythm) {
+        // Allow a small epsilon for fp rounding
+        const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
+        if (diff > 1e-6) {
+          errors.push({
+            measureIndex: mi,
+            measureSource: measure.source,
+            expectedQuarterNotes,
+            foundQuarterNotes,
+            message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
+          });
+        }
       }
+      // Chord-only measures (e.g., "Dm", "C / G", or "%" copying a chord-only measure) 
+      // are implicitly valid and don't need rhythm validation
     }
 
   return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, measuresPerLine };
@@ -1021,6 +1029,11 @@ export class ChordGridParser {
       source: source.source,
       isRepeat: true
     };
+
+    // Copy chord-only mode flag if present
+    if ((source as any).__isChordOnlyMode) {
+      (cloned as any).__isChordOnlyMode = true;
+    }
 
     // Add repeat bar properties based on barline type
     if (barline === '||:') {

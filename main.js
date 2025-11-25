@@ -322,15 +322,18 @@ var _ChordGridParser = class _ChordGridParser {
           }
         }
       }
-      const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
-      if (diff > 1e-6) {
-        errors.push({
-          measureIndex: mi,
-          measureSource: measure.source,
-          expectedQuarterNotes,
-          foundQuarterNotes,
-          message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
-        });
+      const hasRhythm = measure.beats.some((beat) => beat.notes && beat.notes.length > 0);
+      if (hasRhythm) {
+        const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
+        if (diff > 1e-6) {
+          errors.push({
+            measureIndex: mi,
+            measureSource: measure.source,
+            expectedQuarterNotes,
+            foundQuarterNotes,
+            message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
+          });
+        }
       }
     }
     return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, measuresPerLine };
@@ -454,7 +457,7 @@ var _ChordGridParser = class _ChordGridParser {
         }
         const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
         const isNotFirstToken = ti > 0;
-        if (measuresPerLine !== void 0 && (isIntentionalEmpty || isNotFirstToken)) {
+        if (isIntentionalEmpty || measuresPerLine !== void 0 && isNotFirstToken) {
           const emptyMeasure = {
             beats: [],
             chord: "",
@@ -765,6 +768,9 @@ var _ChordGridParser = class _ChordGridParser {
       source: source.source,
       isRepeat: true
     };
+    if (source.__isChordOnlyMode) {
+      cloned.__isChordOnlyMode = true;
+    }
     if (barline === "||:") {
       cloned.isRepeatStart = true;
     } else if (barline === ":||") {
@@ -1915,6 +1921,15 @@ var MeasureRenderer = class {
       this.drawEmptyMeasure(svg, measureIndex);
       return;
     }
+    if (this.displayRepeatSymbol && this.measure.isRepeat) {
+      const isChordOnly = this.measure.__isChordOnlyMode;
+      if (isChordOnly) {
+        this.drawChordOnlyRepeatMeasure(svg, measureIndex);
+      } else {
+        this.drawRhythmRepeatMeasure(svg, measureIndex);
+      }
+      return;
+    }
     if (this.measure.__isChordOnlyMode) {
       this.drawChordOnlyMeasure(svg, measureIndex);
       return;
@@ -1945,21 +1960,6 @@ var MeasureRenderer = class {
         exactY: staffLineY,
         measureIndex
       });
-    }
-    if (this.displayRepeatSymbol && this.measure.isRepeat) {
-      this.measure.__hasRepeatSymbol = true;
-      this.drawRepeatSymbol(svg);
-      if (this.measure.isRepeatEnd) {
-        this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
-        if (this.measure.repeatCount !== void 0) {
-          this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
-        }
-      } else if (this.measure.barline === "||") {
-        this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
-      } else {
-        this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
-      }
-      return;
     }
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
     const segmentNoteCursor = new Array(segments.length).fill(0);
@@ -2300,12 +2300,73 @@ var MeasureRenderer = class {
     }
   }
   /**
+   * Draw a chord-only measure with repeat symbol (%).
+   * Used when show% is enabled for chord-only repeated measures.
+   * Draws the % symbol without staff line (cleaner look for chord-only context).
+   */
+  drawChordOnlyRepeatMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    this.drawRepeatSymbol(svg);
+    this.measure.__hasRepeatSymbol = true;
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
+    }
+  }
+  /**
+   * Draw a rhythm measure with repeat symbol (%).
+   * Used when show% is enabled for rhythm repeated measures.
+   * Draws the % symbol WITH staff line (standard rhythm notation).
+   */
+  drawRhythmRepeatMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
+    const staffLine = document.createElementNS(SVG_NS, "line");
+    staffLine.setAttribute("x1", (this.x + LAYOUT.BASE_LEFT_PADDING).toString());
+    staffLine.setAttribute("y1", staffLineY.toString());
+    staffLine.setAttribute("x2", (this.x + this.width - LAYOUT.BASE_LEFT_PADDING).toString());
+    staffLine.setAttribute("y2", staffLineY.toString());
+    staffLine.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    staffLine.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THIN.toString());
+    svg.appendChild(staffLine);
+    this.measure.__hasRepeatSymbol = true;
+    this.drawRepeatSymbol(svg);
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
+    }
+  }
+  /**
    * Draw the repeat symbol (%) in the center of the measure.
    * Uses the official SVG path for a classical measure repeat symbol.
    */
   drawRepeatSymbol(svg) {
     const centerX = this.x + this.width / 2;
-    const centerY = this.y + 80;
+    const centerY = this.y + POSITIONING.CHORD_ONLY_Y_CENTER;
     const targetHeight = 30;
     const originalHeight = 178;
     const originalWidth = 188;
@@ -3800,35 +3861,6 @@ var ChordRenderer = class {
             mp.globalIndex,
             segmentIndex
           );
-        } else if (measure.__hasRepeatSymbol) {
-          if (segments.length === 1) {
-            const defaultNoteX = measureX + LAYOUT.BASE_LEFT_PADDING;
-            this.renderChordSymbol(
-              svg,
-              chordSymbol,
-              defaultNoteX,
-              chordY,
-              fontSize,
-              "start",
-              placeAndSizeManager,
-              mp.globalIndex,
-              segmentIndex
-            );
-          } else {
-            const segmentWidth = mp.width / segments.length;
-            const chordX = measureX + segmentIndex * segmentWidth + LAYOUT.BASE_LEFT_PADDING;
-            this.renderChordSymbol(
-              svg,
-              chordSymbol,
-              chordX,
-              chordY,
-              fontSize,
-              "start",
-              placeAndSizeManager,
-              mp.globalIndex,
-              segmentIndex
-            );
-          }
         } else {
           console.warn(
             `[ChordRenderer] No note found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`
@@ -3982,6 +4014,9 @@ var ChordRenderer = class {
    */
   renderChordOnlyMeasure(svg, measurePosition, placeAndSizeManager) {
     const measure = measurePosition.measure;
+    if (measure.__hasRepeatSymbol) {
+      return;
+    }
     const measureX = measurePosition.x;
     const measureY = measurePosition.y;
     const measureWidth = measurePosition.width;
@@ -4097,6 +4132,9 @@ var SVGRenderer = class {
    * Calcule la largeur totale requise pour une mesure.
    */
   calculateMeasureWidth(measure) {
+    if (measure.__isEmpty) {
+      return LAYOUT.BASE_MEASURE_WIDTH * 0.5;
+    }
     const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
     let width = 0;
     segments.forEach((seg, idx) => {
@@ -4467,8 +4505,8 @@ var SVGRenderer = class {
       this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
       const lineBarlines = placeAndSizeManager.getElements().filter((el) => {
-        var _a;
-        return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0;
+        var _a, _b;
+        return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0 && ((_b = el.metadata) == null ? void 0 : _b.measureIndex) !== void 0;
       }).map((el) => ({
         exactX: el.metadata.exactX,
         visualStartX: el.metadata.visualStartX,

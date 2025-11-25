@@ -237,43 +237,6 @@ export class ChordRenderer {
                         mp.globalIndex,
                         segmentIndex
                     );
-                } else if (measure.__hasRepeatSymbol) {
-                    // Measure with % symbol: no real notes
-                    // If 1 chord only: position at left at start of measure
-                    // If multiple chords: distribute horizontally
-                    
-                    if (segments.length === 1) {
-                        // Single chord: at start of measure
-                        const defaultNoteX = measureX + LAYOUT.BASE_LEFT_PADDING;
-                        
-                        this.renderChordSymbol(
-                            svg,
-                            chordSymbol,
-                            defaultNoteX,
-                            chordY,
-                            fontSize,
-                            'start',
-                            placeAndSizeManager,
-                            mp.globalIndex,
-                            segmentIndex
-                        );
-                    } else {
-                        // Multiple chords: distribute horizontally
-                        const segmentWidth = mp.width / segments.length;
-                        const chordX = measureX + segmentIndex * segmentWidth + LAYOUT.BASE_LEFT_PADDING;
-                        
-                        this.renderChordSymbol(
-                            svg,
-                            chordSymbol,
-                            chordX,
-                            chordY,
-                            fontSize,
-                            'start',
-                            placeAndSizeManager,
-                            mp.globalIndex,
-                            segmentIndex
-                        );
-                    }
                 } else {
                     // No note found (measure without rhythm or error)
                     // Fallback behavior: center in segment
@@ -510,6 +473,13 @@ export class ChordRenderer {
         placeAndSizeManager: PlaceAndSizeManager
     ): void {
         const measure = measurePosition.measure as any;
+        
+        // Skip rendering if measure has repeat symbol (%)
+        // The % symbol replaces the chord name display in chord-only mode
+        if (measure.__hasRepeatSymbol) {
+            return;
+        }
+        
         const measureX = measurePosition.x!;
         const measureY = measurePosition.y!;
         const measureWidth = measurePosition.width;

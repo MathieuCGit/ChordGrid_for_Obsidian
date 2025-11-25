@@ -8,7 +8,8 @@ import {
     NOTATION, 
     NOTE_SPACING, 
     SEGMENT_WIDTH,
-    VISUAL 
+    VISUAL,
+    POSITIONING
 } from './constants';
 
 /**
@@ -82,6 +83,23 @@ export class MeasureRenderer {
             return;
         }
 
+        // Check if we should display repeat symbol
+        // Two cases to handle:
+        // 1. Rhythm measure with repeat: show % symbol WITH staff line
+        // 2. Chord-only measure with repeat: show % symbol WITHOUT staff line (cleaner)
+        if (this.displayRepeatSymbol && this.measure.isRepeat) {
+            const isChordOnly = (this.measure as any).__isChordOnlyMode;
+            
+            if (isChordOnly) {
+                // Chord-only repeat: draw % symbol without staff line
+                this.drawChordOnlyRepeatMeasure(svg, measureIndex);
+            } else {
+                // Rhythm repeat: draw % symbol with staff line
+                this.drawRhythmRepeatMeasure(svg, measureIndex);
+            }
+            return;
+        }
+
         // Check for chord-only mode (no rhythm notation)
         if ((this.measure as any).__isChordOnlyMode) {
             this.drawChordOnlyMeasure(svg, measureIndex);
@@ -119,29 +137,8 @@ export class MeasureRenderer {
             });
         }
 
-        // Check if we should display repeat symbol instead of full rhythm
-        if (this.displayRepeatSymbol && this.measure.isRepeat) {
-            // Mark measure as having repeat symbol for ChordRenderer
-            (this.measure as any).__hasRepeatSymbol = true;
-            
-            this.drawRepeatSymbol(svg);
-            // Chord names are now handled by ChordRenderer
-            // Draw right barline with ALL barline types (repeat, double bar, simple)
-            if ((this.measure as any).isRepeatEnd) {
-                this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
-                // Draw repeat count if present (e.g., x3)
-                if ((this.measure as any).repeatCount !== undefined) {
-                    this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
-                }
-            } else if (this.measure.barline === '||') {
-                this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
-            } else {
-                this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
-            }
-            return;
-        }
-
-    const segments: ChordSegment[] = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
+        // Render measure content (rhythm notation)
+        const segments: ChordSegment[] = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
     // Track per-segment note index to map to analyzer references
     const segmentNoteCursor: number[] = new Array(segments.length).fill(0);
 
@@ -584,12 +581,92 @@ export class MeasureRenderer {
     }
 
     /**
+     * Draw a chord-only measure with repeat symbol (%).
+     * Used when show% is enabled for chord-only repeated measures.
+     * Draws the % symbol without staff line (cleaner look for chord-only context).
+     */
+    private drawChordOnlyRepeatMeasure(svg: SVGElement, measureIndex: number): void {
+        const leftBarX = this.x;
+        const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+
+        // Draw left barline
+        if ((this.measure as any).isRepeatStart) {
+            this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+            this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
+        }
+
+        // Draw % symbol centered (no staff line for chord-only)
+        this.drawRepeatSymbol(svg);
+        
+        // Mark as having repeat symbol for ChordRenderer
+        (this.measure as any).__hasRepeatSymbol = true;
+
+        // Draw right barline
+        if ((this.measure as any).isRepeatEnd) {
+            this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+            if ((this.measure as any).repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            }
+        } else if (this.measure.barline === '||') {
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+        } else {
+            this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
+        }
+    }
+
+    /**
+     * Draw a rhythm measure with repeat symbol (%).
+     * Used when show% is enabled for rhythm repeated measures.
+     * Draws the % symbol WITH staff line (standard rhythm notation).
+     */
+    private drawRhythmRepeatMeasure(svg: SVGElement, measureIndex: number): void {
+        const leftBarX = this.x;
+        const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+        
+        // Draw left barline
+        if ((this.measure as any).isRepeatStart) {
+            this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+            this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
+        }
+        
+        // Draw staff line for repeat symbol
+        const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
+        const staffLine = document.createElementNS(SVG_NS, 'line');
+        staffLine.setAttribute('x1', (this.x + LAYOUT.BASE_LEFT_PADDING).toString());
+        staffLine.setAttribute('y1', staffLineY.toString());
+        staffLine.setAttribute('x2', (this.x + this.width - LAYOUT.BASE_LEFT_PADDING).toString());
+        staffLine.setAttribute('y2', staffLineY.toString());
+        staffLine.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        staffLine.setAttribute('stroke-width', VISUAL.STROKE_WIDTH_THIN.toString());
+        svg.appendChild(staffLine);
+        
+        // Mark measure as having repeat symbol for ChordRenderer
+        (this.measure as any).__hasRepeatSymbol = true;
+        
+        this.drawRepeatSymbol(svg);
+        
+        // Draw right barline
+        if ((this.measure as any).isRepeatEnd) {
+            this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+            if ((this.measure as any).repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            }
+        } else if (this.measure.barline === '||') {
+            this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+        } else {
+            this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
+        }
+    }
+
+    /**
      * Draw the repeat symbol (%) in the center of the measure.
      * Uses the official SVG path for a classical measure repeat symbol.
      */
     private drawRepeatSymbol(svg: SVGElement): void {
         const centerX = this.x + this.width / 2;
-        const centerY = this.y + 80; // Staff line baseline
+        const centerY = this.y + POSITIONING.CHORD_ONLY_Y_CENTER; // Align with chord symbols
         
         // SVG path provided by user (original viewBox: 188x178)
         const targetHeight = 30;
