@@ -27,6 +27,7 @@
 import { ChordGrid, Measure } from '../parser/type';
 import { Beat } from '../models/Beat';
 import { MeasureRenderer } from './MeasureRenderer';
+import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
   SVG_NS, 
   LAYOUT, 
@@ -382,6 +383,7 @@ export class SVGRenderer {
 
     // Initialize managers
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
+    const timeSignatureRenderer = new TimeSignatureRenderer(placeAndSizeManager);
     const tieManager = new TieManager();
     const voltaManager = new VoltaManager();
     const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[] = [];
@@ -395,10 +397,17 @@ export class SVGRenderer {
   bg.setAttribute('fill', 'white');
   svg.appendChild(bg);
 
-    // time signature text (already measured before layout)
-    const timeSigBaselineY = LAYOUT.MEASURE_Y_OFFSET;
-    const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, 'bold');
-    svg.appendChild(timeText);
+    // Draw global time signature using TimeSignatureRenderer for standard notation
+    const timeSigX = baseLeftPadding + timeSigWidthEstimate / 2;
+    const timeSigY = TimeSignatureRenderer.getStandardYPosition(); // Unified Y position calculation
+    timeSignatureRenderer.render(svg, {
+        x: timeSigX,
+        y: timeSigY,
+        numerator: grid.timeSignature.numerator,
+        denominator: grid.timeSignature.denominator,
+        measureIndex: 0
+    }, true); // true = global time signature (larger)
+    
     (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
     
     // Note: Time signature is registered in the first line context later if needed, 
@@ -476,20 +485,8 @@ export class SVGRenderer {
         // 1. SPATIAL CONTEXT RESET
         placeAndSizeManager.clearAll();
         
-        // Register time signature on first line to avoid collision
-        if (lineIndex === 0) {
-             placeAndSizeManager.registerElement('time-signature', {
-              x: baseLeftPadding,
-              y: timeSigBaselineY - timeSigFontSize,
-              width: timeSigWidthEstimate,
-              height: timeSigFontSize + 4
-            }, 0, { 
-              text: timeSignatureString, 
-              widthEstimate: timeSigWidthEstimate,
-              exactX: baseLeftPadding + timeSigWidthEstimate / 2,
-              exactY: timeSigBaselineY
-            });
-        }
+        // Note: Global time signature is already drawn and registered above
+        // No need to re-register it here
 
         const lineY = line.startY + 20; // Top margin
         let currentX = (svg as any).__dynamicLineStartPadding || 40;
@@ -1614,6 +1611,7 @@ export class SVGRenderer {
 
       const g = document.createElementNS(SVG_NS, 'g');
       g.setAttribute('transform', `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+      g.setAttribute('data-pick-stroke', 'true');  // Identify pick stroke elements
       const path = document.createElementNS(SVG_NS, 'path');
       path.setAttribute('d', d);
       path.setAttribute('fill', '#000');

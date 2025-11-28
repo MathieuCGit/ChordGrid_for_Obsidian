@@ -2,6 +2,7 @@ import { RestRenderer } from './RestRenderer';
 import { NoteRenderer, NotePosition } from './NoteRenderer';
 import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
+import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
     SVG_NS, 
     LAYOUT, 
@@ -9,7 +10,8 @@ import {
     NOTE_SPACING, 
     SEGMENT_WIDTH,
     VISUAL,
-    POSITIONING
+    POSITIONING,
+    TYPOGRAPHY
 } from './constants';
 
 /**
@@ -39,6 +41,7 @@ export class MeasureRenderer {
      */
     private readonly restRenderer: RestRenderer;
     private readonly noteRenderer: NoteRenderer;
+    private readonly timeSignatureRenderer: TimeSignatureRenderer;
     private readonly stemsDirection: 'up' | 'down';
     private readonly displayRepeatSymbol: boolean;
 
@@ -56,6 +59,7 @@ export class MeasureRenderer {
         this.displayRepeatSymbol = displayRepeatSymbol ?? false;
         this.restRenderer = new RestRenderer(this.placeAndSizeManager);
         this.noteRenderer = new NoteRenderer(this.stemsDirection, this.placeAndSizeManager);
+        this.timeSignatureRenderer = new TimeSignatureRenderer(this.placeAndSizeManager);
     }
 
     /**
@@ -111,6 +115,11 @@ export class MeasureRenderer {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
+        }
+
+        // Draw time signature if this measure has one (inline time signature change)
+        if (this.measure.timeSignature) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
         const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
@@ -503,6 +512,11 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
+        // Draw time signature if this measure has one (inline time signature change)
+        if (this.measure.timeSignature) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+        }
+
         // NO staff line for empty measures - they are truly empty
 
         // Draw right barline
@@ -527,6 +541,11 @@ export class MeasureRenderer {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
+        }
+
+        // Draw time signature if this measure has one (inline time signature change)
+        if (this.measure.timeSignature) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
         // Get chord segments for visual separators
@@ -596,6 +615,11 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
+        // Draw time signature if this measure has one (inline time signature change)
+        if (this.measure.timeSignature) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+        }
+
         // Draw % symbol centered (no staff line for chord-only)
         this.drawRepeatSymbol(svg);
         
@@ -629,6 +653,11 @@ export class MeasureRenderer {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
+        }
+        
+        // Draw time signature if this measure has one (inline time signature change)
+        if (this.measure.timeSignature) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
         
         // Draw staff line for repeat symbol
@@ -713,6 +742,31 @@ export class MeasureRenderer {
         } else {
             this.drawBar(svg, x, y, height);
         }
+    }
+
+    /**
+     * Draw a time signature at the start of this measure.
+     * Used for inline time signature changes (e.g., 4/4 -> 3/4).
+     * Uses TimeSignatureRenderer for standard stacked notation.
+     * 
+     * @param svg - Parent SVG element
+     * @param timeSignature - Time signature to display
+     * @param measureIndex - Measure index (for PlaceAndSizeManager)
+     */
+    private drawTimeSignature(svg: SVGElement, timeSignature: any, measureIndex: number): void {
+        // Position: just after the left barline, centered on staff line
+        const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20; // 20px from barline for better spacing
+        // Use unified Y position calculation for consistent alignment with global time signature
+        const staffLineY = TimeSignatureRenderer.getStandardYPosition();
+        
+        // Use TimeSignatureRenderer for standard notation
+        this.timeSignatureRenderer.render(svg, {
+            x: timeSignatureX,
+            y: staffLineY,
+            numerator: timeSignature.numerator || timeSignature.beatsPerMeasure,
+            denominator: timeSignature.denominator || timeSignature.beatUnit,
+            measureIndex: measureIndex
+        }, false); // false = inline time signature (same size as global now)
     }
 
     private createText(text: string, x: number, y: number, size: string, weight: string = 'normal'): SVGTextElement {

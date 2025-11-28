@@ -181,6 +181,9 @@ export interface ChordSegment {
  * Volta properties:
  * - voltaStart: Indicates the start of a volta (with numbers, text, open/closed type)
  * - voltaEnd: Indicates the end of a volta (associated with voltaStart of a previous measure)
+ * 
+ * Time signature:
+ * - timeSignature: If present, indicates a time signature change for this measure
  */
 export interface Measure {
   beats: Beat[];
@@ -192,6 +195,7 @@ export interface Measure {
   isRepeat?: boolean;  // true if this measure was created from % notation
   voltaStart?: VoltaInfo;  // Start of a volta bracket
   voltaEnd?: VoltaInfo;    // End of a volta bracket (same volta as voltaStart)
+  timeSignature?: TimeSignature;  // Time signature change for this measure (if different from global)
 }
 
 /**

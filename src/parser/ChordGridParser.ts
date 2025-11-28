@@ -267,7 +267,6 @@ export class ChordGridParser {
 
     // Validate measure durations against the time signature
     const errors: ValidationError[] = [];
-    const expectedQuarterNotes = timeSignature.numerator * (4 / timeSignature.denominator);
 
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
@@ -281,6 +280,10 @@ export class ChordGridParser {
       if ((measure as any).__isEmpty) {
         continue;
       }
+      
+      // Use measure's time signature if present, otherwise use global time signature
+      const effectiveTimeSignature = measure.timeSignature || timeSignature;
+      const expectedQuarterNotes = effectiveTimeSignature.numerator * (4 / effectiveTimeSignature.denominator);
       
       let foundQuarterNotes = 0;
       
@@ -385,7 +388,7 @@ export class ChordGridParser {
             measureSource: measure.source,
             expectedQuarterNotes,
             foundQuarterNotes,
-            message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
+            message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes (${effectiveTimeSignature.numerator}/${effectiveTimeSignature.denominator}), found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
           });
         }
       }
@@ -628,7 +631,20 @@ export class ChordGridParser {
         continue;
       }
       
-      const text = t.content;
+      let text = t.content;
+
+      // TIME SIGNATURE CHANGE DETECTION
+      // Check if this measure starts with a time signature (e.g., "3/4 Am[4 4 4]" or "2/4 Em[2]")
+      let measureTimeSignature: TimeSignature | undefined;
+      const timeSignaturePattern = /^(\s*)(\d+\/\d+)(?:\s+(binary|ternary|noauto))?\s+/;
+      const tsMatch = timeSignaturePattern.exec(text);
+      if (tsMatch) {
+        // Extract time signature from captured groups (skip leading space)
+        const tsText = tsMatch[2] + (tsMatch[3] ? ' ' + tsMatch[3] : '');
+        measureTimeSignature = this.parseTimeSignature(tsText);
+        // Remove time signature from content, keep leading space
+        text = tsMatch[1] + text.slice(tsMatch[0].length);
+      }
 
       // REPEAT NOTATION DETECTION
       // Check for '%' (repeat entire previous measure)
@@ -870,7 +886,8 @@ export class ChordGridParser {
         chordSegments,     // new property for all chords
         barline: bar,
         isLineBreak: false,
-        source: anySource || text
+        source: anySource || text,
+        timeSignature: measureTimeSignature  // Add time signature if detected
       };
       
       // Mark chord-only mode if detected
@@ -1027,7 +1044,8 @@ export class ChordGridParser {
       barline: barline,
       isLineBreak: false,
       source: source.source,
-      isRepeat: true
+      isRepeat: true,
+      timeSignature: source.timeSignature  // Copy time signature if present
     };
 
     // Copy chord-only mode flag if present
