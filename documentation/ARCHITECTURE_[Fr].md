@@ -30,31 +30,31 @@ ChordGrid_for_Obsidian/
 │   ├── GROUPING_CONVENTIONS.md      # Groupement binary/ternary
 │   └── release_notes_v2.1.0.md      # Notes de version
 ├── src/
-│   ├── parser/                      # Module de parsing
-│   │   ├── ChordGridParser.ts       # Parser principal
-│   │   └── type.ts                  # Définitions de types
 │   ├── analyzer/                    # Module d'analyse musicale
-│   │   ├── MusicAnalyzer.ts         # Analyseur principal
-│   │   └── analyzer-types.ts        # Types d'analyse
+│   │   ├── analyzer-types.ts        # Types d'analyse
+│   │   └── MusicAnalyzer.ts         # Analyseur principal
 │   ├── models/                      # Modèles de données
 │   │   ├── Beat.ts                  # Modèle Beat
 │   │   ├── Measure.ts               # Modèle Measure
 │   │   ├── Note.ts                  # Modèle Note
 │   │   └── TimeSignature.ts         # Modèle TimeSignature
+│   ├── parser/                      # Module de parsing
+│   │   ├── ChordGridParser.ts       # Parser principal
+│   │   └── type.ts                  # Définitions de types
 │   ├── renderer/                    # Module de rendu SVG
-│   │   ├── SVGRenderer.ts           # Renderer principal
+│   │   ├── BeamRenderer.ts          # Rendu des ligatures
+│   │   ├── ChordRenderer.ts         # Rendu des symboles d'accords
+│   │   ├── constants.ts             # Constantes SVG
 │   │   ├── MeasureRenderer.ts       # Rendu de mesures
 │   │   ├── NoteRenderer.ts          # Rendu de notes
-│   │   ├── RestRenderer.ts          # Rendu de silences
-│   │   ├── BeamRenderer.ts          # Rendu des ligatures
-│   │   ├── AnalyzerBeamOverlay.ts   # Overlay ligatures analysées
-│   │   ├── ChordRenderer.ts         # Rendu des symboles d'accords
 │   │   ├── PlaceAndSizeManager.ts   # Gestion placement & collisions
-│   │   └── constants.ts             # Constantes SVG
+│   │   ├── RestRenderer.ts          # Rendu de silences
+│   │   ├── SVGRenderer.ts           # Renderer principal
+│   │   └── TimeSignatureRenderer.ts # Rendu signatures rythmiques
 │   └── utils/
+│       ├── DebugLogger.ts           # Logs de débogage
 │       ├── TieManager.ts            # Gestion liaisons cross-mesure
-│       ├── VoltaManager.ts          # Gestion crochets volta multi-lignes
-│       └── DebugLogger.ts           # Logs de débogage
+│       └── VoltaManager.ts          # Gestion crochets volta multi-lignes
 └── test/                            # Tests unitaires (40 fichiers, 275 tests)
     ├── *.spec.ts                    # Fichiers de test Jest
     ├── analyzer.spec.ts             # Tests analyseur

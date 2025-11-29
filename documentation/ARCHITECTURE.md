@@ -30,31 +30,31 @@ ChordGrid_for_Obsidian/
 │   ├── GROUPING_CONVENTIONS.md      # Binary/ternary grouping
 │   └── release_notes_v2.1.0.md      # Release notes
 ├── src/
-│   ├── parser/                      # Parsing (syntax only)
-│   │   ├── ChordGridParser.ts       # Main parser (includes tie & tuplet parsing)
-│   │   └── type.ts                  # Type definitions
 │   ├── analyzer/                    # Musical analysis (beams across segments, levels)
-│   │   ├── MusicAnalyzer.ts         # Analyzer implementation
-│   │   └── analyzer-types.ts        # BeamGroup, NoteReference, etc.
+│   │   ├── analyzer-types.ts        # BeamGroup, NoteReference, etc.
+│   │   └── MusicAnalyzer.ts         # Analyzer implementation
 │   ├── models/                      # Data models
 │   │   ├── Beat.ts                  # Beat model
 │   │   ├── Measure.ts               # Measure model
 │   │   ├── Note.ts                  # Note model
 │   │   └── TimeSignature.ts         # TimeSignature model
+│   ├── parser/                      # Parsing (syntax only)
+│   │   ├── ChordGridParser.ts       # Main parser (includes tie & tuplet parsing)
+│   │   └── type.ts                  # Type definitions
 │   ├── renderer/                    # SVG rendering
-│   │   ├── SVGRenderer.ts           # Main renderer (orchestration)
+│   │   ├── BeamRenderer.ts          # Beam rendering
+│   │   ├── ChordRenderer.ts         # Chord symbol rendering
+│   │   ├── constants.ts             # Centralized rendering constants (v3 preparation)
 │   │   ├── MeasureRenderer.ts       # Measure rendering
 │   │   ├── NoteRenderer.ts          # Note rendering
-│   │   ├── RestRenderer.ts          # Rest rendering
-│   │   ├── BeamRenderer.ts          # Beam rendering
-│   │   ├── AnalyzerBeamOverlay.ts   # Draw beams from analyzer
-│   │   ├── ChordRenderer.ts         # Chord symbol rendering
 │   │   ├── PlaceAndSizeManager.ts   # Placement & collision management
-│   │   └── constants.ts             # Centralized rendering constants (v3 preparation)
+│   │   ├── RestRenderer.ts          # Rest rendering
+│   │   ├── SVGRenderer.ts           # Main renderer (orchestration)
+│   │   └── TimeSignatureRenderer.ts # Time signature rendering
 │   └── utils/
+│       ├── DebugLogger.ts           # Debug logging system
 │       ├── TieManager.ts            # Cross-measure tie management
-│       ├── VoltaManager.ts          # Multi-line volta bracket management
-│       └── DebugLogger.ts           # Debug logging system
+│       └── VoltaManager.ts          # Multi-line volta bracket management
 └── test/                            # Unit tests (40 test files, 275 tests)
     ├── *.spec.ts                    # Jest test files
     ├── analyzer.spec.ts             # Analyzer tests
