@@ -72,40 +72,49 @@ ChordGrid_for_Obsidian/
 ```
 Entrée texte (notation chordgrid)
          ↓
-   ChordGridParser (tokenisation, parsing)
+   ChordGridParser (parsing syntaxique, inclut tuplets)
          ↓
-    ChordGrid (structure de données)
+   MusicAnalyzer (sémantique musicale, groupes de ligatures)
          ↓
-   MusicAnalyzer (analyse des ligatures)
+  PlaceAndSizeManager (enregistrement des éléments : accords, notes, hampes, tuplets, liaisons, points)
          ↓
-  ChordGrid enrichi (avec BeamGroup[])
+  Renderer (SVGRenderer + Measure/Note/Rest) (positionnement avec évitement de collision)
          ↓
-    SVGRenderer (initialisation)
-         ↓
-  PlaceAndSizeManager (enregistrement des éléments)
-         ↓
-  MeasureRenderer + NoteRenderer + RestRenderer
-         ↓
-  Collision Resolution (ajustements automatiques)
+  PlaceAndSizeManager (résolution et ajustements : courbes de liaison, numéros de tuplets)
          ↓
    Élément SVG (sortie finale)
 ```
 
+### Diagramme Mermaid
+
 ```mermaid
-graph TD
-    A[Notation chordgrid texte] --> B[ChordGridParser]
-    B --> C[Structure ChordGrid]
-    C --> D[MusicAnalyzer]
-    D --> E[ChordGrid enrichi]
-    E --> F[SVGRenderer]
-    F --> G[PlaceAndSizeManager]
-    G --> H[MeasureRenderer]
-    H --> I[NoteRenderer / RestRenderer]
-    I --> J[Collision Resolution]
-    J --> K[SVG final]
-    
-    style G fill:#ffa500
-    style J fill:#ffa500
+flowchart LR
+    A[Notation chordgrid texte] --> B[Parser ChordGridParser]
+    B -->|Mesures + Segments + Rythme + Tuplets| C[Analyzer MusicAnalyzer]
+    C -->|BeamGroups + NoteRefs| D[PlaceAndSizeManager Element Registration]
+    D --> E[Renderer Orchestrator SVGRenderer]
+    E --> F[MeasureRenderer]
+    E --> G[NoteRenderer]
+    E --> H[RestRenderer]
+    E --> I[TieManager]
+    E --> K[VoltaManager]
+    C --> J[AnalyzerBeamOverlay]
+    J --> E
+    I --> E
+    D --> L[Collision Resolution Adjustments]
+    L --> E
+    E --> Z[SVG Output]
+
+    classDef parser fill:#2b6cb0,stroke:#1a4568,stroke-width:1,color:#fff;
+    classDef analyzer fill:#805ad5,stroke:#553c9a,color:#fff;
+    classDef collision fill:#dd6b20,stroke:#9c4221,color:#fff;
+    classDef renderer fill:#38a169,stroke:#276749,color:#fff;
+    classDef util fill:#718096,stroke:#4a5568,color:#fff;
+    class B parser;
+    class C,J analyzer;
+    class D,L collision;
+    class E,F,G,H,Z renderer;
+    class I,K util;
 ```
 
 ## Module Parser
