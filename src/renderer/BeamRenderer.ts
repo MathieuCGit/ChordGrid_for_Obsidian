@@ -94,13 +94,16 @@ export function drawBeams(
       const startX = stemsDirection === 'up' ? (p.x + NOTATION.SLASH_LENGTH / 2) : (p.x - NOTATION.SLASH_LENGTH / 2);
       const endX = group.direction === 'right' ? (startX + NOTATION.BEAMLET_LENGTH) : (startX - NOTATION.BEAMLET_LENGTH);
 
+      // Level 1 (eighth notes) beams are thicker (3px instead of 2px)
+      const strokeWidth = (level === 1) ? 3 : VISUAL.BEAM_STROKE_WIDTH;
+
       const beamlet = document.createElementNS(SVG_NS, 'line');
       beamlet.setAttribute('x1', String(startX));
       beamlet.setAttribute('y1', String(beamY));
       beamlet.setAttribute('x2', String(endX));
       beamlet.setAttribute('y2', String(beamY));
       beamlet.setAttribute('stroke', '#000');
-      beamlet.setAttribute('stroke-width', String(VISUAL.BEAM_STROKE_WIDTH));
+      beamlet.setAttribute('stroke-width', String(strokeWidth));
       svg.appendChild(beamlet);
     } else {
       // Full beam: line between first and last
@@ -109,13 +112,16 @@ export function drawBeams(
       const startX = stemsDirection === 'up' ? (first.x + NOTATION.SLASH_LENGTH / 2) : (first.x - NOTATION.SLASH_LENGTH / 2);
       const endX = stemsDirection === 'up' ? (last.x + NOTATION.SLASH_LENGTH / 2) : (last.x - NOTATION.SLASH_LENGTH / 2);
 
+      // Level 1 (eighth notes) beams are thicker (3px instead of 2px)
+      const strokeWidth = (level === 1) ? 3 : VISUAL.BEAM_STROKE_WIDTH;
+
       const beam = document.createElementNS(SVG_NS, 'line');
       beam.setAttribute('x1', String(startX));
       beam.setAttribute('y1', String(beamY));
       beam.setAttribute('x2', String(endX));
       beam.setAttribute('y2', String(beamY));
       beam.setAttribute('stroke', '#000');
-      beam.setAttribute('stroke-width', String(VISUAL.BEAM_STROKE_WIDTH));
+      beam.setAttribute('stroke-width', String(strokeWidth));
       svg.appendChild(beam);
     }
   }

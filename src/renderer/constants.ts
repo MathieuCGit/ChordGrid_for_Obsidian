@@ -225,10 +225,10 @@ export const NOTATION = {
     STEM_HEIGHT: 30,
     
     /** Beam gap between levels (8th, 16th, etc.) (px) */
-    BEAM_GAP: 5,
+    BEAM_GAP: 7,
     
     /** Beamlet length for partial beams (px) */
-    BEAMLET_LENGTH: 8,
+    BEAMLET_LENGTH: 9,
     
     /** Flag spacing between multiple flags on a stem (px) */
     FLAG_SPACING: 10,
