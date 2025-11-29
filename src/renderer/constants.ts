@@ -54,13 +54,13 @@ export const LAYOUT = {
     LINE_VERTICAL_SPACING: 20,
     
     /** Top margin before first line (px) */
-    TOP_MARGIN: 20,
+    TOP_MARGIN: 0,  // Minimal top margin for compact rendering
     
     /** Bottom margin after last line (px) */
-    BOTTOM_MARGIN: 40,
+    BOTTOM_MARGIN: 25,  // Increased for better spacing at bottom
     
     /** Side margin for SVG container (px) */
-    SIDE_MARGIN: 60,
+    SIDE_MARGIN: 30,  // Increased for better right spacing
     
     /** Measure height for layout calculation (px) */
     MEASURE_HEIGHT: 120,
@@ -96,13 +96,13 @@ export const LAYOUT = {
     DEFAULT_LINE_START_PADDING: 40,
     
     /** Final margin at bottom of SVG (px) @plannedFor v3.0 */
-    BOTTOM_SVG_MARGIN: 40,
+    BOTTOM_SVG_MARGIN: 30,  // Increased for better spacing at bottom
     
     /** Additional width for SVG right margin (px) @plannedFor v3.0 */
-    RIGHT_SVG_MARGIN: 20,
+    RIGHT_SVG_MARGIN: 20,  // Increased for better right spacing
     
     /** Top margin for chord symbols (px) @plannedFor v3.0 */
-    TOP_MARGIN_FOR_CHORDS: 50,
+    TOP_MARGIN_FOR_CHORDS: 0,  // Zero top margin for compact rendering
     
     /** Y offset for measures in line (px) @plannedFor v3.0 */
     MEASURE_Y_OFFSET: 40,
