@@ -90,10 +90,10 @@ Text input (chordgrid notation)
 
 ```mermaid
 flowchart LR
-    A[Raw chordgrid text\n(code block)] --> B[Parser\nChordGridParser]
-    B -->|Measures + Segments + Rhythm + Tuplets| C[Analyzer\nMusicAnalyzer]
-    C -->|BeamGroups + NoteRefs| D[PlaceAndSizeManager\nElement Registration]
-    D --> E[Renderer Orchestrator\nSVGRenderer]
+    A[Raw chordgrid text] --> B[Parser ChordGridParser]
+    B -->|Measures + Segments + Rhythm + Tuplets| C[Analyzer MusicAnalyzer]
+    C -->|BeamGroups + NoteRefs| D[PlaceAndSizeManager Element Registration]
+    D --> E[Renderer Orchestrator SVGRenderer]
     E --> F[MeasureRenderer]
     E --> G[NoteRenderer]
     E --> H[RestRenderer]
@@ -102,7 +102,7 @@ flowchart LR
     C --> J[AnalyzerBeamOverlay]
     J --> E
     I --> E
-    D --> L[Collision Resolution\nAdjustments]
+    D --> L[Collision Resolution Adjustments]
     L --> E
     E --> Z[SVG Output]
 
@@ -113,9 +113,9 @@ flowchart LR
     classDef util fill:#718096,stroke:#4a5568,color:#fff;
     class B parser;
     class C,J analyzer;
-    class D,K collision;
+    class D,L collision;
     class E,F,G,H,Z renderer;
-    class I util;
+    class I,K util;
 ```
 
 ## Parser Module
