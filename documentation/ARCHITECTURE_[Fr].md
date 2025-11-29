@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Ce plugin Obsidian (version 2.2.0) permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de quatre modules principaux : **Parsing**, **Analyse**, **Modèles**, et **Rendu**. La version 2.2.0 introduit le **VoltaManager** pour gérer les crochets de volta multi-lignes, le **support des mesures vides**, et des améliorations de la notation de répétition, en plus du système complet de gestion des collisions de la v2.1.0.
+Ce plugin Obsidian (version 2.2.0) permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de quatre modules principaux : **Parsing**, **Analyse**, **Modèles**, et **Rendu**. La version 2.2.0 introduit le **VoltaManager** pour gérer les crochets de volta multi-lignes, le **support des mesures vides**, et des améliorations de la notation de répétition, en plus du système complet de gestion des collisions via **PlaceAndSizeManager** de la v2.1.0.
 
 ## Structure du projet
 
@@ -82,7 +82,7 @@ Entrée texte (notation chordgrid)
          ↓
     SVGRenderer (initialisation)
          ↓
-  CollisionManager (enregistrement des éléments)
+  PlaceAndSizeManager (enregistrement des éléments)
          ↓
   MeasureRenderer + NoteRenderer + RestRenderer
          ↓
@@ -98,7 +98,7 @@ graph TD
     C --> D[MusicAnalyzer]
     D --> E[ChordGrid enrichi]
     E --> F[SVGRenderer]
-    F --> G[CollisionManager]
+    F --> G[PlaceAndSizeManager]
     G --> H[MeasureRenderer]
     H --> I[NoteRenderer / RestRenderer]
     I --> J[Collision Resolution]
@@ -225,7 +225,7 @@ ChordGrid
 ```
 SVGRenderer (orchestration)
     ↓
-CollisionManager (gestion des collisions)
+PlaceAndSizeManager (gestion des collisions)
     ↓
 MeasureRenderer (par mesure)
     ↓
@@ -238,7 +238,7 @@ NoteRenderer / RestRenderer (par note)
 - Calculer la taille globale du SVG avec espacement dynamique
 - Positionner les mesures sur la grille (4 par ligne, adaptatif)
 - Gérer les sauts de ligne (automatiques et manuels)
-- Initialiser CollisionManager et TieManager
+- Initialiser PlaceAndSizeManager et TieManager
 - Calculer largeur dynamique de la signature rythmique
 - Dessiner les liaisons entre mesures avec évitement de collision
 - Appliquer ajustements de collision (courbes de liaison, numéros de tuplets)
@@ -252,7 +252,7 @@ NoteRenderer / RestRenderer (par note)
 - Facteur espacement signature : 0.53 (v2.1.0, optimisé)
 - Marge signature : 4px (v2.1.0, optimisé)
 
-### CollisionManager
+### PlaceAndSizeManager
 
 **Responsabilités :**
 - Enregistrer tous les éléments visuels avec leurs bounding boxes
@@ -297,9 +297,9 @@ NoteRenderer / RestRenderer (par note)
 - Positionner les accords avec évitement de collision
 - Répartir l'espace entre beats
 - Gérer séparations visuelles entre segments
-- Enregistrer tous éléments visuels dans CollisionManager (v2.1.0)
+- Enregistrer tous éléments visuels dans PlaceAndSizeManager (v2.1.0)
 
-**Éléments enregistrés dans CollisionManager :**
+**Éléments enregistrés dans PlaceAndSizeManager :**
 - Symboles d'accords avec bbox calculé selon longueur texte
 - Têtes de notes (noteheads)
 - Hampes (stems) avec direction (up/down)
@@ -310,7 +310,7 @@ NoteRenderer / RestRenderer (par note)
 
 **Positionnement des accords :**
 - Position initiale : (measureX + noteX, staffY - 30)
-- Si collision détectée : `CollisionManager.findFreePosition('vertical')` appliqué
+- Si collision détectée : `PlaceAndSizeManager.findFreePosition('vertical')` appliqué
 - Position finale ajustée pour éviter overlap
 
 **Algorithme de layout :**
@@ -318,7 +318,7 @@ NoteRenderer / RestRenderer (par note)
 2. Allouer espace proportionnellement aux beats
 3. Insérer séparateurs pour changements d'accords
 4. Rendre chaque segment avec NoteRenderer
-5. Enregistrer éléments dans CollisionManager au fur et à mesure
+5. Enregistrer éléments dans PlaceAndSizeManager au fur et à mesure
 
 **Gestion de l'espace pour barlines de reprise (v2.2.1) :**
 - `extraLeftPadding` est calculé pour barlines `||:` (8px: 3px + 6px + 1.5px - 2.5px)
@@ -345,7 +345,7 @@ NoteRenderer / RestRenderer (par note)
 **Responsabilités :**
 - Dessiner tous types de silences
 - Gérer silences pointés
-- Enregistrer bounding boxes dans CollisionManager (v2.1.0)
+- Enregistrer bounding boxes dans PlaceAndSizeManager (v2.1.0)
 
 **Types de silences :**
 - Pause (1) : rectangle suspendu
@@ -365,7 +365,7 @@ NoteRenderer / RestRenderer (par note)
 - Gérer liaisons traversant limites de rendu
 - Stocker liaisons "en attente" (pending)
 - Résoudre liaisons cross-ligne
-- Coordonner avec CollisionManager pour évitement (v2.1.0)
+- Coordonner avec PlaceAndSizeManager pour évitement (v2.1.0)
 
 **Workflow :**
 1. Note avec `tieToVoid` → `addPendingTie()`
@@ -378,7 +378,7 @@ NoteRenderer / RestRenderer (par note)
 - Avant dessin, vérifier collision entre bbox de liaison et points de notes pointées
 - Si collision détectée : relever courbe (augmenter controlY)
 - Algorithme : `controlY_new = baseY - max(6, baseAmplitude * 0.6)`
-- Enregistrer bbox de liaison dans CollisionManager après ajustement
+- Enregistrer bbox de liaison dans PlaceAndSizeManager après ajustement
 
 ## Validation et erreurs
 
