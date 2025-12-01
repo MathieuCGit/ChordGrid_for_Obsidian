@@ -482,33 +482,77 @@ export const SVG_VIEWPORT = {
 // =============================================================================
 
 /**
- * Fingerstyle patterns per time signature (English notation)
+ * Fingerstyle patterns per time signature and subdivision (short symbols).
  * 
- * Symbols:
- * - 't' = thumb down
- * - 'tu' = thumb up
- * - 'h' = hand (fingers) down
- * - 'hu' = hand up (rare, available in explicit notation)
+ * Musical Logic:
+ * - Offbeats are always played with "tu" (thumb up)
+ * - Strong beats (1, 3 in 4/4) are played with "t" (thumb down)
+ * - Weak beats (2, 4 in 4/4) are played with "h" (hand down)
  * 
- * Translation to French via finger:fr directive:
- * - t → p (pouce)
+ * Pattern Structure:
+ * - eighth: For rhythms where eighth note (8) is the smallest value
+ * - sixteenth: For rhythms where sixteenth note (16) is the smallest value
+ * 
+ * Time Scaling:
+ * - The pattern for eighths on 2 beats compresses to 1 beat with sixteenths
+ * - Example 4/4: eighth pattern [t tu h tu] over 2 beats
+ *                sixteenth pattern [t tu h tu] over 1 beat
+ * 
+ * Symbol Format:
+ * Patterns use SHORT symbols for readability and user interface:
+ * - 't'  = thumb down (normalized to 'td' internally)
+ * - 'tu' = thumb up (already normalized)
+ * - 'h'  = hand down (normalized to 'hd' internally)
+ * - 'hu' = hand up (already normalized)
+ * 
+ * The code accepts BOTH short and long forms:
+ * - Short: t, tu, h, hu (user-friendly, used in patterns)
+ * - Long: td, tu, hd, hu (internal normalized form)
+ * 
+ * Translation to French (via normalizeFingerSymbol):
+ * - t/td → pd (pouce down)
  * - tu → pu (pouce up)
- * - h → m (main)
+ * - h/hd → md (main down)
  * - hu → mu (main up)
  * 
- * @plannedFor v2.3 - User-customizable patterns
+ * Priority System:
+ * 1. Explicit symbols (user-defined) - highest priority
+ * 2. Predefined patterns (this table) - medium priority
+ * 3. Automatic alternation (fallback) - lowest priority
+ * 
+ * @version 2.2.0
+ * @plannedFor v2.3 - User-customizable patterns via UI
  */
-export const FINGERSTYLE_PATTERNS: Record<string, readonly string[]> = {
-    '4/4': ['t', 'tu', 'h', 'tu'],
-    '3/4': ['t', 'h', 'tu'],
-    '6/8': ['t', 'h', 'tu', 't', 'h', 'tu'],
-    '9/8': ['t', 'h', 'tu', 't', 'h', 'tu', 't', 'h', 'tu'],
-    '12/8': ['t', 'h', 'tu', 't', 'h', 'tu', 't', 'h', 'tu', 't', 'h', 'tu'],
-    '2/4': ['t', 'h'],
-    '5/4': ['t', 'tu', 'h', 'tu', 't'],
-    '7/8': ['t', 'h', 'tu', 't', 'h', 'tu', 't'],
+export const FINGER_PATTERNS: Record<string, { 
+    pattern: readonly string[];
+}> = {
+    // 4/4 time signature
+    '4/4': {
+        // Pattern: t-tu-h-tu (pd-pu-md-pu)
+        // Duration varies with subdivision:
+        // - step=8: covers 2 beats → 8pd 8pu 8md 8pu
+        // - step=16: covers 1 beat → 16pd 16pu 16md 16pu (repeated 4 times)
+        // - step=32: covers 1/2 beat → 32pd 32pu 32md 32pu (repeated 8 times)
+        pattern: ['t', 'tu', 'h', 'tu']
+    },
+    
+    // 3/4 time signature
+    '3/4': {
+        pattern: ['t', 'tu', 'h', 'tu']
+    },
+    
+    // 6/8 time signature (compound meter: 2 groups of 3 eighths)
+    '6/8': {
+        pattern: ['t', 'tu', 'h', 'tu', 'h', 'tu']
+    },
+    
+    // 2/4 time signature
+    '2/4': {
+        pattern: ['t', 'tu', 'h', 'tu']
+    },
+    
     // Common time (C) = 4/4
-    'C': ['t', 'tu', 'h', 'tu'],
-    // Cut time (C|) = 2/2
-    'C|': ['t', 'h'],
+    'C': {
+        pattern: ['t', 'tu', 'h', 'tu']
+    }
 } as const;

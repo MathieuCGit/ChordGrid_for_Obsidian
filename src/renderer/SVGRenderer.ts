@@ -35,7 +35,7 @@ import {
   SEGMENT_WIDTH,
   SVG_VIEWPORT,
   TYPOGRAPHY,
-  FINGERSTYLE_PATTERNS
+  FINGER_PATTERNS
 } from './constants';
 import { TieManager } from '../utils/TieManager';
 import { VoltaManager } from '../utils/VoltaManager';
@@ -44,6 +44,7 @@ import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
 import { drawBeams } from './BeamRenderer';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { ChordRenderer } from './ChordRenderer';
+import { StrumPatternRenderer } from './StrumPatternRenderer';
 
 /**
  * Rendering options for SVGRenderer.
@@ -380,7 +381,7 @@ export class SVGRenderer {
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', '100%');
-  svg.setAttribute('height', 'auto');
+  svg.setAttribute('height', totalHeight.toString());
   svg.setAttribute('viewBox', `0 ${-topMarginForChords} ${width} ${totalHeight}`);
   svg.setAttribute('xmlns', SVG_NS);
 
@@ -1666,7 +1667,10 @@ export class SVGRenderer {
 
   /**
    * Draw fingerstyle symbols on notes.
-   * Symbols can be explicit (4t, 8pu) or applied via patterns from FINGERSTYLE_PATTERNS.
+   * Uses StrumPatternRenderer for pattern logic with 3-level priority:
+   * 1. Explicit symbols (user-defined in notation)
+   * 2. Predefined patterns (from FINGER_PATTERNS)
+   * 3. Automatic alternation (fallback)
    */
   private drawFingerSymbols(
     svg: SVGElement,
@@ -1679,94 +1683,31 @@ export class SVGRenderer {
     const fingerMode = options.fingerMode;
     if (!fingerMode) return;
 
-    // Import patterns
-    const PATTERNS = FINGERSTYLE_PATTERNS;
-
-    // Collect all notes with their finger symbols (explicit or from pattern)
-    interface NoteWithSymbol {
-      measureIndex: number;
-      chordIndex: number;
-      beatIndex: number;
-      noteIndex: number;
-      symbol: string; // Translated symbol to display
-    }
-    const notesWithSymbols: NoteWithSymbol[] = [];
-
-    // Process each measure to apply patterns or use explicit symbols
-    grid.measures.forEach((measure, measureIndex) => {
-      // Get pattern for this time signature
-      const ts = measure.timeSignature;
-      const tsKey = ts ? `${ts.numerator}/${ts.denominator}` : '4/4';
-      const pattern = PATTERNS[tsKey] || PATTERNS['4/4']; // Fallback to 4/4
-      
-      let noteCounter = 0; // Counter for pattern cycling
-
-      measure.chordSegments?.forEach((segment, chordIndex) => {
-        segment.beats.forEach((beat, beatIndex) => {
-          beat.notes.forEach((note, noteIndex) => {
-            // Skip rests and tied notes (not attacks)
-            if (note.isRest || note.tieEnd || note.tieFromVoid) return;
-
-            let symbolToUse: string | undefined;
-
-            // 1. Check for explicit symbol
-            if (note.fingerSymbol) {
-              symbolToUse = note.fingerSymbol;
-            } else {
-              // 2. Apply pattern
-              const patternSymbol = pattern[noteCounter % pattern.length];
-              symbolToUse = patternSymbol;
-            }
-
-            if (symbolToUse) {
-              // Translate symbol if needed
-              const translatedSymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
-              
-              // Convert to letter + arrow format
-              // tu/pu/hu/mu → letter + ↑
-              // t/p/h/m → letter + ↓
-              let displaySymbol: string;
-              if (translatedSymbol.endsWith('u')) {
-                // Remove 'u' and add up arrow
-                const baseLetter = translatedSymbol.slice(0, -1);
-                displaySymbol = baseLetter + '↑';
-              } else {
-                // Add down arrow
-                displaySymbol = translatedSymbol + '↓';
-              }
-              
-              notesWithSymbols.push({
-                measureIndex,
-                chordIndex,
-                beatIndex,
-                noteIndex,
-                symbol: displaySymbol
-              });
-            }
-
-            noteCounter++;
-          });
-        });
-      });
+    // Use StrumPatternRenderer to assign symbols to notes
+    const notesWithDirections = StrumPatternRenderer.assignDirections(grid, {
+      mode: 'finger',
+      language: fingerMode // 'en' or 'fr'
     });
 
-    // Draw symbols
+    // Drawing constants
     const FONT_SIZE = 14;
     const MARGIN = 4; // Distance from note head
     const NOTE_HEAD_HALF_HEIGHT = 5;
 
-    notesWithSymbols.forEach(noteWithSymbol => {
+    // Draw each note with its assigned symbol
+    notesWithDirections.forEach(noteInfo => {
       // Filter by line if needed
-      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteWithSymbol.measureIndex)) return;
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteInfo.measureIndex)) return;
 
+      // Find the corresponding note position
       const notePos = notePositions.find(np =>
-        np.measureIndex === noteWithSymbol.measureIndex &&
-        np.chordIndex === noteWithSymbol.chordIndex &&
-        np.beatIndex === noteWithSymbol.beatIndex &&
-        np.noteIndex === noteWithSymbol.noteIndex
+        np.measureIndex === noteInfo.measureIndex &&
+        np.chordIndex === noteInfo.chordIndex &&
+        np.beatIndex === noteInfo.beatIndex &&
+        np.noteIndex === noteInfo.noteIndex
       );
 
-      if (!notePos) return;
+      if (!notePos || !noteInfo.assignedSymbol) return;
 
       // Determine placement (above or below note)
       const hasStem = notePos.stemTopY !== undefined && notePos.stemBottomY !== undefined;
@@ -1776,6 +1717,25 @@ export class SVGRenderer {
       const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
       const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
       const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+
+      // Convert symbol to display format: letter + arrow
+      // Symbols ending with 'u' (tu, pu, hu, mu) → letter + ↑
+      // Symbols ending with 'd' (td, pd, hd, md) → letter + ↓
+      const symbol = noteInfo.assignedSymbol;
+      let displaySymbol: string;
+      
+      if (symbol.endsWith('u')) {
+        // Remove 'u' and add up arrow
+        const baseLetter = symbol.slice(0, -1);
+        displaySymbol = baseLetter + '↑';
+      } else if (symbol.endsWith('d')) {
+        // Remove 'd' and add down arrow
+        const baseLetter = symbol.slice(0, -1);
+        displaySymbol = baseLetter + '↓';
+      } else {
+        // Fallback: just use the symbol as-is (shouldn't happen with normalized symbols)
+        displaySymbol = symbol;
+      }
 
       // Calculate Y position
       const textY = placeAbove 
@@ -1792,7 +1752,7 @@ export class SVGRenderer {
       text.setAttribute('text-anchor', 'middle');
       text.setAttribute('fill', '#000');
       text.setAttribute('data-finger-symbol', 'true');
-      text.textContent = noteWithSymbol.symbol;
+      text.textContent = displaySymbol;
       
       svg.appendChild(text);
     });

@@ -1483,19 +1483,32 @@ var SEGMENT_WIDTH = {
   /** Maximum spacing ratio for readability (150% = too spread) */
   MAX_SPACING_RATIO: 1.5
 };
-var FINGERSTYLE_PATTERNS = {
-  "4/4": ["t", "tu", "h", "tu"],
-  "3/4": ["t", "h", "tu"],
-  "6/8": ["t", "h", "tu", "t", "h", "tu"],
-  "9/8": ["t", "h", "tu", "t", "h", "tu", "t", "h", "tu"],
-  "12/8": ["t", "h", "tu", "t", "h", "tu", "t", "h", "tu", "t", "h", "tu"],
-  "2/4": ["t", "h"],
-  "5/4": ["t", "tu", "h", "tu", "t"],
-  "7/8": ["t", "h", "tu", "t", "h", "tu", "t"],
+var FINGER_PATTERNS = {
+  // 4/4 time signature
+  "4/4": {
+    // Pattern: t-tu-h-tu (pd-pu-md-pu)
+    // Duration varies with subdivision:
+    // - step=8: covers 2 beats → 8pd 8pu 8md 8pu
+    // - step=16: covers 1 beat → 16pd 16pu 16md 16pu (repeated 4 times)
+    // - step=32: covers 1/2 beat → 32pd 32pu 32md 32pu (repeated 8 times)
+    pattern: ["t", "tu", "h", "tu"]
+  },
+  // 3/4 time signature
+  "3/4": {
+    pattern: ["t", "tu", "h", "tu"]
+  },
+  // 6/8 time signature (compound meter: 2 groups of 3 eighths)
+  "6/8": {
+    pattern: ["t", "tu", "h", "tu", "h", "tu"]
+  },
+  // 2/4 time signature
+  "2/4": {
+    pattern: ["t", "tu", "h", "tu"]
+  },
   // Common time (C) = 4/4
-  "C": ["t", "tu", "h", "tu"],
-  // Cut time (C|) = 2/2
-  "C|": ["t", "h"]
+  "C": {
+    pattern: ["t", "tu", "h", "tu"]
+  }
 };
 
 // src/renderer/RestRenderer.ts
@@ -4380,6 +4393,271 @@ var ChordRenderer = class {
   }
 };
 
+// src/renderer/StrumPatternRenderer.ts
+var StrumPatternRenderer = class {
+  /**
+   * Detect the global subdivision (8, 16, 32, or 64) across the entire grid.
+   * 
+   * Rule: Return the smallest note value found (highest numeric value).
+   * 
+   * This determines the "grain" of the rhythmic timeline for alternation.
+   * 
+   * @param grid - Complete chord grid
+   * @returns 8, 16, 32, or 64 (subdivision unit)
+   */
+  static detectGlobalSubdivision(grid) {
+    var _a;
+    let smallestValue = 8;
+    for (const measure of grid.measures) {
+      const groupBase = {};
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const prev = (_a = groupBase[gid]) != null ? _a : 0;
+              groupBase[gid] = Math.max(prev, n.value);
+            }
+          }
+        }
+      }
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.isRest || n.tieEnd || n.tieFromVoid) continue;
+            let effectiveValue = n.value;
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const base = groupBase[gid] || n.value;
+              effectiveValue = Math.max(effectiveValue, base);
+            }
+            if (effectiveValue > smallestValue) {
+              smallestValue = effectiveValue;
+            }
+          }
+        }
+      }
+    }
+    return smallestValue;
+  }
+  /**
+   * Detect the smallest subdivision within a specific beat.
+   * 
+   * @param beat - Beat object containing notes
+   * @returns 4, 8, 16, 32, or 64 (subdivision unit for this beat)
+   */
+  static detectBeatSubdivision(beat) {
+    let smallestValue = 4;
+    for (const note of beat.notes) {
+      if (note.isRest || note.tieEnd || note.tieFromVoid) continue;
+      if (note.value > smallestValue) {
+        smallestValue = note.value;
+      }
+    }
+    return smallestValue;
+  }
+  /**
+   * Build a rhythmic timeline and assign directions to each note.
+   * 
+   * This is the core algorithm that:
+   * 1. Builds a continuous timeline of all notes
+   * 2. Applies the 3-level priority system:
+   *    - Level 1: Explicit symbols (user-defined)
+   *    - Level 2: Predefined patterns (time signature-specific)
+   *    - Level 3: Automatic alternation (fallback)
+   * 
+   * @param grid - Complete chord grid
+   * @param config - Configuration (pick or finger mode)
+   * @returns Array of notes with assigned directions
+   */
+  static assignDirections(grid, config) {
+    const globalStep = this.detectGlobalSubdivision(grid);
+    const baseStep = Math.min(globalStep, 16);
+    const notesOnTimeline = [];
+    let currentSubdivision = 0;
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          const beatStep = this.detectBeatSubdivision(beat);
+          const effectiveStep = beatStep >= 32 ? beatStep : baseStep;
+          beat.notes.forEach((note, noteIndex) => {
+            const noteDuration = note.value;
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            const subdivisionCount = Math.round(effectiveStep / noteDuration * dottedMultiplier);
+            let explicitSymbol;
+            if (config.mode === "pick" && note.pickDirection) {
+              explicitSymbol = note.pickDirection;
+            } else if (config.mode === "finger" && note.fingerSymbol) {
+              explicitSymbol = note.fingerSymbol;
+            }
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack,
+              value: note.value,
+              explicitSymbol
+            });
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+    const timeSignature = grid.timeSignature;
+    const tsKey = `${timeSignature.numerator}/${timeSignature.denominator}`;
+    const DEBUG_DISABLE_PATTERNS = false;
+    const patternConfig = FINGER_PATTERNS[tsKey];
+    const patternArray = DEBUG_DISABLE_PATTERNS ? void 0 : patternConfig == null ? void 0 : patternConfig.pattern;
+    let patternBeats;
+    if (globalStep === 8) {
+      patternBeats = 2;
+    } else if (globalStep === 16) {
+      patternBeats = 1;
+    } else if (globalStep >= 32) {
+      patternBeats = 0.5;
+    } else {
+      patternBeats = 2;
+    }
+    const beatValue = 4;
+    const subdivisionsPerBeat = globalStep / beatValue;
+    const timeline = [];
+    if (patternArray && config.mode === "finger") {
+      const totalPatternSubdivisions = patternBeats * subdivisionsPerBeat;
+      const subdivPerPatternElement = totalPatternSubdivisions / patternArray.length;
+      for (let i = 0; i < currentSubdivision; i++) {
+        const positionInPattern = i % totalPatternSubdivisions;
+        const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
+        const rawSymbol = patternArray[patternIndex];
+        const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || "fr");
+        const direction = normalizedSymbol.endsWith("u") ? "up" : "down";
+        timeline.push({ direction, subdivisionIndex: i, symbol: normalizedSymbol });
+      }
+    } else {
+      const basePattern = ["t", "tu", "h", "tu"];
+      for (let i = 0; i < currentSubdivision; i++) {
+        let direction;
+        let symbol;
+        if (config.mode === "finger") {
+          let patternIndex;
+          if (globalStep > 8) {
+            const positionInBeat = i % subdivisionsPerBeat;
+            patternIndex = positionInBeat % basePattern.length;
+          } else {
+            patternIndex = i % basePattern.length;
+          }
+          const rawSymbol = basePattern[patternIndex];
+          symbol = this.normalizeFingerSymbol(rawSymbol, config.language || "en");
+          direction = symbol.endsWith("u") ? "up" : "down";
+        } else {
+          const isDown = i % 2 === 0;
+          direction = isDown ? "down" : "up";
+        }
+        timeline.push({
+          direction,
+          subdivisionIndex: i,
+          symbol
+        });
+      }
+    }
+    const result = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
+      if (n.explicitSymbol) {
+        let direction2;
+        let normalizedSymbol;
+        if (config.mode === "pick") {
+          direction2 = n.explicitSymbol === "d" ? "down" : "up";
+          normalizedSymbol = n.explicitSymbol;
+        } else {
+          normalizedSymbol = this.normalizeFingerSymbol(n.explicitSymbol, config.language || "en");
+          direction2 = normalizedSymbol.endsWith("u") ? "up" : "down";
+        }
+        return {
+          ...n,
+          assignedDirection: direction2,
+          assignedSymbol: normalizedSymbol
+        };
+      }
+      const timelineSlot = timeline[n.subdivisionStart];
+      const direction = (timelineSlot == null ? void 0 : timelineSlot.direction) || "down";
+      const assignedSymbol = timelineSlot == null ? void 0 : timelineSlot.symbol;
+      return {
+        ...n,
+        assignedDirection: direction,
+        assignedSymbol
+      };
+    });
+    return result;
+  }
+  /**
+   * Normalize and translate finger symbols to their canonical form.
+   * 
+   * This function accepts ALL variants (short, long, English, French) and normalizes them
+   * to the long form in the target language.
+   * 
+   * Accepted Input Variants:
+   * - Short English: t, tu, h, hu
+   * - Long English: td, tu, hd, hu
+   * - Short French: p, pu, m, mu
+   * - Long French: pd, pu, md, mu
+   * 
+   * Output (normalized long form):
+   * - English: td, tu, hd, hu
+   * - French: pd, pu, md, mu
+   * 
+   * Examples:
+   * ```
+   * normalizeFingerSymbol('t', 'en')   → 'td'  (expand short)
+   * normalizeFingerSymbol('td', 'en')  → 'td'  (already normalized)
+   * normalizeFingerSymbol('t', 'fr')   → 'pd'  (expand + translate)
+   * normalizeFingerSymbol('td', 'fr')  → 'pd'  (translate)
+   * normalizeFingerSymbol('p', 'fr')   → 'pd'  (expand short French)
+   * normalizeFingerSymbol('pd', 'fr')  → 'pd'  (already normalized)
+   * normalizeFingerSymbol('tu', 'en')  → 'tu'  (already normalized)
+   * normalizeFingerSymbol('tu', 'fr')  → 'pu'  (translate)
+   * ```
+   * 
+   * @param symbol - Original symbol (any variant)
+   * @param language - Target language ('en' or 'fr')
+   * @returns Normalized symbol in long form for target language
+   */
+  static normalizeFingerSymbol(symbol, language) {
+    const toEnglishLong = {
+      // Short English → Long English
+      "t": "td",
+      "tu": "tu",
+      // already long
+      "h": "hd",
+      "hu": "hu",
+      // already long
+      // Long English → Long English (pass-through)
+      "td": "td",
+      "hd": "hd",
+      // Short French → Long English (normalize first)
+      "p": "td",
+      "pu": "tu",
+      "m": "hd",
+      "mu": "hu",
+      // Long French → Long English
+      "pd": "td",
+      "md": "hd"
+    };
+    const englishLong = toEnglishLong[symbol] || symbol;
+    if (language === "fr") {
+      const enToFr = {
+        "td": "pd",
+        "tu": "pu",
+        "hd": "md",
+        "hu": "mu"
+      };
+      return enToFr[englishLong] || englishLong;
+    }
+    return englishLong;
+  }
+};
+
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
   constructor() {
@@ -4619,7 +4897,7 @@ var SVGRenderer = class {
     const totalHeight = height + topMarginForChords;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
-    svg.setAttribute("height", "auto");
+    svg.setAttribute("height", totalHeight.toString());
     svg.setAttribute("viewBox", `0 ${-topMarginForChords} ${width} ${totalHeight}`);
     svg.setAttribute("xmlns", SVG_NS);
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
@@ -5511,67 +5789,45 @@ var SVGRenderer = class {
   }
   /**
    * Draw fingerstyle symbols on notes.
-   * Symbols can be explicit (4t, 8pu) or applied via patterns from FINGERSTYLE_PATTERNS.
+   * Uses StrumPatternRenderer for pattern logic with 3-level priority:
+   * 1. Explicit symbols (user-defined in notation)
+   * 2. Predefined patterns (from FINGER_PATTERNS)
+   * 3. Automatic alternation (fallback)
    */
   drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices) {
     const fingerMode = options.fingerMode;
     if (!fingerMode) return;
-    const PATTERNS = FINGERSTYLE_PATTERNS;
-    const notesWithSymbols = [];
-    grid.measures.forEach((measure, measureIndex) => {
-      var _a;
-      const ts = measure.timeSignature;
-      const tsKey = ts ? `${ts.numerator}/${ts.denominator}` : "4/4";
-      const pattern = PATTERNS[tsKey] || PATTERNS["4/4"];
-      let noteCounter = 0;
-      (_a = measure.chordSegments) == null ? void 0 : _a.forEach((segment, chordIndex) => {
-        segment.beats.forEach((beat, beatIndex) => {
-          beat.notes.forEach((note, noteIndex) => {
-            if (note.isRest || note.tieEnd || note.tieFromVoid) return;
-            let symbolToUse;
-            if (note.fingerSymbol) {
-              symbolToUse = note.fingerSymbol;
-            } else {
-              const patternSymbol = pattern[noteCounter % pattern.length];
-              symbolToUse = patternSymbol;
-            }
-            if (symbolToUse) {
-              const translatedSymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
-              let displaySymbol;
-              if (translatedSymbol.endsWith("u")) {
-                const baseLetter = translatedSymbol.slice(0, -1);
-                displaySymbol = baseLetter + "\u2191";
-              } else {
-                displaySymbol = translatedSymbol + "\u2193";
-              }
-              notesWithSymbols.push({
-                measureIndex,
-                chordIndex,
-                beatIndex,
-                noteIndex,
-                symbol: displaySymbol
-              });
-            }
-            noteCounter++;
-          });
-        });
-      });
+    const notesWithDirections = StrumPatternRenderer.assignDirections(grid, {
+      mode: "finger",
+      language: fingerMode
+      // 'en' or 'fr'
     });
     const FONT_SIZE = 14;
     const MARGIN = 4;
     const NOTE_HEAD_HALF_HEIGHT = 5;
-    notesWithSymbols.forEach((noteWithSymbol) => {
-      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteWithSymbol.measureIndex)) return;
+    notesWithDirections.forEach((noteInfo) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteInfo.measureIndex)) return;
       const notePos = notePositions.find(
-        (np) => np.measureIndex === noteWithSymbol.measureIndex && np.chordIndex === noteWithSymbol.chordIndex && np.beatIndex === noteWithSymbol.beatIndex && np.noteIndex === noteWithSymbol.noteIndex
+        (np) => np.measureIndex === noteInfo.measureIndex && np.chordIndex === noteInfo.chordIndex && np.beatIndex === noteInfo.beatIndex && np.noteIndex === noteInfo.noteIndex
       );
-      if (!notePos) return;
+      if (!notePos || !noteInfo.assignedSymbol) return;
       const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
       const stemDirection = hasStem && notePos.stemTopY < notePos.y ? "up" : "down";
       const placeAbove = stemDirection === "down";
       const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
       const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
       const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+      const symbol = noteInfo.assignedSymbol;
+      let displaySymbol;
+      if (symbol.endsWith("u")) {
+        const baseLetter = symbol.slice(0, -1);
+        displaySymbol = baseLetter + "\u2191";
+      } else if (symbol.endsWith("d")) {
+        const baseLetter = symbol.slice(0, -1);
+        displaySymbol = baseLetter + "\u2193";
+      } else {
+        displaySymbol = symbol;
+      }
       const textY = placeAbove ? noteHeadEdgeY - MARGIN : noteHeadEdgeY + MARGIN + FONT_SIZE;
       const text = document.createElementNS(SVG_NS, "text");
       text.setAttribute("x", notePos.x.toFixed(2));
@@ -5582,7 +5838,7 @@ var SVGRenderer = class {
       text.setAttribute("text-anchor", "middle");
       text.setAttribute("fill", "#000");
       text.setAttribute("data-finger-symbol", "true");
-      text.textContent = noteWithSymbol.symbol;
+      text.textContent = displaySymbol;
       svg.appendChild(text);
     });
   }
