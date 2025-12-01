@@ -148,7 +148,7 @@ private drawFingerSymbols(
 ### Basic Usage
 
 #### English (default)
-```chord-grid
+```chordgrid
 finger
 4/4
 C | 4 8 8 4 4 |
@@ -156,7 +156,7 @@ C | 4 8 8 4 4 |
 Result: Displays pattern 't', 'tu', 'h', 'tu', 't', ...
 
 #### French
-```chord-grid
+```chordgrid
 finger:fr
 4/4
 C | 4 8 8 4 4 |
@@ -166,14 +166,14 @@ Result: Displays pattern 'p', 'pu', 'm', 'mu', 'p', ...
 ### Explicit Symbols
 
 #### English notation
-```chord-grid
+```chordgrid
 finger
 4/4
 C | 4t 8h 8tu 4h 4t |
 ```
 
 #### French notation
-```chord-grid
+```chordgrid
 finger:fr
 4/4
 C | 4p 8m 8pu 4m 4p |
@@ -439,3 +439,4 @@ All objectives met:
 ## Developer: GitHub Copilot
 ## Reviewer: [Pending]
 ## Status: ✅ Implementation Complete - Testing Required
+
