@@ -1486,8 +1486,9 @@ class BeamAndTieAnalyzer {
         let pickDirection: 'd' | 'u' | undefined;
         
         const afterValue = rhythmStr.substring(offset + len);
-        // Match: t, tu, h, hu, p, pu, m, mu, d, u (but not followed by digit)
-        const symbolMatch = /^(t|tu|h|hu|p|pu|m|mu|d|u)(?!\d)/.exec(afterValue);
+        // Match: tu, hu, pu, mu first (2 chars), then t, h, p, m, d, u (1 char)
+        // Order matters! Longest matches first to avoid partial matching
+        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)(?!\d)/.exec(afterValue);
         if (symbolMatch) {
           const sym = symbolMatch[1];
           if (sym === 'd' || sym === 'u') {
