@@ -1488,7 +1488,8 @@ class BeamAndTieAnalyzer {
         const afterValue = rhythmStr.substring(offset + len);
         // Match: tu, hu, pu, mu first (2 chars), then t, h, p, m, d, u (1 char)
         // Order matters! Longest matches first to avoid partial matching
-        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)(?!\d)/.exec(afterValue);
+        // Note: We don't use (?!\d) because symbols can be followed by digits (e.g., "8h8tu")
+        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
         if (symbolMatch) {
           const sym = symbolMatch[1];
           if (sym === 'd' || sym === 'u') {

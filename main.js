@@ -1132,7 +1132,7 @@ var BeamAndTieAnalyzer = class {
         let fingerSymbol;
         let pickDirection;
         const afterValue = rhythmStr.substring(offset + len);
-        const symbolMatch = /^(t|tu|h|hu|p|pu|m|mu|d|u)(?!\d)/.exec(afterValue);
+        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
         if (symbolMatch) {
           const sym = symbolMatch[1];
           if (sym === "d" || sym === "u") {
