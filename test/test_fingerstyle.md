@@ -93,7 +93,7 @@ C | 4 -8 8 4 -4 |
 ```chordgrid
 finger
 4/4
-C | 16 16 16 16 8 8 4 |
+C | 16 16 16 16 8 8 4 4 |
 ```
 
 ## Test 12: Dotted notes with symbols
@@ -127,14 +127,14 @@ but translate to p/m in French mode.
 ```chordgrid
 finger
 4/4
-C | 4t 8h 8tu 4h |
+C | 4t 8h 8tu 4h 4t |
 ```
 
 ### French mode with explicit 'p'
 ```chordgrid
 finger:fr
 4/4
-C | 4p 8m 8pu 4m |
+C | 4p 8m 8pu 4m 4p |
 ```
 
 ## Test 15: mu symbol (only via explicit)
@@ -143,12 +143,12 @@ The 'mu' symbol is not in patterns but should work when explicit.
 ```chordgrid
 finger
 4/4
-C | 4mu 8h 8t 4h |
+C | 4mu 8h 8t 4h 4t |
 ```
 
 ```chordgrid
 finger:fr
 4/4
-C | 4mu 8m 8p 4m |
+C | 4mu 8m 8p 4m 4p |
 ```
 
