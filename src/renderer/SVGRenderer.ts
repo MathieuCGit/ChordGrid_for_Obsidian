@@ -1720,7 +1720,20 @@ export class SVGRenderer {
 
             if (symbolToUse) {
               // Translate symbol if needed
-              const displaySymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
+              const translatedSymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
+              
+              // Convert to letter + arrow format
+              // tu/pu/hu/mu → letter + ↑
+              // t/p/h/m → letter + ↓
+              let displaySymbol: string;
+              if (translatedSymbol.endsWith('u')) {
+                // Remove 'u' and add up arrow
+                const baseLetter = translatedSymbol.slice(0, -1);
+                displaySymbol = baseLetter + '↑';
+              } else {
+                // Add down arrow
+                displaySymbol = translatedSymbol + '↓';
+              }
               
               notesWithSymbols.push({
                 measureIndex,

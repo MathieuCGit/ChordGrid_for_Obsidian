@@ -5518,7 +5518,14 @@ var SVGRenderer = class {
               symbolToUse = patternSymbol;
             }
             if (symbolToUse) {
-              const displaySymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
+              const translatedSymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
+              let displaySymbol;
+              if (translatedSymbol.endsWith("u")) {
+                const baseLetter = translatedSymbol.slice(0, -1);
+                displaySymbol = baseLetter + "\u2191";
+              } else {
+                displaySymbol = translatedSymbol + "\u2193";
+              }
               notesWithSymbols.push({
                 measureIndex,
                 chordIndex,
