@@ -476,3 +476,39 @@ export const SVG_VIEWPORT = {
     /** Default Z-order for normal elements */
     Z_ORDER_DEFAULT: 100,
 } as const;
+
+// =============================================================================
+// FINGERSTYLE PATTERNS
+// =============================================================================
+
+/**
+ * Fingerstyle patterns per time signature (English notation)
+ * 
+ * Symbols:
+ * - 't' = thumb down
+ * - 'tu' = thumb up
+ * - 'h' = hand (fingers) down
+ * - 'hu' = hand up (rare, available in explicit notation)
+ * 
+ * Translation to French via finger:fr directive:
+ * - t → p (pouce)
+ * - tu → pu (pouce up)
+ * - h → m (main)
+ * - hu → mu (main up)
+ * 
+ * @plannedFor v2.3 - User-customizable patterns
+ */
+export const FINGERSTYLE_PATTERNS: Record<string, readonly string[]> = {
+    '4/4': ['t', 'tu', 'h', 'tu'],
+    '3/4': ['t', 'h', 'tu'],
+    '6/8': ['t', 'h', 'tu', 't', 'h', 'tu'],
+    '9/8': ['t', 'h', 'tu', 't', 'h', 'tu', 't', 'h', 'tu'],
+    '12/8': ['t', 'h', 'tu', 't', 'h', 'tu', 't', 'h', 'tu', 't', 'h', 'tu'],
+    '2/4': ['t', 'h'],
+    '5/4': ['t', 'tu', 'h', 'tu', 't'],
+    '7/8': ['t', 'h', 'tu', 't', 'h', 'tu', 't'],
+    // Common time (C) = 4/4
+    'C': ['t', 'tu', 'h', 'tu'],
+    // Cut time (C|) = 2/2
+    'C|': ['t', 'h'],
+} as const;

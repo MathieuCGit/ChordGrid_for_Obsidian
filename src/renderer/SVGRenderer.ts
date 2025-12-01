@@ -34,7 +34,8 @@ import {
   NOTE_SPACING, 
   SEGMENT_WIDTH,
   SVG_VIEWPORT,
-  TYPOGRAPHY
+  TYPOGRAPHY,
+  FINGERSTYLE_PATTERNS
 } from './constants';
 import { TieManager } from '../utils/TieManager';
 import { VoltaManager } from '../utils/VoltaManager';
@@ -52,8 +53,10 @@ export interface RenderOptions {
   stemsDirection?: 'up' | 'down';
   /** Display % symbol for repeated measures instead of full rhythm. Default false. */
   displayRepeatSymbol?: boolean;
-  /** Pick stroke mode ('off', 'auto', '8', '16'). Default 'off'. */
-  pickStrokes?: 'off' | 'auto' | '8' | '16';
+  /** Enable pick stroke symbols. Default false. */
+  pickStrokes?: boolean;
+  /** Fingerstyle mode ('en' for English t/h, 'fr' for French p/m). Default undefined (disabled). */
+  fingerMode?: 'en' | 'fr';
   /** Number of measures per line (forces layout). If unspecified, uses automatic mode. */
   measuresPerLine?: number;
   /** Enable debug logging for placement and collision detection. Default false. */
@@ -596,6 +599,9 @@ export class SVGRenderer {
 
         // Draw Pick-Strokes (Current line only) - AFTER ties to calculate global offset
         this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+        
+        // Draw Fingerstyle Symbols (Current line only)
+        this.drawFingerSymbols(svg, grid, notePositions as any, stemsDirection, options, allowedMeasureIndices);
         
         // 6. SAVE BARLINES before PlaceAndSizeManager is cleared
         // (needed for global volta rendering)
@@ -1269,11 +1275,10 @@ export class SVGRenderer {
     allowedMeasureIndices?: Set<number>
   ) {
     const mode = options.pickStrokes;
-    if (!mode || mode === 'off') return;
+    if (!mode) return;
 
-    // 1) Determine the subdivision (8 or 16) on the ENTIRE block if auto
-    const forcedStep = mode === '8' ? 8 : mode === '16' ? 16 : undefined;
-    const step = forcedStep ?? this.detectGlobalSubdivision(grid);
+    // Detect the global subdivision (8 or 16) automatically
+    const step = this.detectGlobalSubdivision(grid);
 
     // 2) Build the timeline (same logic as drawPickStrokes)
     interface TimelineSlot {
@@ -1411,11 +1416,10 @@ export class SVGRenderer {
     allowedMeasureIndices?: Set<number>
   ) {
     const mode = options.pickStrokes;
-    if (!mode || mode === 'off') return;
+    if (!mode) return;
 
-    // 1) Determine the subdivision (8 or 16) on the ENTIRE block if auto
-    const forcedStep = mode === '8' ? 8 : mode === '16' ? 16 : undefined;
-    const step = forcedStep ?? this.detectGlobalSubdivision(grid);
+    // Detect the global subdivision (8 or 16) automatically
+    const step = this.detectGlobalSubdivision(grid);
 
     // 2) Build a continuous rhythmic TIMELINE based on the subdivision
     // Each note/rest occupies a certain number of subdivision "slots"
@@ -1638,6 +1642,147 @@ export class SVGRenderer {
       if (hasSixteenth) break;
     }
     return hasSixteenth ? 16 : 8;
+  }
+
+  /**
+   * Translate finger symbol from English to target language if needed.
+   * @param symbol - Original symbol (t, tu, h, hu, p, pu, m, mu)
+   * @param language - Target language ('en' or 'fr')
+   * @returns Translated symbol
+   */
+  private translateFingerSymbol(symbol: string, language?: 'en' | 'fr'): string {
+    if (!language || language === 'en') return symbol;
+    
+    // French translation
+    const translations: Record<string, string> = {
+      't': 'p',
+      'tu': 'pu',
+      'h': 'm',
+      'hu': 'mu'
+    };
+    
+    return translations[symbol] || symbol;
+  }
+
+  /**
+   * Draw fingerstyle symbols on notes.
+   * Symbols can be explicit (4t, 8pu) or applied via patterns from FINGERSTYLE_PATTERNS.
+   */
+  private drawFingerSymbols(
+    svg: SVGElement,
+    grid: ChordGrid,
+    notePositions: Array<{ x: number; y: number; measureIndex: number; chordIndex: number; beatIndex: number; noteIndex: number; tieEnd?: boolean; tieFromVoid?: boolean; value?: number; stemTopY?: number; stemBottomY?: number }>,
+    stemsDirection: 'up' | 'down',
+    options: RenderOptions,
+    allowedMeasureIndices?: Set<number>
+  ) {
+    const fingerMode = options.fingerMode;
+    if (!fingerMode) return;
+
+    // Import patterns
+    const PATTERNS = FINGERSTYLE_PATTERNS;
+
+    // Collect all notes with their finger symbols (explicit or from pattern)
+    interface NoteWithSymbol {
+      measureIndex: number;
+      chordIndex: number;
+      beatIndex: number;
+      noteIndex: number;
+      symbol: string; // Translated symbol to display
+    }
+    const notesWithSymbols: NoteWithSymbol[] = [];
+
+    // Process each measure to apply patterns or use explicit symbols
+    grid.measures.forEach((measure, measureIndex) => {
+      // Get pattern for this time signature
+      const ts = measure.timeSignature;
+      const tsKey = ts ? `${ts.numerator}/${ts.denominator}` : '4/4';
+      const pattern = PATTERNS[tsKey] || PATTERNS['4/4']; // Fallback to 4/4
+      
+      let noteCounter = 0; // Counter for pattern cycling
+
+      measure.chordSegments?.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            // Skip rests and tied notes (not attacks)
+            if (note.isRest || note.tieEnd || note.tieFromVoid) return;
+
+            let symbolToUse: string | undefined;
+
+            // 1. Check for explicit symbol
+            if (note.fingerSymbol) {
+              symbolToUse = note.fingerSymbol;
+            } else {
+              // 2. Apply pattern
+              const patternSymbol = pattern[noteCounter % pattern.length];
+              symbolToUse = patternSymbol;
+            }
+
+            if (symbolToUse) {
+              // Translate symbol if needed
+              const displaySymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
+              
+              notesWithSymbols.push({
+                measureIndex,
+                chordIndex,
+                beatIndex,
+                noteIndex,
+                symbol: displaySymbol
+              });
+            }
+
+            noteCounter++;
+          });
+        });
+      });
+    });
+
+    // Draw symbols
+    const FONT_SIZE = 14;
+    const MARGIN = 4; // Distance from note head
+    const NOTE_HEAD_HALF_HEIGHT = 5;
+
+    notesWithSymbols.forEach(noteWithSymbol => {
+      // Filter by line if needed
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteWithSymbol.measureIndex)) return;
+
+      const notePos = notePositions.find(np =>
+        np.measureIndex === noteWithSymbol.measureIndex &&
+        np.chordIndex === noteWithSymbol.chordIndex &&
+        np.beatIndex === noteWithSymbol.beatIndex &&
+        np.noteIndex === noteWithSymbol.noteIndex
+      );
+
+      if (!notePos) return;
+
+      // Determine placement (above or below note)
+      const hasStem = notePos.stemTopY !== undefined && notePos.stemBottomY !== undefined;
+      const stemDirection = hasStem && notePos.stemTopY! < notePos.y ? 'up' : 'down';
+      const placeAbove = stemDirection === 'down'; // stems-down → symbol above
+
+      const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+
+      // Calculate Y position
+      const textY = placeAbove 
+        ? (noteHeadEdgeY - MARGIN)
+        : (noteHeadEdgeY + MARGIN + FONT_SIZE);
+
+      // Create text element
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('x', notePos.x.toFixed(2));
+      text.setAttribute('y', textY.toFixed(2));
+      text.setAttribute('font-family', 'Arial, sans-serif');
+      text.setAttribute('font-size', FONT_SIZE.toString());
+      text.setAttribute('font-weight', 'bold');
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('fill', '#000');
+      text.setAttribute('data-finger-symbol', 'true');
+      text.textContent = noteWithSymbol.symbol;
+      
+      svg.appendChild(text);
+    });
   }
 
   /**

@@ -123,19 +123,33 @@ export class ChordGridParser {
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
     
-    // Detect stems-up/down and show% keywords on the first line (in any order)
+    // Detect directives on the first line (in any order)
     let stemsDirection: 'up' | 'down' = 'up';
     let displayRepeatSymbol = false;
-    let picksMode: 'off' | 'auto' | '8' | '16' | undefined = undefined;
+    let pickMode: boolean | undefined = undefined;
+    let fingerMode: 'en' | 'fr' | undefined = undefined;
     let timeSignatureLine = lines[0];
     
-    // Check for stems keywords (anywhere in the line)
-    if (/stems-down/i.test(timeSignatureLine)) {
+    // Helper function to normalize directive aliases
+    const normalizeDirective = (directive: string): string => {
+      const normalized = directive.toLowerCase().trim();
+      // Stem aliases
+      if (normalized === 'stems-up' || normalized === 'stem-up') return 'stem-up';
+      if (normalized === 'stems-down' || normalized === 'stem-down') return 'stem-down';
+      // Pick aliases
+      if (normalized === 'picks' || normalized === 'pick-auto' || normalized === 'picks-auto') return 'pick';
+      // Finger aliases
+      if (normalized === 'fingers') return 'finger';
+      return normalized;
+    };
+    
+    // Check for stems keywords (anywhere in the line) - support aliases
+    if (/(stems-down|stem-down)/i.test(timeSignatureLine)) {
       stemsDirection = 'down';
-      timeSignatureLine = timeSignatureLine.replace(/stems-down\s*/i, '');
-    } else if (/stems-up/i.test(timeSignatureLine)) {
+      timeSignatureLine = timeSignatureLine.replace(/(stems-down|stem-down)\s*/i, '');
+    } else if (/(stems-up|stem-up)/i.test(timeSignatureLine)) {
       stemsDirection = 'up';
-      timeSignatureLine = timeSignatureLine.replace(/stems-up\s*/i, '');
+      timeSignatureLine = timeSignatureLine.replace(/(stems-up|stem-up)\s*/i, '');
     }
     
     // Check for show% keyword (anywhere in the line)
@@ -144,14 +158,18 @@ export class ChordGridParser {
       timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, '');
     }
 
-    // Check for picks directive: picks-off | picks-auto | picks-8 | picks-16 (anywhere in the line)
-    const picksMatch = /(picks-(off|auto|8|16))/i.exec(timeSignatureLine);
-    if (picksMatch) {
-      const mode = (picksMatch[2] || '').toLowerCase();
-      if (mode === 'off' || mode === 'auto' || mode === '8' || mode === '16') {
-        picksMode = mode as any;
-      }
-      timeSignatureLine = timeSignatureLine.replace(/picks-(off|auto|8|16)\s*/i, '');
+    // Check for pick directive: pick | picks | pick-auto | picks-auto (anywhere in the line)
+    if (/(picks-auto|pick-auto|picks|pick)(?!\w)/i.test(timeSignatureLine)) {
+      pickMode = true;
+      timeSignatureLine = timeSignatureLine.replace(/(picks-auto|pick-auto|picks|pick)(?!\w)\s*/i, '');
+    }
+    
+    // Check for finger directive: finger | fingers | finger:fr | fingers:fr (anywhere in the line)
+    const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(timeSignatureLine);
+    if (fingerMatch) {
+      const lang = fingerMatch[3]?.toLowerCase();
+      fingerMode = (lang === 'fr') ? 'fr' : 'en';
+      timeSignatureLine = timeSignatureLine.replace(/(fingers?)(:\s*(en|fr))?\s*/i, '');
     }
 
     // Check for measures-per-line directive: measures-per-line:4 (or any number)
@@ -396,7 +414,7 @@ export class ChordGridParser {
       // are implicitly valid and don't need rhythm validation
     }
 
-  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, measuresPerLine };
+  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine };
   }
 
   /**
@@ -1462,11 +1480,31 @@ class BeamAndTieAnalyzer {
           dotted = true;
           len += 1;
         }
+
+        // Check for finger symbol or pick direction suffix (after value and optional dot)
+        let fingerSymbol: string | undefined;
+        let pickDirection: 'd' | 'u' | undefined;
+        
+        const afterValue = rhythmStr.substring(offset + len);
+        // Match: t, tu, h, hu, p, pu, m, mu, d, u (but not followed by digit)
+        const symbolMatch = /^(t|tu|h|hu|p|pu|m|mu|d|u)(?!\d)/.exec(afterValue);
+        if (symbolMatch) {
+          const sym = symbolMatch[1];
+          if (sym === 'd' || sym === 'u') {
+            pickDirection = sym;
+          } else {
+            fingerSymbol = sym;
+          }
+          len += symbolMatch[0].length;
+        }
+
         // Total length includes the optional '-' prefix
         const totalLen = (offset - startIndex) + len;
         return {
           value: parseInt(v) as NoteValue,
           dotted,
+          fingerSymbol,
+          pickDirection,
           tieStart: false,
           tieEnd: false,
           tieToVoid: false,

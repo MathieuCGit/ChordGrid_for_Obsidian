@@ -175,29 +175,41 @@ var _ChordGridParser = class _ChordGridParser {
    *   - measures: array of all measures
    */
   parse(input) {
+    var _a;
     const lines = input.trim().split("\n");
     let stemsDirection = "up";
     let displayRepeatSymbol = false;
-    let picksMode = void 0;
+    let pickMode = void 0;
+    let fingerMode = void 0;
     let timeSignatureLine = lines[0];
-    if (/stems-down/i.test(timeSignatureLine)) {
+    const normalizeDirective = (directive) => {
+      const normalized = directive.toLowerCase().trim();
+      if (normalized === "stems-up" || normalized === "stem-up") return "stem-up";
+      if (normalized === "stems-down" || normalized === "stem-down") return "stem-down";
+      if (normalized === "picks" || normalized === "pick-auto" || normalized === "picks-auto") return "pick";
+      if (normalized === "fingers") return "finger";
+      return normalized;
+    };
+    if (/(stems-down|stem-down)/i.test(timeSignatureLine)) {
       stemsDirection = "down";
-      timeSignatureLine = timeSignatureLine.replace(/stems-down\s*/i, "");
-    } else if (/stems-up/i.test(timeSignatureLine)) {
+      timeSignatureLine = timeSignatureLine.replace(/(stems-down|stem-down)\s*/i, "");
+    } else if (/(stems-up|stem-up)/i.test(timeSignatureLine)) {
       stemsDirection = "up";
-      timeSignatureLine = timeSignatureLine.replace(/stems-up\s*/i, "");
+      timeSignatureLine = timeSignatureLine.replace(/(stems-up|stem-up)\s*/i, "");
     }
     if (/show%/i.test(timeSignatureLine)) {
       displayRepeatSymbol = true;
       timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, "");
     }
-    const picksMatch = /(picks-(off|auto|8|16))/i.exec(timeSignatureLine);
-    if (picksMatch) {
-      const mode = (picksMatch[2] || "").toLowerCase();
-      if (mode === "off" || mode === "auto" || mode === "8" || mode === "16") {
-        picksMode = mode;
-      }
-      timeSignatureLine = timeSignatureLine.replace(/picks-(off|auto|8|16)\s*/i, "");
+    if (/(picks-auto|pick-auto|picks|pick)(?!\w)/i.test(timeSignatureLine)) {
+      pickMode = true;
+      timeSignatureLine = timeSignatureLine.replace(/(picks-auto|pick-auto|picks|pick)(?!\w)\s*/i, "");
+    }
+    const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(timeSignatureLine);
+    if (fingerMatch) {
+      const lang = (_a = fingerMatch[3]) == null ? void 0 : _a.toLowerCase();
+      fingerMode = lang === "fr" ? "fr" : "en";
+      timeSignatureLine = timeSignatureLine.replace(/(fingers?)(:\s*(en|fr))?\s*/i, "");
     }
     let measuresPerLine = void 0;
     const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(timeSignatureLine);
@@ -337,7 +349,7 @@ var _ChordGridParser = class _ChordGridParser {
         }
       }
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, picksMode, measuresPerLine };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine };
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -1117,10 +1129,25 @@ var BeamAndTieAnalyzer = class {
           dotted = true;
           len += 1;
         }
+        let fingerSymbol;
+        let pickDirection;
+        const afterValue = rhythmStr.substring(offset + len);
+        const symbolMatch = /^(t|tu|h|hu|p|pu|m|mu|d|u)(?!\d)/.exec(afterValue);
+        if (symbolMatch) {
+          const sym = symbolMatch[1];
+          if (sym === "d" || sym === "u") {
+            pickDirection = sym;
+          } else {
+            fingerSymbol = sym;
+          }
+          len += symbolMatch[0].length;
+        }
         const totalLen = offset - startIndex + len;
         return {
           value: parseInt(v),
           dotted,
+          fingerSymbol,
+          pickDirection,
           tieStart: false,
           tieEnd: false,
           tieToVoid: false,
@@ -1437,6 +1464,20 @@ var SEGMENT_WIDTH = {
   MIN_SPACING_RATIO: 0.7,
   /** Maximum spacing ratio for readability (150% = too spread) */
   MAX_SPACING_RATIO: 1.5
+};
+var FINGERSTYLE_PATTERNS = {
+  "4/4": ["t", "tu", "h", "tu"],
+  "3/4": ["t", "h", "tu"],
+  "6/8": ["t", "h", "tu", "t", "h", "tu"],
+  "9/8": ["t", "h", "tu", "t", "h", "tu", "t", "h", "tu"],
+  "12/8": ["t", "h", "tu", "t", "h", "tu", "t", "h", "tu", "t", "h", "tu"],
+  "2/4": ["t", "h"],
+  "5/4": ["t", "tu", "h", "tu", "t"],
+  "7/8": ["t", "h", "tu", "t", "h", "tu", "t"],
+  // Common time (C) = 4/4
+  "C": ["t", "tu", "h", "tu"],
+  // Cut time (C|) = 2/2
+  "C|": ["t", "h"]
 };
 
 // src/renderer/RestRenderer.ts
@@ -4723,6 +4764,7 @@ var SVGRenderer = class {
       const allowedMeasureIndices = new Set(lineMeasurePositions.map((mp) => mp.globalIndex));
       this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+      this.drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices);
       const lineBarlines = placeAndSizeManager.getElements().filter((el) => {
         var _a, _b;
         return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0 && ((_b = el.metadata) == null ? void 0 : _b.measureIndex) !== void 0;
@@ -5197,9 +5239,8 @@ var SVGRenderer = class {
    */
   preRegisterPickStrokes(grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices) {
     const mode = options.pickStrokes;
-    if (!mode || mode === "off") return;
-    const forcedStep = mode === "8" ? 8 : mode === "16" ? 16 : void 0;
-    const step = forcedStep != null ? forcedStep : this.detectGlobalSubdivision(grid);
+    if (!mode) return;
+    const step = this.detectGlobalSubdivision(grid);
     const timeline = [];
     const notesOnTimeline = [];
     let currentSubdivision = 0;
@@ -5288,9 +5329,8 @@ var SVGRenderer = class {
    */
   drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices) {
     const mode = options.pickStrokes;
-    if (!mode || mode === "off") return;
-    const forcedStep = mode === "8" ? 8 : mode === "16" ? 16 : void 0;
-    const step = forcedStep != null ? forcedStep : this.detectGlobalSubdivision(grid);
+    if (!mode) return;
+    const step = this.detectGlobalSubdivision(grid);
     const timeline = [];
     const notesOnTimeline = [];
     let currentSubdivision = 0;
@@ -5436,6 +5476,92 @@ var SVGRenderer = class {
     return hasSixteenth ? 16 : 8;
   }
   /**
+   * Translate finger symbol from English to target language if needed.
+   * @param symbol - Original symbol (t, tu, h, hu, p, pu, m, mu)
+   * @param language - Target language ('en' or 'fr')
+   * @returns Translated symbol
+   */
+  translateFingerSymbol(symbol, language) {
+    if (!language || language === "en") return symbol;
+    const translations = {
+      "t": "p",
+      "tu": "pu",
+      "h": "m",
+      "hu": "mu"
+    };
+    return translations[symbol] || symbol;
+  }
+  /**
+   * Draw fingerstyle symbols on notes.
+   * Symbols can be explicit (4t, 8pu) or applied via patterns from FINGERSTYLE_PATTERNS.
+   */
+  drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices) {
+    const fingerMode = options.fingerMode;
+    if (!fingerMode) return;
+    const PATTERNS = FINGERSTYLE_PATTERNS;
+    const notesWithSymbols = [];
+    grid.measures.forEach((measure, measureIndex) => {
+      var _a;
+      const ts = measure.timeSignature;
+      const tsKey = ts ? `${ts.numerator}/${ts.denominator}` : "4/4";
+      const pattern = PATTERNS[tsKey] || PATTERNS["4/4"];
+      let noteCounter = 0;
+      (_a = measure.chordSegments) == null ? void 0 : _a.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            if (note.isRest || note.tieEnd || note.tieFromVoid) return;
+            let symbolToUse;
+            if (note.fingerSymbol) {
+              symbolToUse = note.fingerSymbol;
+            } else {
+              const patternSymbol = pattern[noteCounter % pattern.length];
+              symbolToUse = patternSymbol;
+            }
+            if (symbolToUse) {
+              const displaySymbol = this.translateFingerSymbol(symbolToUse, fingerMode);
+              notesWithSymbols.push({
+                measureIndex,
+                chordIndex,
+                beatIndex,
+                noteIndex,
+                symbol: displaySymbol
+              });
+            }
+            noteCounter++;
+          });
+        });
+      });
+    });
+    const FONT_SIZE = 14;
+    const MARGIN = 4;
+    const NOTE_HEAD_HALF_HEIGHT = 5;
+    notesWithSymbols.forEach((noteWithSymbol) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteWithSymbol.measureIndex)) return;
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === noteWithSymbol.measureIndex && np.chordIndex === noteWithSymbol.chordIndex && np.beatIndex === noteWithSymbol.beatIndex && np.noteIndex === noteWithSymbol.noteIndex
+      );
+      if (!notePos) return;
+      const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
+      const stemDirection = hasStem && notePos.stemTopY < notePos.y ? "up" : "down";
+      const placeAbove = stemDirection === "down";
+      const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+      const textY = placeAbove ? noteHeadEdgeY - MARGIN : noteHeadEdgeY + MARGIN + FONT_SIZE;
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", notePos.x.toFixed(2));
+      text.setAttribute("y", textY.toFixed(2));
+      text.setAttribute("font-family", "Arial, sans-serif");
+      text.setAttribute("font-size", FONT_SIZE.toString());
+      text.setAttribute("font-weight", "bold");
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("fill", "#000");
+      text.setAttribute("data-finger-symbol", "true");
+      text.textContent = noteWithSymbol.symbol;
+      svg.appendChild(text);
+    });
+  }
+  /**
    * Résout les liaisons qui traversent les lignes (cross-line ties).
    * Marque les notes avec tieToVoid/tieFromVoid pour un rendu correct ligne par ligne.
    */
@@ -5503,7 +5629,8 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
           const svg = renderer.render(grid, {
             stemsDirection: result.stemsDirection,
             displayRepeatSymbol: result.displayRepeatSymbol,
-            pickStrokes: result.picksMode,
+            pickStrokes: result.pickMode,
+            fingerMode: result.fingerMode,
             measuresPerLine: result.measuresPerLine
           });
           el.appendChild(svg);

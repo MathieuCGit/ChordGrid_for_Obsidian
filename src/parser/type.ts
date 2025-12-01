@@ -119,6 +119,32 @@ export interface NoteElement {
    * Allows overriding the normal "space breaks beam" rule for special cases.
    */
   forcedBeamThroughTie?: boolean;
+  /**
+   * Finger symbol for fingerstyle notation (optional, overrides pattern).
+   * 
+   * English notation:
+   * - 't' or 'td' : thumb down
+   * - 'tu' : thumb up
+   * - 'h' or 'hd' : hand (fingers) down
+   * - 'hu' : hand up
+   * 
+   * French notation:
+   * - 'p' or 'pd' : pouce (thumb) down
+   * - 'pu' : pouce up
+   * - 'm' or 'md' : main (hand) down
+   * - 'mu' : main up
+   * 
+   * Examples: 4t, 8pu, 16m, 32hu
+   */
+  fingerSymbol?: string;
+  /**
+   * Pick direction for pick-stroke notation (optional, overrides pattern).
+   * - 'd' or 'down' : downstroke
+   * - 'u' or 'up' : upstroke
+   * 
+   * Examples: 4d, 8u, 16d
+   */
+  pickDirection?: 'd' | 'u' | 'down' | 'up';
 }
 
 /**
@@ -266,6 +292,9 @@ export interface ParseResult {
   measures: Measure[];
   stemsDirection?: 'up' | 'down';
   displayRepeatSymbol?: boolean;
-  picksMode?: 'off' | 'auto' | '8' | '16';
+  /** Pick-stroke mode: true if enabled (replaces 'auto'|'8'|'16') */
+  pickMode?: boolean;
+  /** Fingerstyle mode with language: 'en' (default) or 'fr' */
+  fingerMode?: 'en' | 'fr';
   measuresPerLine?: number;
 }
