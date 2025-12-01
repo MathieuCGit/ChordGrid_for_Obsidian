@@ -1968,7 +1968,98 @@ var NoteRenderer = class {
         }
       }
     });
+    const tupletGroups = this.detectTupletGroups(beat);
+    tupletGroups.forEach((tupletGroup) => {
+      this.drawTupletBracket(svg, tupletGroup, beat, notePositions, measureIndex, chordIndex, beatIndex);
+    });
     return firstNoteX;
+  }
+  /**
+   * Détecte tous les groupes de tuplets dans le beat.
+   * Retourne un tableau de groupes avec startIndex, endIndex, count et ratio.
+   */
+  detectTupletGroups(beat) {
+    const groups = [];
+    const seenGroups = /* @__PURE__ */ new Set();
+    beat.notes.forEach((note, i) => {
+      if (note.tuplet && !seenGroups.has(note.tuplet.groupId)) {
+        seenGroups.add(note.tuplet.groupId);
+        const groupNotes = beat.notes.filter(
+          (n, idx) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId
+        );
+        const startIndex = beat.notes.findIndex(
+          (n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId
+        );
+        const endIndex = startIndex + groupNotes.length - 1;
+        groups.push({
+          startIndex,
+          endIndex,
+          count: note.tuplet.count,
+          groupId: note.tuplet.groupId,
+          ratio: note.tuplet.ratio
+        });
+      }
+    });
+    return groups;
+  }
+  /**
+   * Dessine le bracket de tuplet avec son chiffre au-dessus du groupe de notes.
+   * Si un ratio explicite est fourni (N:M), il sera affiché au lieu du simple count.
+   */
+  drawTupletBracket(svg, tupletGroup, beat, notePositions, measureIndex, chordIndex, beatIndex) {
+    const groupNotePositions = [];
+    for (let i = tupletGroup.startIndex; i <= tupletGroup.endIndex; i++) {
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === measureIndex && np.chordIndex === chordIndex && np.beatIndex === beatIndex && np.noteIndex === i
+      );
+      if (notePos) {
+        groupNotePositions.push(notePos);
+      }
+    }
+    if (groupNotePositions.length === 0) return;
+    const firstNote = groupNotePositions[0];
+    const lastNote = groupNotePositions[groupNotePositions.length - 1];
+    const startX = firstNote.stemTopY !== void 0 ? firstNote.x + NOTATION.SLASH_LENGTH / 2 : firstNote.x;
+    const endX = lastNote.stemTopY !== void 0 ? lastNote.x + NOTATION.SLASH_LENGTH / 2 : lastNote.x;
+    const highestStemTop = Math.min(...groupNotePositions.filter((np) => np.stemTopY !== void 0).map((np) => np.stemTopY));
+    const bracketY = highestStemTop - 9;
+    const bracket = document.createElementNS(SVG_NS, "line");
+    bracket.setAttribute("x1", String(startX));
+    bracket.setAttribute("y1", String(bracketY));
+    bracket.setAttribute("x2", String(endX));
+    bracket.setAttribute("y2", String(bracketY));
+    bracket.setAttribute("stroke", "#000");
+    bracket.setAttribute("stroke-width", "1");
+    svg.appendChild(bracket);
+    const leftBar = document.createElementNS(SVG_NS, "line");
+    leftBar.setAttribute("x1", String(startX));
+    leftBar.setAttribute("y1", String(bracketY));
+    leftBar.setAttribute("x2", String(startX));
+    leftBar.setAttribute("y2", String(bracketY + 5));
+    leftBar.setAttribute("stroke", "#000");
+    leftBar.setAttribute("stroke-width", "1");
+    svg.appendChild(leftBar);
+    const rightBar = document.createElementNS(SVG_NS, "line");
+    rightBar.setAttribute("x1", String(endX));
+    rightBar.setAttribute("y1", String(bracketY));
+    rightBar.setAttribute("x2", String(endX));
+    rightBar.setAttribute("y2", String(bracketY + 5));
+    rightBar.setAttribute("stroke", "#000");
+    rightBar.setAttribute("stroke-width", "1");
+    svg.appendChild(rightBar);
+    const centerX = (startX + endX) / 2;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", String(centerX));
+    text.setAttribute("y", String(bracketY - 3));
+    text.setAttribute("font-size", "12");
+    text.setAttribute("font-weight", "bold");
+    text.setAttribute("text-anchor", "middle");
+    if (tupletGroup.ratio) {
+      text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+    } else {
+      text.textContent = String(tupletGroup.count);
+    }
+    svg.appendChild(text);
   }
 };
 
