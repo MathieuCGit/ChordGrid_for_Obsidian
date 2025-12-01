@@ -1511,79 +1511,16 @@ export class SVGRenderer {
     const TARGET_H = 12; // adjustable
     const MARGIN = 3;    // distance from note head
 
-    // 5) NEW: Calculate global vertical offset to avoid ties
-    // Scan all ties to find the most extreme point (top or bottom depending on stems)
+    // 5) Collision avoidance DISABLED for v2.2.x
+    // Pick-strokes always stay at their natural position near notes
+    // Even if they overlap with ties - better to see all information
+    // TODO v2.3: Implement MuseScore-inspired collision system
     let globalVerticalOffset = 0;
-    const CLEARANCE = 1; // Minimal margin between pick-strokes and ties (reduced from 4px for v2.2)
-    
-    const tieElements = placeAndSizeManager.getElements().filter(e => e.type === 'tie');
-    if (tieElements.length > 0) {
-      // Determine if we place picks above (stems-down) or below (stems-up)
-      // We take the majority stem direction in this line
-      const placeAbove = stemsDirection === 'down';
-      
-      if (placeAbove) {
-        // Stems down → picks above → look for the HIGHEST point of ties
-        // Use metadata to get the true extreme point of the curve
-        const highestTieY = Math.min(...tieElements.map(e => {
-          // If tie is 'up' (curve below), use bbox.y (top)
-          // If tie is 'down' (curve above), use midCurveY
-          const metadata = e.metadata as any;
-          if (metadata && metadata.orientation === 'down') {
-            // Curve above: highest point is midCurveY or controlY
-            return Math.min(metadata.midCurveY, metadata.exactY, e.bbox.y);
-          }
-          // Curve below: highest point is the top of bbox
-          return e.bbox.y;
-        }));
-        
-        // Calculate typical pick-stroke position without offset
-        // (we use an average reference position)
-        const avgNoteY = notePositions.length > 0 
-          ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length 
-          : 100;
-        const NOTE_HEAD_HALF_HEIGHT = 5;
-        const refNoteHeadTop = avgNoteY - NOTE_HEAD_HALF_HEIGHT;
-        const refPickY = refNoteHeadTop - MARGIN - TARGET_H;
-        
-        // If tie extends upward, shift picks upward
-        if (highestTieY < refPickY + TARGET_H + CLEARANCE) {
-          globalVerticalOffset = highestTieY - (refPickY + TARGET_H + CLEARANCE);
-        }
-      } else {
-        // Stems up → picks below → look for the LOWEST point of ties
-        // Use metadata to get the true extreme point of the curve
-        const lowestTieY = Math.max(...tieElements.map(e => {
-          // If tie is 'up' (curve below), use midCurveY
-          // If tie is 'down' (curve above), use bbox bottom
-          const metadata = e.metadata as any;
-          if (metadata && metadata.orientation === 'up') {
-            // Curve below: lowest point is midCurveY or controlY
-            return Math.max(metadata.midCurveY, metadata.exactY, e.bbox.y + e.bbox.height);
-          }
-          // Curve above: lowest point is the bottom of bbox
-          return e.bbox.y + e.bbox.height;
-        }));
-        
-        // Calculate typical pick-stroke position without offset
-        const avgNoteY = notePositions.length > 0 
-          ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length 
-          : 100;
-        const NOTE_HEAD_HALF_HEIGHT = 5;
-        const refNoteHeadBottom = avgNoteY + NOTE_HEAD_HALF_HEIGHT;
-        const refPickY = refNoteHeadBottom + MARGIN;
-        
-        // If tie extends downward, shift picks downward
-        if (lowestTieY > refPickY - CLEARANCE) {
-          globalVerticalOffset = lowestTieY + CLEARANCE - refPickY;
-        }
-      }
-    }
 
-    // 6) Pick-strokes remain at fixed position near notes (with global offset)
+    // 6) Pick-strokes remain at fixed position near notes (no offset)
     //    It's up to other elements (chords, tuplets) to avoid them via the layer system
 
-    // Drawing function for pick-strokes at fixed position (with global offset)
+    // Drawing function for pick-strokes at fixed position (no offset)
     const drawSymbol = (
       isDown: boolean,
       anchorX: number,

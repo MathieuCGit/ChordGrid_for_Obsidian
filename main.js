@@ -5344,42 +5344,6 @@ var SVGRenderer = class {
     const TARGET_H = 12;
     const MARGIN = 3;
     let globalVerticalOffset = 0;
-    const CLEARANCE = 1;
-    const tieElements = placeAndSizeManager.getElements().filter((e) => e.type === "tie");
-    if (tieElements.length > 0) {
-      const placeAbove = stemsDirection === "down";
-      if (placeAbove) {
-        const highestTieY = Math.min(...tieElements.map((e) => {
-          const metadata = e.metadata;
-          if (metadata && metadata.orientation === "down") {
-            return Math.min(metadata.midCurveY, metadata.exactY, e.bbox.y);
-          }
-          return e.bbox.y;
-        }));
-        const avgNoteY = notePositions.length > 0 ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length : 100;
-        const NOTE_HEAD_HALF_HEIGHT = 5;
-        const refNoteHeadTop = avgNoteY - NOTE_HEAD_HALF_HEIGHT;
-        const refPickY = refNoteHeadTop - MARGIN - TARGET_H;
-        if (highestTieY < refPickY + TARGET_H + CLEARANCE) {
-          globalVerticalOffset = highestTieY - (refPickY + TARGET_H + CLEARANCE);
-        }
-      } else {
-        const lowestTieY = Math.max(...tieElements.map((e) => {
-          const metadata = e.metadata;
-          if (metadata && metadata.orientation === "up") {
-            return Math.max(metadata.midCurveY, metadata.exactY, e.bbox.y + e.bbox.height);
-          }
-          return e.bbox.y + e.bbox.height;
-        }));
-        const avgNoteY = notePositions.length > 0 ? notePositions.reduce((sum, np) => sum + np.y, 0) / notePositions.length : 100;
-        const NOTE_HEAD_HALF_HEIGHT = 5;
-        const refNoteHeadBottom = avgNoteY + NOTE_HEAD_HALF_HEIGHT;
-        const refPickY = refNoteHeadBottom + MARGIN;
-        if (lowestTieY > refPickY - CLEARANCE) {
-          globalVerticalOffset = lowestTieY + CLEARANCE - refPickY;
-        }
-      }
-    }
     const drawSymbol = (isDown2, anchorX, noteHeadEdgeY, placeAbove) => {
       const d = isDown2 ? DOWNBOW_PATH : UPBOW_PATH;
       const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
