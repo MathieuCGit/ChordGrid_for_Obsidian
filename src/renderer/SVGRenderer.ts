@@ -1514,7 +1514,7 @@ export class SVGRenderer {
     // 5) NEW: Calculate global vertical offset to avoid ties
     // Scan all ties to find the most extreme point (top or bottom depending on stems)
     let globalVerticalOffset = 0;
-    const CLEARANCE = 4; // Safety margin between pick-strokes and ties
+    const CLEARANCE = 1; // Minimal margin between pick-strokes and ties (reduced from 4px for v2.2)
     
     const tieElements = placeAndSizeManager.getElements().filter(e => e.type === 'tie');
     if (tieElements.length > 0) {

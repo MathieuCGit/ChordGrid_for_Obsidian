@@ -5344,7 +5344,7 @@ var SVGRenderer = class {
     const TARGET_H = 12;
     const MARGIN = 3;
     let globalVerticalOffset = 0;
-    const CLEARANCE = 4;
+    const CLEARANCE = 1;
     const tieElements = placeAndSizeManager.getElements().filter((e) => e.type === "tie");
     if (tieElements.length > 0) {
       const placeAbove = stemsDirection === "down";
