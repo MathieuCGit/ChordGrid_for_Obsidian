@@ -123,78 +123,106 @@ export class ChordGridParser {
   parse(input: string): ParseResult {
     const lines = input.trim().split('\n');
     
-    // Detect directives on the first line (in any order)
+    // Detect directives on initial lines (can span multiple lines or be on same line)
     let stemsDirection: 'up' | 'down' = 'up';
     let displayRepeatSymbol = false;
     let pickMode: boolean | undefined = undefined;
     let fingerMode: 'en' | 'fr' | undefined = undefined;
-    let timeSignatureLine = lines[0];
-    
-    // Helper function to normalize directive aliases
-    const normalizeDirective = (directive: string): string => {
-      const normalized = directive.toLowerCase().trim();
-      // Stem aliases
-      if (normalized === 'stems-up' || normalized === 'stem-up') return 'stem-up';
-      if (normalized === 'stems-down' || normalized === 'stem-down') return 'stem-down';
-      // Pick aliases
-      if (normalized === 'picks' || normalized === 'pick-auto' || normalized === 'picks-auto') return 'pick';
-      // Finger aliases
-      if (normalized === 'fingers') return 'finger';
-      return normalized;
-    };
-    
-    // Check for stems keywords (anywhere in the line) - support aliases
-    if (/(stems-down|stem-down)/i.test(timeSignatureLine)) {
-      stemsDirection = 'down';
-      timeSignatureLine = timeSignatureLine.replace(/(stems-down|stem-down)\s*/i, '');
-    } else if (/(stems-up|stem-up)/i.test(timeSignatureLine)) {
-      stemsDirection = 'up';
-      timeSignatureLine = timeSignatureLine.replace(/(stems-up|stem-up)\s*/i, '');
-    }
-    
-    // Check for show% keyword (anywhere in the line)
-    if (/show%/i.test(timeSignatureLine)) {
-      displayRepeatSymbol = true;
-      timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, '');
-    }
-
-    // Check for pick directive: pick | picks | pick-auto | picks-auto (anywhere in the line)
-    if (/(picks-auto|pick-auto|picks|pick)(?!\w)/i.test(timeSignatureLine)) {
-      pickMode = true;
-      timeSignatureLine = timeSignatureLine.replace(/(picks-auto|pick-auto|picks|pick)(?!\w)\s*/i, '');
-    }
-    
-    // Check for finger directive: finger | fingers | finger:fr | fingers:fr (anywhere in the line)
-    const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(timeSignatureLine);
-    if (fingerMatch) {
-      const lang = fingerMatch[3]?.toLowerCase();
-      fingerMode = (lang === 'fr') ? 'fr' : 'en';
-      timeSignatureLine = timeSignatureLine.replace(/(fingers?)(:\s*(en|fr))?\s*/i, '');
-    }
-
-    // Check for measures-per-line directive: measures-per-line:4 (or any number)
     let measuresPerLine: number | undefined = undefined;
-    const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(timeSignatureLine);
-    if (measuresPerLineMatch) {
-      const count = parseInt(measuresPerLineMatch[1], 10);
-      if (count > 0) {
-        measuresPerLine = count;
+    
+    // Scan initial lines for directives (stop when we find time signature or barline)
+    let lineIndex = 0;
+    
+    while (lineIndex < lines.length) {
+      let line = lines[lineIndex].trim();
+      
+      // Skip empty lines
+      if (line === '') {
+        lineIndex++;
+        continue;
       }
-      timeSignatureLine = timeSignatureLine.replace(/measures-per-line:\s*\d+\s*/i, '');
+      
+      // Process all directives on this line (may be multiple space-separated)
+      let hasAnyDirective = false;
+      
+      // Check for stems keywords
+      if (/(stems?-down|stem-down)/i.test(line)) {
+        stemsDirection = 'down';
+        line = line.replace(/(stems?-down|stem-down)\s*/i, '');
+        hasAnyDirective = true;
+      } else if (/(stems?-up|stem-up)/i.test(line)) {
+        stemsDirection = 'up';
+        line = line.replace(/(stems?-up|stem-up)\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for show% keyword
+      if (/show%/i.test(line)) {
+        displayRepeatSymbol = true;
+        line = line.replace(/show%\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for pick directive
+      if (/(picks?-auto|picks?|pick)(?!\w)/i.test(line)) {
+        pickMode = true;
+        line = line.replace(/(picks?-auto|picks?|pick)(?!\w)\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for finger directive
+      const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(line);
+      if (fingerMatch) {
+        const lang = fingerMatch[3]?.toLowerCase();
+        fingerMode = (lang === 'fr') ? 'fr' : 'en';
+        line = line.replace(/(fingers?)(:\s*(en|fr))?\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for measures-per-line directive
+      const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(line);
+      if (measuresPerLineMatch) {
+        const count = parseInt(measuresPerLineMatch[1], 10);
+        if (count > 0) {
+          measuresPerLine = count;
+        }
+        line = line.replace(/measures-per-line:\s*\d+\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // After removing all directives, check what remains
+      line = line.trim();
+      
+      // If line still has content, check if it's a time signature or musical content
+      if (line !== '') {
+        // If it starts with time signature (N/M), keep it and stop
+        if (/^\d+\/\d+/.test(line)) {
+          lines[lineIndex] = line; // Update with remaining content
+          break;
+        }
+        // If it contains barline, it's musical content - stop
+        if (/\|/.test(line)) {
+          lines[lineIndex] = line; // Update with remaining content
+          break;
+        }
+        // Otherwise, if we found directives, this might be leftover - consume line
+        if (hasAnyDirective) {
+          lineIndex++;
+          continue;
+        }
+        // If no directive found and not empty, stop (unknown content)
+        break;
+      }
+      
+      // Line was fully consumed by directives or was empty
+      lineIndex++;
     }
     
-    // Remove leading whitespace after removing directives
-    timeSignatureLine = timeSignatureLine.trim();
+    // Remove all consumed directive lines
+    lines.splice(0, lineIndex);
     
-    // If after removing directives the line is empty, use the next line for the time signature
-    if (timeSignatureLine === '' && lines.length > 1) {
-      timeSignatureLine = lines[1];
-      // Rebuild lines by removing the first empty line and using the second
-      lines.splice(0, 2, timeSignatureLine);
-    } else {
-      // Update the first line
-      lines[0] = timeSignatureLine;
-    }
+    // Now lines[0] should be the time signature line
+    let timeSignatureLine = lines[0] || '';
 
     // Parse the time signature
     const timeSignature = this.parseTimeSignature(timeSignatureLine);

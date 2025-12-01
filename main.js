@@ -181,60 +181,78 @@ var _ChordGridParser = class _ChordGridParser {
     let displayRepeatSymbol = false;
     let pickMode = void 0;
     let fingerMode = void 0;
-    let timeSignatureLine = lines[0];
-    const normalizeDirective = (directive) => {
-      const normalized = directive.toLowerCase().trim();
-      if (normalized === "stems-up" || normalized === "stem-up") return "stem-up";
-      if (normalized === "stems-down" || normalized === "stem-down") return "stem-down";
-      if (normalized === "picks" || normalized === "pick-auto" || normalized === "picks-auto") return "pick";
-      if (normalized === "fingers") return "finger";
-      return normalized;
-    };
-    if (/(stems-down|stem-down)/i.test(timeSignatureLine)) {
-      stemsDirection = "down";
-      timeSignatureLine = timeSignatureLine.replace(/(stems-down|stem-down)\s*/i, "");
-    } else if (/(stems-up|stem-up)/i.test(timeSignatureLine)) {
-      stemsDirection = "up";
-      timeSignatureLine = timeSignatureLine.replace(/(stems-up|stem-up)\s*/i, "");
-    }
-    if (/show%/i.test(timeSignatureLine)) {
-      displayRepeatSymbol = true;
-      timeSignatureLine = timeSignatureLine.replace(/show%\s*/i, "");
-    }
-    if (/(picks-auto|pick-auto|picks|pick)(?!\w)/i.test(timeSignatureLine)) {
-      pickMode = true;
-      timeSignatureLine = timeSignatureLine.replace(/(picks-auto|pick-auto|picks|pick)(?!\w)\s*/i, "");
-    }
-    const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(timeSignatureLine);
-    if (fingerMatch) {
-      const lang = (_a = fingerMatch[3]) == null ? void 0 : _a.toLowerCase();
-      fingerMode = lang === "fr" ? "fr" : "en";
-      timeSignatureLine = timeSignatureLine.replace(/(fingers?)(:\s*(en|fr))?\s*/i, "");
-    }
     let measuresPerLine = void 0;
-    const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(timeSignatureLine);
-    if (measuresPerLineMatch) {
-      const count = parseInt(measuresPerLineMatch[1], 10);
-      if (count > 0) {
-        measuresPerLine = count;
+    let lineIndex = 0;
+    while (lineIndex < lines.length) {
+      let line = lines[lineIndex].trim();
+      if (line === "") {
+        lineIndex++;
+        continue;
       }
-      timeSignatureLine = timeSignatureLine.replace(/measures-per-line:\s*\d+\s*/i, "");
+      let hasAnyDirective = false;
+      if (/(stems?-down|stem-down)/i.test(line)) {
+        stemsDirection = "down";
+        line = line.replace(/(stems?-down|stem-down)\s*/i, "");
+        hasAnyDirective = true;
+      } else if (/(stems?-up|stem-up)/i.test(line)) {
+        stemsDirection = "up";
+        line = line.replace(/(stems?-up|stem-up)\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/show%/i.test(line)) {
+        displayRepeatSymbol = true;
+        line = line.replace(/show%\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/(picks?-auto|picks?|pick)(?!\w)/i.test(line)) {
+        pickMode = true;
+        line = line.replace(/(picks?-auto|picks?|pick)(?!\w)\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(line);
+      if (fingerMatch) {
+        const lang = (_a = fingerMatch[3]) == null ? void 0 : _a.toLowerCase();
+        fingerMode = lang === "fr" ? "fr" : "en";
+        line = line.replace(/(fingers?)(:\s*(en|fr))?\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(line);
+      if (measuresPerLineMatch) {
+        const count = parseInt(measuresPerLineMatch[1], 10);
+        if (count > 0) {
+          measuresPerLine = count;
+        }
+        line = line.replace(/measures-per-line:\s*\d+\s*/i, "");
+        hasAnyDirective = true;
+      }
+      line = line.trim();
+      if (line !== "") {
+        if (/^\d+\/\d+/.test(line)) {
+          lines[lineIndex] = line;
+          break;
+        }
+        if (/\|/.test(line)) {
+          lines[lineIndex] = line;
+          break;
+        }
+        if (hasAnyDirective) {
+          lineIndex++;
+          continue;
+        }
+        break;
+      }
+      lineIndex++;
     }
-    timeSignatureLine = timeSignatureLine.trim();
-    if (timeSignatureLine === "" && lines.length > 1) {
-      timeSignatureLine = lines[1];
-      lines.splice(0, 2, timeSignatureLine);
-    } else {
-      lines[0] = timeSignatureLine;
-    }
+    lines.splice(0, lineIndex);
+    let timeSignatureLine = lines[0] || "";
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
     timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*/, "");
     lines[0] = timeSignatureLine;
     const allMeasures = [];
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const line = lines[lineIndex];
-      const measures = this.parseLine(line, lineIndex === 0, measuresPerLine);
-      if (measures.length > 0 && lineIndex < lines.length - 1) {
+    for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
+      const line = lines[lineIndex2];
+      const measures = this.parseLine(line, lineIndex2 === 0, measuresPerLine);
+      if (measures.length > 0 && lineIndex2 < lines.length - 1) {
         measures[measures.length - 1].isLineBreak = true;
       }
       allMeasures.push(...measures);
