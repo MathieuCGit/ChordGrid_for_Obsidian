@@ -157,6 +157,12 @@ export const TYPOGRAPHY = {
     
     /** Parentheses font size ratio (relative to main) */
     PARENTHESES_SIZE_RATIO: 0.65,
+    
+    /** Default font family for text elements */
+    DEFAULT_FONT_FAMILY: 'Arial, sans-serif',
+    
+    /** Default font weight for bold text */
+    DEFAULT_FONT_WEIGHT_BOLD: 'bold',
 } as const;
 
 // =============================================================================
@@ -186,10 +192,10 @@ export const VISUAL = {
     STROKE_WIDTH_EXTRA_THICK: 3,
     
     /** Beam stroke width (px) */
-    BEAM_STROKE_WIDTH: 2,
+    BEAM_STROKE_WIDTH: 3,
     
     /** Stem stroke width (px) @plannedFor v3.0 */
-    STEM_STROKE_WIDTH: 2,
+    STEM_STROKE_WIDTH: 1.5,
     
     /** Dot radius for dotted notes (px) */
     DOT_RADIUS: 2,
@@ -288,7 +294,7 @@ export const NOTATION = {
     UPBOW_WIDTH: 24.2,
     
     /** Upbow target display height (px) */
-    UPBOW_HEIGHT: 12,
+    UPBOW_HEIGHT: 16,
     
     /** Tie curve amplitude base (px) */
     TIE_BASE_AMPLITUDE: 40,
@@ -301,6 +307,18 @@ export const NOTATION = {
     
     /** Percent symbol target height (px) */
     PERCENT_SYMBOL_HEIGHT: 30,
+    
+    /** Fingerstyle pattern letter font size (p, m) (px) */
+    PATTERN_LETTER_FONT_SIZE: 14,
+    
+    /** Fingerstyle pattern arrow font size (↑, ↓) (px) */
+    PATTERN_ARROW_FONT_SIZE: 20,
+    
+    /** Distance from note head to pattern symbol (px) */
+    PATTERN_MARGIN: 7,
+    
+    /** Note head half height for pattern positioning (px) */
+    PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
 } as const;
 
 // =============================================================================

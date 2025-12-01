@@ -35,6 +35,7 @@ import {
   SEGMENT_WIDTH,
   SVG_VIEWPORT,
   TYPOGRAPHY,
+  NOTATION,
   FINGER_PATTERNS
 } from './constants';
 import { TieManager } from '../utils/TieManager';
@@ -1689,10 +1690,11 @@ export class SVGRenderer {
       language: fingerMode // 'en' or 'fr'
     });
 
-    // Drawing constants
-    const FONT_SIZE = 14;
-    const MARGIN = 4; // Distance from note head
-    const NOTE_HEAD_HALF_HEIGHT = 5;
+    // Drawing constants from NOTATION
+    const LETTER_FONT_SIZE = NOTATION.PATTERN_LETTER_FONT_SIZE;
+    const ARROW_FONT_SIZE = NOTATION.PATTERN_ARROW_FONT_SIZE;
+    const MARGIN = NOTATION.PATTERN_MARGIN;
+    const NOTE_HEAD_HALF_HEIGHT = NOTATION.PATTERN_NOTE_HEAD_HALF_HEIGHT;
 
     // Draw each note with its assigned symbol
     notesWithDirections.forEach(noteInfo => {
@@ -1718,43 +1720,71 @@ export class SVGRenderer {
       const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
       const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
 
-      // Convert symbol to display format: letter + arrow
+      // Convert symbol to display format: separate letter and arrow
       // Symbols ending with 'u' (tu, pu, hu, mu) → letter + ↑
       // Symbols ending with 'd' (td, pd, hd, md) → letter + ↓
       const symbol = noteInfo.assignedSymbol;
-      let displaySymbol: string;
+      let letter: string;
+      let arrow: string;
       
       if (symbol.endsWith('u')) {
         // Remove 'u' and add up arrow
-        const baseLetter = symbol.slice(0, -1);
-        displaySymbol = baseLetter + '↑';
+        letter = symbol.slice(0, -1);
+        arrow = '↑';
       } else if (symbol.endsWith('d')) {
         // Remove 'd' and add down arrow
-        const baseLetter = symbol.slice(0, -1);
-        displaySymbol = baseLetter + '↓';
+        letter = symbol.slice(0, -1);
+        arrow = '↓';
       } else {
         // Fallback: just use the symbol as-is (shouldn't happen with normalized symbols)
-        displaySymbol = symbol;
+        letter = symbol;
+        arrow = '';
       }
 
-      // Calculate Y position
+      // Calculate Y position (use larger arrow size for spacing)
       const textY = placeAbove 
         ? (noteHeadEdgeY - MARGIN)
-        : (noteHeadEdgeY + MARGIN + FONT_SIZE);
+        : (noteHeadEdgeY + MARGIN + ARROW_FONT_SIZE);
 
-      // Create text element
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x', notePos.x.toFixed(2));
-      text.setAttribute('y', textY.toFixed(2));
-      text.setAttribute('font-family', 'Arial, sans-serif');
-      text.setAttribute('font-size', FONT_SIZE.toString());
-      text.setAttribute('font-weight', 'bold');
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('fill', '#000');
-      text.setAttribute('data-finger-symbol', 'true');
-      text.textContent = displaySymbol;
+      // Calculate horizontal spacing
+      // Letter width approximation: ~0.6 * font size for 'p' or 'm'
+      const letterWidth = LETTER_FONT_SIZE * 0.6;
+      const spacing = 1; // Small gap between letter and arrow
       
-      svg.appendChild(text);
+      // Position letter slightly to the left
+      const letterX = notePos.x - (letterWidth / 2) - (spacing / 2);
+      // Position arrow slightly to the right
+      const arrowX = notePos.x + (letterWidth / 2) + (spacing / 2);
+
+      // Create text element for letter (p, m)
+      const letterText = document.createElementNS(SVG_NS, 'text');
+      letterText.setAttribute('x', letterX.toFixed(2));
+      letterText.setAttribute('y', textY.toFixed(2));
+      letterText.setAttribute('font-family', TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+      letterText.setAttribute('font-size', LETTER_FONT_SIZE.toString());
+      letterText.setAttribute('font-weight', TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+      letterText.setAttribute('text-anchor', 'middle');
+      letterText.setAttribute('fill', '#000');
+      letterText.setAttribute('data-finger-symbol', 'letter');
+      letterText.textContent = letter;
+      
+      svg.appendChild(letterText);
+
+      // Create text element for arrow (↑, ↓) if present
+      if (arrow) {
+        const arrowText = document.createElementNS(SVG_NS, 'text');
+        arrowText.setAttribute('x', arrowX.toFixed(2));
+        arrowText.setAttribute('y', textY.toFixed(2));
+        arrowText.setAttribute('font-family', TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+        arrowText.setAttribute('font-size', ARROW_FONT_SIZE.toString());
+        arrowText.setAttribute('font-weight', TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+        arrowText.setAttribute('text-anchor', 'middle');
+        arrowText.setAttribute('fill', '#000');
+        arrowText.setAttribute('data-finger-symbol', 'arrow');
+        arrowText.textContent = arrow;
+        
+        svg.appendChild(arrowText);
+      }
     });
   }
 

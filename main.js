@@ -1315,7 +1315,11 @@ var TYPOGRAPHY = {
   /** Bass note font size ratio (relative to main) */
   BASS_NOTE_SIZE_RATIO: 0.83,
   /** Parentheses font size ratio (relative to main) */
-  PARENTHESES_SIZE_RATIO: 0.65
+  PARENTHESES_SIZE_RATIO: 0.65,
+  /** Default font family for text elements */
+  DEFAULT_FONT_FAMILY: "Arial, sans-serif",
+  /** Default font weight for bold text */
+  DEFAULT_FONT_WEIGHT_BOLD: "bold"
 };
 var VISUAL = {
   /** Default stroke color */
@@ -1331,9 +1335,9 @@ var VISUAL = {
   /** Extra thick stroke width (note slashes) (px) */
   STROKE_WIDTH_EXTRA_THICK: 3,
   /** Beam stroke width (px) */
-  BEAM_STROKE_WIDTH: 2,
+  BEAM_STROKE_WIDTH: 3,
   /** Stem stroke width (px) @plannedFor v3.0 */
-  STEM_STROKE_WIDTH: 2,
+  STEM_STROKE_WIDTH: 1.5,
   /** Dot radius for dotted notes (px) */
   DOT_RADIUS: 2,
   /** Barline width for special barlines (px) */
@@ -1395,7 +1399,7 @@ var NOTATION = {
   /** Upbow symbol width (px) */
   UPBOW_WIDTH: 24.2,
   /** Upbow target display height (px) */
-  UPBOW_HEIGHT: 12,
+  UPBOW_HEIGHT: 16,
   /** Tie curve amplitude base (px) */
   TIE_BASE_AMPLITUDE: 40,
   /** Tie curve minimum amplitude (px) */
@@ -1403,7 +1407,15 @@ var NOTATION = {
   /** Tie curve extra amplitude for cross-line ties (px) */
   TIE_CROSS_LINE_EXTRA_AMP: 10,
   /** Percent symbol target height (px) */
-  PERCENT_SYMBOL_HEIGHT: 30
+  PERCENT_SYMBOL_HEIGHT: 30,
+  /** Fingerstyle pattern letter font size (p, m) (px) */
+  PATTERN_LETTER_FONT_SIZE: 14,
+  /** Fingerstyle pattern arrow font size (↑, ↓) (px) */
+  PATTERN_ARROW_FONT_SIZE: 20,
+  /** Distance from note head to pattern symbol (px) */
+  PATTERN_MARGIN: 7,
+  /** Note head half height for pattern positioning (px) */
+  PATTERN_NOTE_HEAD_HALF_HEIGHT: 5
 };
 var POSITIONING = {
   /** Default vertical offset for chords above staff (px) */
@@ -3441,7 +3453,7 @@ function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection) {
       }
       const startX = stemsDirection === "up" ? p.x + NOTATION.SLASH_LENGTH / 2 : p.x - NOTATION.SLASH_LENGTH / 2;
       const endX = group.direction === "right" ? startX + NOTATION.BEAMLET_LENGTH : startX - NOTATION.BEAMLET_LENGTH;
-      const strokeWidth = level === 1 ? 3 : VISUAL.BEAM_STROKE_WIDTH;
+      const strokeWidth = VISUAL.BEAM_STROKE_WIDTH;
       const beamlet = document.createElementNS(SVG_NS, "line");
       beamlet.setAttribute("x1", String(startX));
       beamlet.setAttribute("y1", String(beamY));
@@ -3455,7 +3467,7 @@ function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection) {
       const last = valid[valid.length - 1].pos;
       const startX = stemsDirection === "up" ? first.x + NOTATION.SLASH_LENGTH / 2 : first.x - NOTATION.SLASH_LENGTH / 2;
       const endX = stemsDirection === "up" ? last.x + NOTATION.SLASH_LENGTH / 2 : last.x - NOTATION.SLASH_LENGTH / 2;
-      const strokeWidth = level === 1 ? 3 : VISUAL.BEAM_STROKE_WIDTH;
+      const strokeWidth = VISUAL.BEAM_STROKE_WIDTH;
       const beam = document.createElementNS(SVG_NS, "line");
       beam.setAttribute("x1", String(startX));
       beam.setAttribute("y1", String(beamY));
@@ -5802,9 +5814,10 @@ var SVGRenderer = class {
       language: fingerMode
       // 'en' or 'fr'
     });
-    const FONT_SIZE = 14;
-    const MARGIN = 4;
-    const NOTE_HEAD_HALF_HEIGHT = 5;
+    const LETTER_FONT_SIZE = NOTATION.PATTERN_LETTER_FONT_SIZE;
+    const ARROW_FONT_SIZE = NOTATION.PATTERN_ARROW_FONT_SIZE;
+    const MARGIN = NOTATION.PATTERN_MARGIN;
+    const NOTE_HEAD_HALF_HEIGHT = NOTATION.PATTERN_NOTE_HEAD_HALF_HEIGHT;
     notesWithDirections.forEach((noteInfo) => {
       if (allowedMeasureIndices && !allowedMeasureIndices.has(noteInfo.measureIndex)) return;
       const notePos = notePositions.find(
@@ -5818,28 +5831,47 @@ var SVGRenderer = class {
       const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
       const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
       const symbol = noteInfo.assignedSymbol;
-      let displaySymbol;
+      let letter;
+      let arrow;
       if (symbol.endsWith("u")) {
-        const baseLetter = symbol.slice(0, -1);
-        displaySymbol = baseLetter + "\u2191";
+        letter = symbol.slice(0, -1);
+        arrow = "\u2191";
       } else if (symbol.endsWith("d")) {
-        const baseLetter = symbol.slice(0, -1);
-        displaySymbol = baseLetter + "\u2193";
+        letter = symbol.slice(0, -1);
+        arrow = "\u2193";
       } else {
-        displaySymbol = symbol;
+        letter = symbol;
+        arrow = "";
       }
-      const textY = placeAbove ? noteHeadEdgeY - MARGIN : noteHeadEdgeY + MARGIN + FONT_SIZE;
-      const text = document.createElementNS(SVG_NS, "text");
-      text.setAttribute("x", notePos.x.toFixed(2));
-      text.setAttribute("y", textY.toFixed(2));
-      text.setAttribute("font-family", "Arial, sans-serif");
-      text.setAttribute("font-size", FONT_SIZE.toString());
-      text.setAttribute("font-weight", "bold");
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("fill", "#000");
-      text.setAttribute("data-finger-symbol", "true");
-      text.textContent = displaySymbol;
-      svg.appendChild(text);
+      const textY = placeAbove ? noteHeadEdgeY - MARGIN : noteHeadEdgeY + MARGIN + ARROW_FONT_SIZE;
+      const letterWidth = LETTER_FONT_SIZE * 0.6;
+      const spacing = 1;
+      const letterX = notePos.x - letterWidth / 2 - spacing / 2;
+      const arrowX = notePos.x + letterWidth / 2 + spacing / 2;
+      const letterText = document.createElementNS(SVG_NS, "text");
+      letterText.setAttribute("x", letterX.toFixed(2));
+      letterText.setAttribute("y", textY.toFixed(2));
+      letterText.setAttribute("font-family", TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+      letterText.setAttribute("font-size", LETTER_FONT_SIZE.toString());
+      letterText.setAttribute("font-weight", TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+      letterText.setAttribute("text-anchor", "middle");
+      letterText.setAttribute("fill", "#000");
+      letterText.setAttribute("data-finger-symbol", "letter");
+      letterText.textContent = letter;
+      svg.appendChild(letterText);
+      if (arrow) {
+        const arrowText = document.createElementNS(SVG_NS, "text");
+        arrowText.setAttribute("x", arrowX.toFixed(2));
+        arrowText.setAttribute("y", textY.toFixed(2));
+        arrowText.setAttribute("font-family", TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+        arrowText.setAttribute("font-size", ARROW_FONT_SIZE.toString());
+        arrowText.setAttribute("font-weight", TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+        arrowText.setAttribute("text-anchor", "middle");
+        arrowText.setAttribute("fill", "#000");
+        arrowText.setAttribute("data-finger-symbol", "arrow");
+        arrowText.textContent = arrow;
+        svg.appendChild(arrowText);
+      }
     });
   }
   /**

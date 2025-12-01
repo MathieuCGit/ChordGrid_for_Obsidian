@@ -94,8 +94,8 @@ export function drawBeams(
       const startX = stemsDirection === 'up' ? (p.x + NOTATION.SLASH_LENGTH / 2) : (p.x - NOTATION.SLASH_LENGTH / 2);
       const endX = group.direction === 'right' ? (startX + NOTATION.BEAMLET_LENGTH) : (startX - NOTATION.BEAMLET_LENGTH);
 
-      // Level 1 (eighth notes) beams are thicker (3px instead of 2px)
-      const strokeWidth = (level === 1) ? 3 : VISUAL.BEAM_STROKE_WIDTH;
+      // Uniform beam stroke width for all levels (like MuseScore/LilyPond)
+      const strokeWidth = VISUAL.BEAM_STROKE_WIDTH;
 
       const beamlet = document.createElementNS(SVG_NS, 'line');
       beamlet.setAttribute('x1', String(startX));
@@ -112,8 +112,8 @@ export function drawBeams(
       const startX = stemsDirection === 'up' ? (first.x + NOTATION.SLASH_LENGTH / 2) : (first.x - NOTATION.SLASH_LENGTH / 2);
       const endX = stemsDirection === 'up' ? (last.x + NOTATION.SLASH_LENGTH / 2) : (last.x - NOTATION.SLASH_LENGTH / 2);
 
-      // Level 1 (eighth notes) beams are thicker (3px instead of 2px)
-      const strokeWidth = (level === 1) ? 3 : VISUAL.BEAM_STROKE_WIDTH;
+      // Uniform beam stroke width for all levels (like MuseScore/LilyPond)
+      const strokeWidth = VISUAL.BEAM_STROKE_WIDTH;
 
       const beam = document.createElementNS(SVG_NS, 'line');
       beam.setAttribute('x1', String(startX));
