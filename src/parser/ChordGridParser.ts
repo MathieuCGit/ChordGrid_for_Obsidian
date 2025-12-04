@@ -723,6 +723,9 @@ export class ChordGridParser {
         }
         const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar, t.repeatCount);
         
+        // Mark this measure as a simple % repeat (for chord rendering logic)
+        clonedMeasure.source = '%';
+        
         // Apply pending start barline if any
         if (pendingStartBarline === '||:') {
           (clonedMeasure as any).isRepeatStart = true;
@@ -1156,6 +1159,9 @@ export class ChordGridParser {
     }));
     
     cloned.source = `${newChord}[%]`;
+    
+    // NOTE: Do NOT mark as __isChordOnlyMode here
+    // The renderer will decide based on displayRepeatSymbol option
     
     return cloned;
   }

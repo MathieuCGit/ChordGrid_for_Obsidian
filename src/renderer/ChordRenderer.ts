@@ -191,12 +191,20 @@ export class ChordRenderer {
             const measureY = mp.y;
             
             // Handle chord-only measures with special positioning
-            if (measure.__isChordOnlyMode) {
+            // Also handle [%] notation when displayRepeatSymbol is enabled
+            const isBracketPercent = displayRepeatSymbol && measure.source?.includes('[%]');
+            if (measure.__isChordOnlyMode || isBracketPercent) {
                 this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager);
                 return;
             }
             
             const staffLineY = measureY + STAFF_LINE_OFFSET;
+
+            // Skip chord rendering for simple % repeat ONLY when show% is enabled
+            // When show% is disabled, render chords normally even for repeated measures
+            if (displayRepeatSymbol && measure.isRepeat && measure.source === '%') {
+                return;
+            }
 
             // Check if the measure has chord segments
             const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
@@ -474,9 +482,11 @@ export class ChordRenderer {
     ): void {
         const measure = measurePosition.measure as any;
         
-        // Skip rendering if measure has repeat symbol (%)
-        // The % symbol replaces the chord name display in chord-only mode
-        if (measure.__hasRepeatSymbol) {
+        // Skip rendering chord if it's a simple % repeat (not D[%])
+        // Simple % repeats the entire measure including chord, so we only show the % symbol
+        // D[%] repeats rhythm but changes chord, so we show both chord name and % symbol
+        const isSimpleRepeat = measure.isRepeat && measure.source === '%';
+        if (isSimpleRepeat) {
             return;
         }
         
@@ -492,10 +502,30 @@ export class ChordRenderer {
             // No chords to render
             return;
         } else if (chordCount === 1) {
-            // Single chord: center it in the measure
+            // Single chord
             const chord = segments[0].chord;
-            const chordX = measureX + measureWidth / 2;
-            const chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+            
+            // For [%] notation, position chord at rhythm height (above staff line position)
+            // and align to the left like in rhythm measures
+            // For simple chord-only, center it vertically and horizontally
+            const isRepeatWithChord = measure.source?.includes('[%]');
+            let chordX: number;
+            let chordY: number;
+            let textAnchor: 'start' | 'middle';
+            
+            if (isRepeatWithChord) {
+                // Position like a rhythm measure chord (left-aligned, above staff line)
+                chordX = measureX + LAYOUT.BASE_LEFT_PADDING + 5; // Small padding from left barline
+                const staffLineY = measureY + NOTATION.STAFF_LINE_Y_OFFSET;
+                chordY = staffLineY - POSITIONING.CHORD_VERTICAL_OFFSET;
+                textAnchor = 'start';
+            } else {
+                // Standard chord-only positioning (centered both horizontally and vertically)
+                chordX = measureX + measureWidth / 2;
+                chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+                textAnchor = 'middle';
+            }
+            
             const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
             
             this.renderChordSymbol(
@@ -504,7 +534,7 @@ export class ChordRenderer {
                 chordX,
                 chordY,
                 fontSize,
-                'middle',
+                textAnchor,
                 placeAndSizeManager,
                 measureIndex,
                 0

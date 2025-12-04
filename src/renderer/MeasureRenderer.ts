@@ -88,17 +88,20 @@ export class MeasureRenderer {
         }
 
         // Check if we should display repeat symbol
-        // Two cases to handle:
-        // 1. Rhythm measure with repeat: show % symbol WITH staff line
-        // 2. Chord-only measure with repeat: show % symbol WITHOUT staff line (cleaner)
+        // Three cases to handle:
+        // 1. Simple % repeat: show % symbol WITHOUT staff line (just like chord-only)
+        // 2. Chord[%] notation: show % symbol WITHOUT staff line
+        // 3. Rhythm measure with complex repeat: show % symbol WITH staff line (rare case)
         if (this.displayRepeatSymbol && this.measure.isRepeat) {
             const isChordOnly = (this.measure as any).__isChordOnlyMode;
+            const isSimpleRepeat = this.measure.source === '%';
+            const isBracketPercent = this.measure.source?.includes('[%]');
             
-            if (isChordOnly) {
-                // Chord-only repeat: draw % symbol without staff line
+            if (isChordOnly || isSimpleRepeat || isBracketPercent) {
+                // Chord-only repeat, simple % repeat, or [%] repeat: draw % symbol without staff line
                 this.drawChordOnlyRepeatMeasure(svg, measureIndex);
             } else {
-                // Rhythm repeat: draw % symbol with staff line
+                // Rhythm repeat with notation: draw % symbol with staff line
                 this.drawRhythmRepeatMeasure(svg, measureIndex);
             }
             return;
@@ -700,7 +703,8 @@ export class MeasureRenderer {
      */
     private drawRepeatSymbol(svg: SVGElement): void {
         const centerX = this.x + this.width / 2;
-        const centerY = this.y + POSITIONING.CHORD_ONLY_Y_CENTER; // Align with chord symbols
+        // Position at staff line height (center of where the staff would be)
+        const centerY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
         
         // SVG path provided by user (original viewBox: 188x178)
         const targetHeight = 30;
