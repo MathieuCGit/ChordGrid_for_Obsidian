@@ -319,6 +319,18 @@ export const NOTATION = {
     
     /** Note head half height for pattern positioning (px) */
     PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
+    
+    /** Measure number font size (px) @plannedFor v2.3 */
+    MEASURE_NUMBER_FONT_SIZE: 14,
+    
+    /** Measure number X offset from left barline (px) @plannedFor v2.3 */
+    MEASURE_NUMBER_X_OFFSET: -6,
+    
+    /** Measure number Y offset from top of measure (px) @plannedFor v2.3 */
+    MEASURE_NUMBER_Y_OFFSET: 10,
+    
+    /** Measure number text color @plannedFor v2.3 */
+    MEASURE_NUMBER_COLOR: '#666',
 } as const;
 
 // =============================================================================

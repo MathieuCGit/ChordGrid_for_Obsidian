@@ -61,6 +61,8 @@ export interface RenderOptions {
   fingerMode?: 'en' | 'fr';
   /** Number of measures per line (forces layout). If unspecified, uses automatic mode. */
   measuresPerLine?: number;
+  /** Measure numbering configuration (start number and interval). Default undefined (disabled). */
+  measureNumbering?: { startNumber: number, interval: number, enabled: boolean };
   /** Enable debug logging for placement and collision detection. Default false. */
   debugPlacement?: boolean;
 }
@@ -671,6 +673,15 @@ export class SVGRenderer {
             fontSize: 22,
             verticalOffset: 40
         });
+        
+        // Render measure numbers if enabled
+        if (options.measureNumbering && lineIndex === 0) {
+            // Only on first line for now (line-start mode)
+            this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber);
+        } else if (options.measureNumbering && options.measureNumbering.interval === 0) {
+            // Line-start mode: draw number on first measure of each line
+            this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber + lineMeasurePositions[0].globalIndex);
+        }
         
         // Filter notes from the current line for the following methods
         const currentLineNotes = notePositions.filter(n => 
@@ -1869,6 +1880,30 @@ export class SVGRenderer {
         svg.appendChild(arrowText);
       }
     });
+  }
+
+  /**
+   * Draw a measure number at the top-left of a measure.
+   * Used for measure numbering display.
+   * 
+   * @param svg - Parent SVG element
+   * @param measurePosition - Position info for the measure
+   * @param number - Measure number to display
+   */
+  private drawMeasureNumber(svg: SVGElement, measurePosition: any, number: number): void {
+    const x = measurePosition.x + LAYOUT.BASE_LEFT_PADDING + NOTATION.MEASURE_NUMBER_X_OFFSET;
+    const y = measurePosition.y + NOTATION.MEASURE_NUMBER_Y_OFFSET;
+    
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', x.toString());
+    text.setAttribute('y', y.toString());
+    text.setAttribute('font-size', NOTATION.MEASURE_NUMBER_FONT_SIZE.toString());
+    text.setAttribute('font-family', TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+    text.setAttribute('font-weight', TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+    text.setAttribute('fill', NOTATION.MEASURE_NUMBER_COLOR);
+    text.textContent = number.toString();
+    
+    svg.appendChild(text);
   }
 
   /**

@@ -297,4 +297,6 @@ export interface ParseResult {
   /** Fingerstyle mode with language: 'en' (default) or 'fr' */
   fingerMode?: 'en' | 'fr';
   measuresPerLine?: number;
+  /** Measure numbering configuration */
+  measureNumbering?: { startNumber: number, interval: number, enabled: boolean };
 }

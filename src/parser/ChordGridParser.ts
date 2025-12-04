@@ -129,6 +129,7 @@ export class ChordGridParser {
     let pickMode: boolean | undefined = undefined;
     let fingerMode: 'en' | 'fr' | undefined = undefined;
     let measuresPerLine: number | undefined = undefined;
+    let measureNumbering: { startNumber: number, interval: number, enabled: boolean } | undefined = undefined;
     
     // Scan initial lines for directives (stop when we find time signature or barline)
     let lineIndex = 0;
@@ -187,6 +188,27 @@ export class ChordGridParser {
           measuresPerLine = count;
         }
         line = line.replace(/measures-per-line:\s*\d+\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for measure-num directive
+      // Syntax: measure-num (default: start at 1, display at line starts only)
+      //         measure-num: 5 (start at 5, display at line starts)
+      //         measure-num: 1,4 (start at 1, display every 4 measures)
+      //         measure-num: 5-8 (start at 5, display every 8 measures)
+      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,\-](\d+))?)?/i.exec(line);
+      if (measureNumMatch) {
+        const startNum = measureNumMatch[1] ? parseInt(measureNumMatch[1], 10) : 1; // Default to 1
+        const intervalOrFreq = measureNumMatch[2] ? parseInt(measureNumMatch[2], 10) : 0;
+        
+        // Store in result object (will be created later)
+        measureNumbering = {
+          startNumber: startNum,
+          interval: intervalOrFreq, // 0 = line starts only, >0 = every N measures
+          enabled: true
+        };
+        
+        line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, '');
         hasAnyDirective = true;
       }
       
@@ -442,7 +464,7 @@ export class ChordGridParser {
       // are implicitly valid and don't need rhythm validation
     }
 
-  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine };
+  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering };
   }
 
   /**
