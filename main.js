@@ -1433,7 +1433,7 @@ var NOTATION = {
   /** Measure number font size (px) @plannedFor v2.3 */
   MEASURE_NUMBER_FONT_SIZE: 14,
   /** Measure number X offset from left barline (px) @plannedFor v2.3 */
-  MEASURE_NUMBER_X_OFFSET: -6,
+  MEASURE_NUMBER_X_OFFSET: -2,
   /** Measure number Y offset from top of measure (px) @plannedFor v2.3 */
   MEASURE_NUMBER_Y_OFFSET: 10,
   /** Measure number text color @plannedFor v2.3 */
