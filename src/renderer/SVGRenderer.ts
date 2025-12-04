@@ -128,6 +128,11 @@ export class SVGRenderer {
       width += beatsWidth + LAYOUT.INNER_PADDING_PER_SEGMENT;
     });
     
+    // Add extra width for inline time signature if marked for display
+    if ((measure as any).__shouldShowTimeSignature && measure.timeSignature) {
+      width += 60; // Space for time signature (approximately 30px wide + 30px padding)
+    }
+    
     return Math.max(LAYOUT.BASE_MEASURE_WIDTH, Math.ceil(width));
   }
 
@@ -138,6 +143,74 @@ export class SVGRenderer {
     const base = this.calculateMeasureWidth(measure);
     const ratio = (measure as any).__spacingRatio;
     return ratio ? base * ratio : base;
+  }
+
+  /**
+   * Compares two time signatures for equality.
+   */
+  private timeSignaturesEqual(ts1: any, ts2: any): boolean {
+    if (!ts1 || !ts2) return ts1 === ts2;
+    return ts1.numerator === ts2.numerator && ts1.denominator === ts2.denominator;
+  }
+
+  /**
+   * PRE-MARK measures with time signature changes BEFORE layout calculation.
+   * This allows calculateMeasureWidth() to reserve space for inline time signatures.
+   * Only marks actual changes (not line-starts, which are handled later in markTimeSignatureDisplay).
+   */
+  private preMarkTimeSignatureChanges(measures: Measure[], globalTimeSignature: any): void {
+    let currentTimeSignature = globalTimeSignature;
+    
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
+      
+      // Check if this measure has a different time signature than the previous
+      if (measure.timeSignature && !this.timeSignaturesEqual(measure.timeSignature, currentTimeSignature)) {
+        // Mark this measure to display its time signature
+        (measure as any).__shouldShowTimeSignature = true;
+        currentTimeSignature = measure.timeSignature;
+      }
+    }
+  }
+
+  /**
+   * Marks measures that should display their time signature.
+   * This takes into account:
+   * - First occurrence of a time signature change
+   * - Line breaks (forced with \n or automatic) where the current metric differs from global
+   */
+  private markTimeSignatureDisplay(renderLines: RenderLine[], globalTimeSignature: any): void {
+    let currentTimeSignature = globalTimeSignature;
+
+    renderLines.forEach((line, lineIndex) => {
+      line.measures.forEach((measure, posInLine) => {
+        const isLineStart = (posInLine === 0);
+        const measureTS = measure.timeSignature;
+        let shouldShow = false;
+
+        if (measureTS) {
+          // This measure has an explicit time signature from the parser
+          if (!this.timeSignaturesEqual(measureTS, currentTimeSignature)) {
+            // It's different from current -> this is a CHANGE, show it
+            shouldShow = true;
+            currentTimeSignature = measureTS;
+          } else {
+            // Parser marked it with same time signature as current (duplicate marking)
+            // Don't show it, but keep currentTimeSignature updated
+            currentTimeSignature = measureTS;
+          }
+        } else if (isLineStart && lineIndex > 0) {
+          // At line start (not first line), check if current metric differs from global
+          if (!this.timeSignaturesEqual(currentTimeSignature, globalTimeSignature)) {
+            // Assign current time signature to this measure so it can be displayed
+            measure.timeSignature = currentTimeSignature;
+            shouldShow = true;
+          }
+        }
+
+        (measure as any).__shouldShowTimeSignature = shouldShow;
+      });
+    });
   }
 
   /**
@@ -340,8 +413,16 @@ export class SVGRenderer {
     } else {
       maxLineWidth = measuresPerLine * baseMeasureWidth; // Automatic mode
     }
+    
+    // PRE-MARK time signature changes BEFORE layout calculation
+    // This ensures calculateMeasureWidth() includes space for inline time signatures
+    this.preMarkTimeSignatureChanges(grid.measures, grid.timeSignature);
+    
     const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.measuresPerLine);
     this.resolveCrossLineTies(renderLines);
+
+    // Mark which measures should display their time signature (refines pre-marking with line-start logic)
+    this.markTimeSignatureDisplay(renderLines, grid.timeSignature);
 
     // Reconstruct measurePositions for compatibility with existing methods
     const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number, x?: number, y?: number}[] = [];

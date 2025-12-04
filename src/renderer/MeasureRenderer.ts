@@ -117,8 +117,8 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        // Draw time signature if this measure has one (inline time signature change)
-        if (this.measure.timeSignature) {
+        // Draw time signature if marked for display (either changed or line start with different metric)
+        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -162,7 +162,12 @@ export class MeasureRenderer {
         const totalSeparatorPixels = separatorsCount * separatorWidth;
 
         // Add extra padding if measure starts with repeat barline to avoid collisions
-        const extraLeftPadding = (this.measure as any).isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
+        let extraLeftPadding = (this.measure as any).isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
+        
+        // Add extra padding for inline time signature to avoid note collision
+        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+            extraLeftPadding += 50; // Space for time signature (about 30px wide + 20px breathing room)
+        }
 
         const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
         // Helper spacing functions (must mirror SVGRenderer)
@@ -512,8 +517,8 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        // Draw time signature if this measure has one (inline time signature change)
-        if (this.measure.timeSignature) {
+        // Draw time signature if marked for display (either changed or line start with different metric)
+        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -543,8 +548,8 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        // Draw time signature if this measure has one (inline time signature change)
-        if (this.measure.timeSignature) {
+        // Draw time signature if marked for display (either changed or line start with different metric)
+        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -615,8 +620,8 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        // Draw time signature if this measure has one (inline time signature change)
-        if (this.measure.timeSignature) {
+        // Draw time signature if marked for display (either changed or line start with different metric)
+        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -655,8 +660,8 @@ export class MeasureRenderer {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
         
-        // Draw time signature if this measure has one (inline time signature change)
-        if (this.measure.timeSignature) {
+        // Draw time signature if marked for display (either changed or line start with different metric)
+        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
         
@@ -756,8 +761,9 @@ export class MeasureRenderer {
     private drawTimeSignature(svg: SVGElement, timeSignature: any, measureIndex: number): void {
         // Position: just after the left barline, centered on staff line
         const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20; // 20px from barline for better spacing
-        // Use unified Y position calculation for consistent alignment with global time signature
-        const staffLineY = TimeSignatureRenderer.getStandardYPosition();
+        // CRITICAL FIX: Use staffLineY (measure's line Y + staff offset) for proper vertical centering
+        // This ensures numerator appears above and denominator below the staff line
+        const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
         
         // Use TimeSignatureRenderer for standard notation
         this.timeSignatureRenderer.render(svg, {

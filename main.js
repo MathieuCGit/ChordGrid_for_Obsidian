@@ -2302,7 +2302,7 @@ var MeasureRenderer = class {
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.timeSignature) {
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
@@ -2335,7 +2335,10 @@ var MeasureRenderer = class {
     const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
     const totalInnerPadding = innerPaddingPerSegment * segments.length;
     const totalSeparatorPixels = separatorsCount * separatorWidth;
-    const extraLeftPadding = this.measure.isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
+    let extraLeftPadding = this.measure.isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      extraLeftPadding += 50;
+    }
     const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
     const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
     const valueMinSpacing = (v) => {
@@ -2605,7 +2608,7 @@ var MeasureRenderer = class {
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.timeSignature) {
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     if (this.measure.isRepeatEnd) {
@@ -2627,7 +2630,7 @@ var MeasureRenderer = class {
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.timeSignature) {
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const segments = this.measure.chordSegments || [];
@@ -2684,7 +2687,7 @@ var MeasureRenderer = class {
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.timeSignature) {
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     this.drawRepeatSymbol(svg);
@@ -2713,7 +2716,7 @@ var MeasureRenderer = class {
     } else if (measureIndex === 0 || this.measure.__isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.timeSignature) {
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
@@ -2796,7 +2799,7 @@ var MeasureRenderer = class {
    */
   drawTimeSignature(svg, timeSignature, measureIndex) {
     const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20;
-    const staffLineY = TimeSignatureRenderer.getStandardYPosition();
+    const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
     this.timeSignatureRenderer.render(svg, {
       x: timeSignatureX,
       y: staffLineY,
@@ -4807,6 +4810,9 @@ var SVGRenderer = class {
       const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + this.calculateBeatWidth(b), 0);
       width += beatsWidth + LAYOUT.INNER_PADDING_PER_SEGMENT;
     });
+    if (measure.__shouldShowTimeSignature && measure.timeSignature) {
+      width += 60;
+    }
     return Math.max(LAYOUT.BASE_MEASURE_WIDTH, Math.ceil(width));
   }
   /**
@@ -4816,6 +4822,58 @@ var SVGRenderer = class {
     const base = this.calculateMeasureWidth(measure);
     const ratio = measure.__spacingRatio;
     return ratio ? base * ratio : base;
+  }
+  /**
+   * Compares two time signatures for equality.
+   */
+  timeSignaturesEqual(ts1, ts2) {
+    if (!ts1 || !ts2) return ts1 === ts2;
+    return ts1.numerator === ts2.numerator && ts1.denominator === ts2.denominator;
+  }
+  /**
+   * PRE-MARK measures with time signature changes BEFORE layout calculation.
+   * This allows calculateMeasureWidth() to reserve space for inline time signatures.
+   * Only marks actual changes (not line-starts, which are handled later in markTimeSignatureDisplay).
+   */
+  preMarkTimeSignatureChanges(measures, globalTimeSignature) {
+    let currentTimeSignature = globalTimeSignature;
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
+      if (measure.timeSignature && !this.timeSignaturesEqual(measure.timeSignature, currentTimeSignature)) {
+        measure.__shouldShowTimeSignature = true;
+        currentTimeSignature = measure.timeSignature;
+      }
+    }
+  }
+  /**
+   * Marks measures that should display their time signature.
+   * This takes into account:
+   * - First occurrence of a time signature change
+   * - Line breaks (forced with \n or automatic) where the current metric differs from global
+   */
+  markTimeSignatureDisplay(renderLines, globalTimeSignature) {
+    let currentTimeSignature = globalTimeSignature;
+    renderLines.forEach((line, lineIndex) => {
+      line.measures.forEach((measure, posInLine) => {
+        const isLineStart = posInLine === 0;
+        const measureTS = measure.timeSignature;
+        let shouldShow = false;
+        if (measureTS) {
+          if (!this.timeSignaturesEqual(measureTS, currentTimeSignature)) {
+            shouldShow = true;
+            currentTimeSignature = measureTS;
+          } else {
+            currentTimeSignature = measureTS;
+          }
+        } else if (isLineStart && lineIndex > 0) {
+          if (!this.timeSignaturesEqual(currentTimeSignature, globalTimeSignature)) {
+            measure.timeSignature = currentTimeSignature;
+            shouldShow = true;
+          }
+        }
+        measure.__shouldShowTimeSignature = shouldShow;
+      });
+    });
   }
   /**
    * Calculates the layout of measures into lines.
@@ -4969,8 +5027,10 @@ var SVGRenderer = class {
     } else {
       maxLineWidth = measuresPerLine * baseMeasureWidth;
     }
+    this.preMarkTimeSignatureChanges(grid.measures, grid.timeSignature);
     const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.measuresPerLine);
     this.resolveCrossLineTies(renderLines);
+    this.markTimeSignatureDisplay(renderLines, grid.timeSignature);
     const measurePositions = [];
     let globalIndex = 0;
     renderLines.forEach((line, lineIndex) => {
