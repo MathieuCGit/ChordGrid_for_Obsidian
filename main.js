@@ -5076,7 +5076,8 @@ var SVGRenderer = class {
     bg.setAttribute("fill", "white");
     svg.appendChild(bg);
     const timeSigX = baseLeftPadding + timeSigWidthEstimate / 2;
-    const timeSigY = TimeSignatureRenderer.getStandardYPosition();
+    const firstLineY = 20;
+    const timeSigY = firstLineY + NOTATION.STAFF_LINE_Y_OFFSET;
     timeSignatureRenderer.render(svg, {
       x: timeSigX,
       y: timeSigY,

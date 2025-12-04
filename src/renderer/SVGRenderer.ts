@@ -485,7 +485,9 @@ export class SVGRenderer {
 
     // Draw global time signature using TimeSignatureRenderer for standard notation
     const timeSigX = baseLeftPadding + timeSigWidthEstimate / 2;
-    const timeSigY = TimeSignatureRenderer.getStandardYPosition(); // Unified Y position calculation
+    // Use same Y calculation as inline time signatures: first line Y (20) + staff line offset (80)
+    const firstLineY = 20; // Top margin for first line (from line.startY + 20)
+    const timeSigY = firstLineY + NOTATION.STAFF_LINE_Y_OFFSET; // = 20 + 80 = 100
     timeSignatureRenderer.render(svg, {
         x: timeSigX,
         y: timeSigY,
