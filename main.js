@@ -182,6 +182,7 @@ var _ChordGridParser = class _ChordGridParser {
     let pickMode = void 0;
     let fingerMode = void 0;
     let measuresPerLine = void 0;
+    let measureNumbering = void 0;
     let lineIndex = 0;
     while (lineIndex < lines.length) {
       let line = lines[lineIndex].trim();
@@ -223,6 +224,19 @@ var _ChordGridParser = class _ChordGridParser {
           measuresPerLine = count;
         }
         line = line.replace(/measures-per-line:\s*\d+\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,\-](\d+))?)?/i.exec(line);
+      if (measureNumMatch) {
+        const startNum = measureNumMatch[1] ? parseInt(measureNumMatch[1], 10) : 1;
+        const intervalOrFreq = measureNumMatch[2] ? parseInt(measureNumMatch[2], 10) : 0;
+        measureNumbering = {
+          startNumber: startNum,
+          interval: intervalOrFreq,
+          // 0 = line starts only, >0 = every N measures
+          enabled: true
+        };
+        line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, "");
         hasAnyDirective = true;
       }
       line = line.trim();
@@ -367,7 +381,7 @@ var _ChordGridParser = class _ChordGridParser {
         }
       }
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering };
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -1415,7 +1429,15 @@ var NOTATION = {
   /** Distance from note head to pattern symbol (px) */
   PATTERN_MARGIN: 7,
   /** Note head half height for pattern positioning (px) */
-  PATTERN_NOTE_HEAD_HALF_HEIGHT: 5
+  PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
+  /** Measure number font size (px) @plannedFor v2.3 */
+  MEASURE_NUMBER_FONT_SIZE: 14,
+  /** Measure number X offset from left barline (px) @plannedFor v2.3 */
+  MEASURE_NUMBER_X_OFFSET: -6,
+  /** Measure number Y offset from top of measure (px) @plannedFor v2.3 */
+  MEASURE_NUMBER_Y_OFFSET: 10,
+  /** Measure number text color @plannedFor v2.3 */
+  MEASURE_NUMBER_COLOR: "#666"
 };
 var POSITIONING = {
   /** Default vertical offset for chords above staff (px) */
@@ -5218,6 +5240,11 @@ var SVGRenderer = class {
         fontSize: 22,
         verticalOffset: 40
       });
+      if (options.measureNumbering && lineIndex === 0) {
+        this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber);
+      } else if (options.measureNumbering && options.measureNumbering.interval === 0) {
+        this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber + lineMeasurePositions[0].globalIndex);
+      }
       const currentLineNotes = notePositions.filter(
         (n) => lineMeasurePositions.some((mp) => mp.globalIndex === n.measureIndex)
       );
@@ -6027,6 +6054,27 @@ var SVGRenderer = class {
     });
   }
   /**
+   * Draw a measure number at the top-left of a measure.
+   * Used for measure numbering display.
+   * 
+   * @param svg - Parent SVG element
+   * @param measurePosition - Position info for the measure
+   * @param number - Measure number to display
+   */
+  drawMeasureNumber(svg, measurePosition, number) {
+    const x = measurePosition.x + LAYOUT.BASE_LEFT_PADDING + NOTATION.MEASURE_NUMBER_X_OFFSET;
+    const y = measurePosition.y + NOTATION.MEASURE_NUMBER_Y_OFFSET;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", x.toString());
+    text.setAttribute("y", y.toString());
+    text.setAttribute("font-size", NOTATION.MEASURE_NUMBER_FONT_SIZE.toString());
+    text.setAttribute("font-family", TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+    text.setAttribute("font-weight", TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+    text.setAttribute("fill", NOTATION.MEASURE_NUMBER_COLOR);
+    text.textContent = number.toString();
+    svg.appendChild(text);
+  }
+  /**
    * Résout les liaisons qui traversent les lignes (cross-line ties).
    * Marque les notes avec tieToVoid/tieFromVoid pour un rendu correct ligne par ligne.
    */
@@ -6096,7 +6144,8 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             displayRepeatSymbol: result.displayRepeatSymbol,
             pickStrokes: result.pickMode,
             fingerMode: result.fingerMode,
-            measuresPerLine: result.measuresPerLine
+            measuresPerLine: result.measuresPerLine,
+            measureNumbering: result.measureNumbering
           });
           el.appendChild(svg);
         } catch (err) {
