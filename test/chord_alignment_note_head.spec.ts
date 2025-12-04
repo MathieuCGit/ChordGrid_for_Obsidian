@@ -82,25 +82,26 @@ describe('Chord Alignment with Note Head', () => {
         console.log('\n=== Chord Alignment Test ===');
         console.log(`Chord "${chord.textContent}" at x=${chordX}`);
         
-        // Pour une noire (value=4), le slash a une largeur de 10px (slashHalf=5)
-        // noteX est au centre, donc:
+        // For a quarter note (value=4), the slash has a width of 10px (slashHalf=5)
+        // noteX is at the center, so:
         // - headLeftX = noteX - 5
         // - headRightX = noteX + 5
-        // - stem.centerX = noteX (au centre du slash)
+        // - stem.centerX = noteX (at the center of the slash)
         
-        // L'accord devrait être aligné avec headLeftX, pas avec stem.centerX
-        // Donc chordX devrait être environ 5px à gauche du centre de la première note
+        // The chord should align with headLeftX, not with stem.centerX
+        // Therefore chordX should be approximately 5px to the left of the first note's center
         
-        // Si la première note est centrée à x=68 (comme dans les anciens tests),
-        // alors headLeftX devrait être à 68 - 5 = 63
-        // Vérifions que l'accord est bien proche de cette position
+        // If the first note is centered at x=68 (as in older tests),
+        // then headLeftX should be at 68 - 5 = 63
+        // Verify that the chord is close to this position
         
-        expect(chordX).toBeLessThan(70); // Plus à gauche que le centre (68)
-        expect(chordX).toBeGreaterThan(55); // Mais pas trop à gauche
+        expect(chordX).toBeLessThan(70); // More to the left than center (68)
+        expect(chordX).toBeGreaterThan(55); // But not too far left
     });
 
-    it('should align multiple chord segments with their respective first notes', () => {
-        // 2 segments dans une même mesure
+    it('aligns chord with first note head in multi-segment measure', () => {
+        // Test with 2 chord segments in a single measure
+        // Each segment should align its chord with its first note's left edge
         const input = `4/4 || C[4 4] Dm[4 4] ||`;
         
         const parseResult = parser.parse(input);
@@ -119,11 +120,12 @@ describe('Chord Alignment with Note Head', () => {
         
         expect(chordSymbols.length).toBe(2);
         
-        // Les deux accords devraient être alignés avec le début de leurs premières notes respectives
+        // Both chords should be aligned with the left edge of their respective first notes
         const chord1X = parseFloat(chordSymbols[0].getAttribute('x') || '0');
         const chord2X = parseFloat(chordSymbols[1].getAttribute('x') || '0');
         
-        // Le deuxième accord devrait être nettement plus à droite que le premier
+        // The second chord should be significantly to the right of the first chord
+        // This ensures proper spacing between segments in the same measure
         expect(chord2X).toBeGreaterThan(chord1X + 50);
     });
 });

@@ -42,7 +42,7 @@ describe('Pick strokes rendering', () => {
     const grid = makeGrid([8, 8, 8, 8]);
     const svg = renderer.render(grid);
     
-    // Cherche des éléments <g> avec data-pick-stroke (identifie les coups de médiator)
+    // Look for <g> elements with data-pick-stroke attribute (identifies pick stroke symbols)
     const pickStrokes = svg.querySelectorAll('g[data-pick-stroke="true"]');
     expect(pickStrokes.length).toBe(0);
   });
@@ -52,10 +52,11 @@ describe('Pick strokes rendering', () => {
     const grid = makeGrid([8, 8, 8, 8]);
     const svg = renderer.render(grid, { stemsDirection: 'up', pickStrokes: '8' });
     
-    // Cherche des éléments <g> avec data-pick-stroke="true"
+    // Look for <g> elements with data-pick-stroke="true"
+    // Each attack point should have a pick stroke symbol
     const pickStrokes = svg.querySelectorAll('g[data-pick-stroke="true"]');
     
-    // On attend 4 symboles (un par attaque)
+    // Expect 4 symbols (one per attack)
     expect(pickStrokes.length).toBe(4);
   });
 
@@ -64,23 +65,23 @@ describe('Pick strokes rendering', () => {
     const grid = makeGrid([16, 16, 16, 16, 16, 16, 16, 16]);
     const svg = renderer.render(grid, { stemsDirection: 'down', pickStrokes: '16' });
     
-    // Cherche des éléments <g> avec data-pick-stroke="true"
+    // Look for <g> elements with data-pick-stroke="true"
     const pickStrokes = svg.querySelectorAll('g[data-pick-stroke="true"]');
     
-    // 8 attaques => 8 symboles
+    // 8 attacks => 8 symbols
     expect(pickStrokes.length).toBe(8);
   });
 
   it('auto mode detects 16th notes and uses 16 subdivision', () => {
     const renderer = new SVGRenderer();
-    // Mélange: quelques 8e et au moins une 16e
+    // Mix of 8th and 16th notes
     const grid = makeGrid([8, 8, 16, 16, 8, 8]);
     const svg = renderer.render(grid, { pickStrokes: 'auto' });
     
-    // Cherche des éléments <g> avec data-pick-stroke="true"
+    // Look for <g> elements with data-pick-stroke="true"
     const pickStrokes = svg.querySelectorAll('g[data-pick-stroke="true"]');
     
-    // 6 attaques => 6 symboles (alternance globale)
+    // 6 attacks => 6 symbols (global alternating pattern)
     expect(pickStrokes.length).toBe(6);
   });
 
@@ -117,10 +118,10 @@ describe('Pick strokes rendering', () => {
     
     const svg = renderer.render(grid, { pickStrokes: '8' });
     
-    // Cherche des éléments <g> avec data-pick-stroke="true"
+    // Look for <g> elements with data-pick-stroke="true"
     const pickStrokes = svg.querySelectorAll('g[data-pick-stroke="true"]');
     
-    // Seulement 2 attaques (première + troisième note); la deuxième a tieEnd
+    // Only 2 attacks (first + third note); the second note has tieEnd so it's not an attack point
     expect(pickStrokes.length).toBe(2);
   });
 });

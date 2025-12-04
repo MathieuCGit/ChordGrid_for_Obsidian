@@ -36,7 +36,8 @@ describe('SVGRenderer stems direction', () => {
     const renderer = new SVGRenderer();
     const grid = makeGrid();
     const svg = renderer.render(grid);
-    // Cherche une ligne SVG de hampe orientée vers le haut (y2 < y1 car y diminue vers le haut)
+    // Look for an SVG line element representing a stem pointing upward
+    // In SVG coordinates, y decreases upward, so y2 < y1 means stem points up
     const stems = svg.querySelectorAll('line');
     let foundUp = false;
     stems.forEach(line => {
@@ -51,7 +52,8 @@ describe('SVGRenderer stems direction', () => {
     const renderer = new SVGRenderer();
     const grid = makeGrid();
     const svg = renderer.render(grid, 'down');
-    // Cherche une ligne SVG de hampe orientée vers le bas (y2 > y1 car y augmente vers le bas)
+    // Look for an SVG line element representing a stem pointing downward
+    // In SVG coordinates, y increases downward, so y2 > y1 means stem points down
     const stems = svg.querySelectorAll('line');
     let foundDown = false;
     stems.forEach(line => {

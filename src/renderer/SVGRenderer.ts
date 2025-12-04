@@ -55,8 +55,8 @@ export interface RenderOptions {
   stemsDirection?: 'up' | 'down';
   /** Display % symbol for repeated measures instead of full rhythm. Default false. */
   displayRepeatSymbol?: boolean;
-  /** Enable pick stroke symbols. Default false. */
-  pickStrokes?: boolean;
+  /** Enable pick stroke symbols. Can be boolean or string ('auto', '8', '16', etc). Default false. */
+  pickStrokes?: boolean | string;
   /** Fingerstyle mode ('en' for English t/h, 'fr' for French p/m). Default undefined (disabled). */
   fingerMode?: 'en' | 'fr';
   /** Number of measures per line (forces layout). If unspecified, uses automatic mode. */

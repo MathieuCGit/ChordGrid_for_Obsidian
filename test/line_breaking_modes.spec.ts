@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file line_breaking_modes.spec.ts
  * @description Tests pour les 3 modes de gestion des retours à la ligne :
  * 1. Automatique (par défaut) : Le script gère automatiquement les retours à la ligne
@@ -20,7 +20,7 @@ describe('Line Breaking Modes', () => {
 
     describe('MODE 1: Automatic line breaking', () => {
         it('should automatically break lines based on width (default behavior)', () => {
-            // Une longue séquence de mesures qui devrait être automatiquement coupée
+            // A long sequence of measures that should be automatically split into lines
             const input = `4/4
 | Am[4 4 4 4] | C[4 4 4 4] | G[4 4 4 4] | F[4 4 4 4] | Em[4 4 4 4] | Dm[4 4 4 4] | Am[4 4 4 4] | C[4 4 4 4] |`;
             
@@ -28,7 +28,7 @@ describe('Line Breaking Modes', () => {
             expect(parseResult.errors).toHaveLength(0);
             expect(parseResult.measures.length).toBe(8);
             
-            // Vérifier que le rendu ne génère pas d'erreur
+            // Verify that rendering does not generate errors
             const svg = renderer.render(parseResult.grid);
             expect(svg).toBeDefined();
             
@@ -50,9 +50,9 @@ describe('Line Breaking Modes', () => {
             expect(parseResult.errors).toHaveLength(0);
             expect(parseResult.measures.length).toBe(4);
             
-            // Vérifier que isLineBreak est marqué sur les bonnes mesures
-            expect(parseResult.measures[1].isLineBreak).toBe(true); // Fin de la première ligne
-            expect(parseResult.measures[3].isLineBreak).toBe(false); // Dernière mesure n'a pas de break après
+            // Verify that isLineBreak is marked on the correct measures
+            expect(parseResult.measures[1].isLineBreak).toBe(true); // End of first line
+            expect(parseResult.measures[3].isLineBreak).toBe(false); // Last measure has no break after it
             
             const svg = renderer.render(parseResult.grid);
             expect(svg).toBeDefined();
@@ -74,7 +74,7 @@ describe('Line Breaking Modes', () => {
             expect(parseResult.errors).toHaveLength(0);
             expect(parseResult.measures.length).toBe(3);
             
-            // Chaque mesure sauf la dernière devrait avoir isLineBreak
+            // Each measure except the last should have isLineBreak
             expect(parseResult.measures[0].isLineBreak).toBe(true);
             expect(parseResult.measures[1].isLineBreak).toBe(true);
             expect(parseResult.measures[2].isLineBreak).toBe(false);
@@ -125,7 +125,7 @@ describe('Line Breaking Modes', () => {
         });
 
         it('should respect explicit line breaks even with measures-per-line', () => {
-            // Si \n est présent, il doit être respecté même avec measures-per-line
+            // If \n is present, it should be respected even with measures-per-line
             const input = `measures-per-line:4 4/4
 | Am[4 4 4 4] | C[4 4 4 4] |
 | G[4 4 4 4] | F[4 4 4 4] |`;
@@ -135,7 +135,7 @@ describe('Line Breaking Modes', () => {
             expect(parseResult.measures.length).toBe(4);
             expect(parseResult.measuresPerLine).toBe(4);
             
-            // Les isLineBreak doivent être respectés
+            // The isLineBreak markers should be respected
             expect(parseResult.measures[1].isLineBreak).toBe(true);
             
             const svg = renderer.render(parseResult.grid, {
@@ -147,7 +147,7 @@ describe('Line Breaking Modes', () => {
 
     describe('Dynamic spacing', () => {
         it('should apply spacing adjustments within readable limits', () => {
-            // Tester avec une ligne très courte (devrait être élargie)
+            // Test with a very short line (should be widened)
             const input = `4/4
 | Am[1] | C[1] |`;
             
@@ -155,7 +155,7 @@ describe('Line Breaking Modes', () => {
             const svg = renderer.render(parseResult.grid);
             expect(svg).toBeDefined();
             
-            // Vérifier que le SVG a une largeur raisonnable
+            // Verify that the SVG has a reasonable width
             const viewBox = svg.getAttribute('viewBox');
             expect(viewBox).toBeTruthy();
             const [,, width] = viewBox!.split(' ').map(Number);
@@ -163,7 +163,7 @@ describe('Line Breaking Modes', () => {
         });
 
         it('should compress spacing when forced layout creates wide lines', () => {
-            // Forcer 8 mesures sur une ligne (devrait être compressé)
+            // Force 8 measures on one line (should be compressed)
             const input = `measures-per-line:8 4/4
 | Am[8 8 8 8 8 8 8 8] | C[8 8 8 8 8 8 8 8] | G[8 8 8 8 8 8 8 8] | F[8 8 8 8 8 8 8 8] | Em[8 8 8 8 8 8 8 8] | Dm[8 8 8 8 8 8 8 8] | Am[8 8 8 8 8 8 8 8] | C[8 8 8 8 8 8 8 8] |`;
             
@@ -175,9 +175,10 @@ describe('Line Breaking Modes', () => {
             });
             expect(svg).toBeDefined();
             
-            // Le rendu ne devrait pas générer d'erreur malgré la compression
+            // Rendering should not generate errors despite compression
             const viewBox = svg.getAttribute('viewBox');
             expect(viewBox).toBeTruthy();
         });
     });
 });
+

@@ -32,12 +32,13 @@ describe('SVGRenderer responsive SVG', () => {
     };
   }
 
-  it('sets SVG width to 100% and height to auto', () => {
+  it('sets SVG width to 100% and no fixed height (auto-sizing via viewBox)', () => {
     const renderer = new SVGRenderer();
     const grid = makeGrid();
     const svg = renderer.render(grid);
     expect(svg.getAttribute('width')).toBe('100%');
-    expect(svg.getAttribute('height')).toBe('auto');
+    // Height attribute should not be set - CSS controls it via viewBox
+    expect(svg.getAttribute('height')).toBeNull();
     // viewBox is now dynamically adjusted based on content bounds
     expect(svg.getAttribute('viewBox')).toMatch(/^[\d.-]+ [\d.-]+ [\d.]+ [\d.]+$/);
   });

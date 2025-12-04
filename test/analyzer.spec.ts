@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file analyzer.spec.ts
  * @description Unit tests for MusicAnalyzer
  * 
@@ -47,7 +47,7 @@ describe('MusicAnalyzer', () => {
 
   describe('Cross-segment beam grouping', () => {
     it('should beam across segments without space: [8]G[8]', () => {
-      // Structure conforme à ParsedMeasure/ParsedSegment/ParsedNote actuels
+      // Structure conforming to current ParsedMeasure/ParsedSegment/ParsedNote types
       const measure: ParsedMeasure = {
         segments: [
           {
@@ -69,13 +69,13 @@ describe('MusicAnalyzer', () => {
 
       const result = analyzer.analyze(measure);
 
-      // Doit créer UN groupe de beam connectant les deux notes
+      // Should create ONE beam group connecting both notes
       expect(result.beamGroups).toHaveLength(1);
       expect(result.beamGroups[0].level).toBe(1);
       expect(result.beamGroups[0].notes).toHaveLength(2);
       expect(result.beamGroups[0].isPartial).toBe(false);
 
-      // Vérification des index de segment et de note
+      // Verification of segment and note indices
       expect(result.beamGroups[0].notes[0].segmentIndex).toBe(0);
       expect(result.beamGroups[0].notes[0].noteIndex).toBe(0);
       expect(result.beamGroups[0].notes[1].segmentIndex).toBe(1);
@@ -104,12 +104,12 @@ describe('MusicAnalyzer', () => {
 
       const result = analyzer.analyze(measure);
 
-  // Version >=2.0.1 : Vérifie simplement qu'il y a deux groupes distincts
+  // Version >=2.0.1: Simply verify that there are two distinct groups
   expect(result.beamGroups).toHaveLength(2);
-  // On ne force plus isPartial à true, on vérifie la structure réelle
+  // We no longer force isPartial to true, we verify the actual structure
   expect(result.beamGroups[0].notes).toHaveLength(1);
   expect(result.beamGroups[1].notes).toHaveLength(1);
-  // Documentation : la logique de beamlet partiel a évolué, on ne teste plus isPartial
+  // Documentation: partial beamlet logic has evolved, we no longer test isPartial
     });
     
     it('should beam across multiple segments: [8]C[8]D[8]', () => {
@@ -198,7 +198,7 @@ describe('MusicAnalyzer', () => {
 
       const result = analyzer.analyze(measure);
 
-      // Version >=2.0.1 : Les notes pointées forment un beam complet (pas de beamlet)
+      // Version >=2.0.1: Dotted notes form a complete beam (no beamlet)
       expect(result.beamGroups).toHaveLength(1);
       expect(result.beamGroups[0].isPartial).toBe(false);
       expect(result.beamGroups[0].notes).toHaveLength(2);
@@ -221,7 +221,7 @@ describe('MusicAnalyzer', () => {
 
       const result = analyzer.analyze(measure);
 
-      // Version >=2.0.1 : Les notes pointées forment un beam complet (pas de beamlet)
+      // Version >=2.0.1: Dotted notes form a complete beam (no beamlet)
       expect(result.beamGroups).toHaveLength(1);
       expect(result.beamGroups[0].isPartial).toBe(false);
       expect(result.beamGroups[0].notes).toHaveLength(2);
@@ -443,10 +443,11 @@ describe('MusicAnalyzer', () => {
       
       const result = analyzer.analyze(measure);
       
-  // Version >=2.0.1 : Vérifie simplement qu'il existe au moins un beamlet
+  // Version >=2.0.1: Simply verify that at least one beamlet exists
   const beamlets = result.beamGroups.filter(g => g.isPartial);
   expect(beamlets.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
+
 

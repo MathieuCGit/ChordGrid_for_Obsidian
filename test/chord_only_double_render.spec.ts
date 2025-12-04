@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Test pour vérifier que les accords ne sont pas rendus 2 fois en mode chord-only
  */
 
@@ -70,7 +70,7 @@ describe('Chord-Only Mode - Double Render Bug', () => {
         const renderer = new SVGRenderer();
         const svg = renderer.render(parseResult.grid, {});
         
-        // Compter le nombre d'éléments <text> avec la classe "chord-symbol"
+        // Count the number of <text> elements with class "chord-symbol"
         const chordSymbols = svg.querySelectorAll('text.chord-symbol');
         
         console.log('\n=== Chord Symbols Found ===');
@@ -84,7 +84,7 @@ describe('Chord-Only Mode - Double Render Bug', () => {
         // On devrait avoir exactement 4 accords (C, Am, G, F)
         expect(chordSymbols.length).toBe(4);
         
-        // Vérifier le contenu
+        // Verify the content
         const chordTexts = Array.from(chordSymbols).map(el => el.textContent);
         expect(chordTexts).toEqual(['C', 'Am', 'G', 'F']);
     });
@@ -98,7 +98,7 @@ describe('Chord-Only Mode - Double Render Bug', () => {
         const renderer = new SVGRenderer();
         const svg = renderer.render(parseResult.grid, {});
         
-        // Compter le nombre d'éléments <text> avec la classe "chord-symbol"
+        // Count the number of <text> elements with class "chord-symbol"
         const chordSymbols = svg.querySelectorAll('text.chord-symbol');
         
         console.log('\n=== Chord Symbols Found (with rhythm) ===');
@@ -112,13 +112,13 @@ describe('Chord-Only Mode - Double Render Bug', () => {
         // On devrait avoir exactement 4 accords (C, Am, G, F)
         expect(chordSymbols.length).toBe(4);
         
-        // Vérifier le contenu
+        // Verify the content
         const chordTexts = Array.from(chordSymbols).map(el => el.textContent);
         expect(chordTexts).toEqual(['C', 'Am', 'G', 'F']);
     });
 
     it('should render multiple chord segments in one measure (chord-only)', () => {
-        // 2 accords dans une même mesure, sans rythme
+        // 2 chords in the same measure, without rhythm notation
         const input = `4/4 || C / Dm | G | F ||`;
         
         const parseResult = parser.parse(input);
@@ -126,7 +126,7 @@ describe('Chord-Only Mode - Double Render Bug', () => {
         const renderer = new SVGRenderer();
         const svg = renderer.render(parseResult.grid, {});
         
-        // Compter le nombre d'éléments <text> avec la classe "chord-symbol"
+        // Count the number of <text> elements with class "chord-symbol"
         const chordSymbols = svg.querySelectorAll('text.chord-symbol');
         
         console.log('\n=== Multiple Chord Segments (chord-only) ===');
@@ -140,8 +140,9 @@ describe('Chord-Only Mode - Double Render Bug', () => {
         // On devrait avoir 4 accords: C, Dm (mesure 1), G (mesure 2), F (mesure 3)
         expect(chordSymbols.length).toBe(4);
         
-        // Vérifier le contenu
+        // Verify the content
         const chordTexts = Array.from(chordSymbols).map(el => el.textContent);
         expect(chordTexts).toEqual(['C', 'Dm', 'G', 'F']);
     });
 });
+
