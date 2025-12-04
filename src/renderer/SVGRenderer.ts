@@ -465,7 +465,8 @@ export class SVGRenderer {
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', '100%');
-  svg.setAttribute('height', totalHeight.toString());
+  // Remove fixed height to allow CSS to control it - fixes Obsidian margin issues
+  // svg.setAttribute('height', totalHeight.toString());
   svg.setAttribute('viewBox', `0 ${-topMarginForChords} ${width} ${totalHeight}`);
   svg.setAttribute('xmlns', SVG_NS);
 
