@@ -320,6 +320,30 @@ export const NOTATION = {
     /** Note head half height for pattern positioning (px) */
     PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
     
+    /** Counting number font size for tall (beat starts) (px) */
+    COUNTING_FONT_SIZE_TALL: 14,
+    
+    /** Counting number font size for medium (subdivisions) (px) */
+    COUNTING_FONT_SIZE_MEDIUM: 12,
+    
+    /** Counting number font size for small (rests) (px) */
+    COUNTING_FONT_SIZE_SMALL: 11,
+    
+    /** Distance from note head to counting number (px) */
+    COUNTING_MARGIN: 10,
+    
+    /** Font weight for tall counting numbers */
+    COUNTING_FONT_WEIGHT_TALL: 'normal',
+    
+    /** Font weight for medium/small counting numbers */
+    COUNTING_FONT_WEIGHT_NORMAL: 'normal',
+    
+    /** Color for rest counting numbers (gray) */
+    COUNTING_COLOR_REST: '#777',
+    
+    /** Color for normal counting numbers (black) */
+    COUNTING_COLOR_NORMAL: '#000',
+    
     /** Measure number font size (px) @plannedFor v2.3 */
     MEASURE_NUMBER_FONT_SIZE: 14,
     

@@ -254,6 +254,7 @@ export type ElementType =
     | 'double-bar'      // Double barre finale (||)
     | 'dot'             // Points des notes pointées
     | 'pick-stroke'     // Indications de médiator (down/up)
+    | 'counting'        // Numéros de comptage pédagogique (1, 2, 3...)
     | 'measure';        // Mesure entière (géométrie globale)
 
 /**

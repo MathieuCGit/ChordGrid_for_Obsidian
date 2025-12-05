@@ -46,6 +46,7 @@ import { drawBeams } from './BeamRenderer';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { ChordRenderer } from './ChordRenderer';
 import { StrumPatternRenderer } from './StrumPatternRenderer';
+import { CountingRenderer } from './CountingRenderer';
 
 /**
  * Rendering options for SVGRenderer.
@@ -63,6 +64,8 @@ export interface RenderOptions {
   measuresPerLine?: number;
   /** Measure numbering configuration (start number and interval). Default undefined (disabled). */
   measureNumbering?: { startNumber: number, interval: number, enabled: boolean };
+  /** Enable counting mode for pedagogical beat counting. Default false. */
+  countingMode?: boolean;
   /** Enable debug logging for placement and collision detection. Default false. */
   debugPlacement?: boolean;
 }
@@ -457,7 +460,20 @@ export class SVGRenderer {
     const width = Math.max(...renderLines.map(l => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN;
     // Actual height: maximum of (startY + height) of lines + bottom margin
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
-    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN; // final margin
+    
+    // Calculate additional space needed for counting and fingerstyle annotations
+    const isStemDown = options.stemsDirection === 'down';
+    let additionalBottomSpace = 0;
+    
+    // Add space for annotations below staff (stem-up mode) or reserve equivalent space
+    if (options.countingMode) {
+      additionalBottomSpace += NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN; // 24px
+    }
+    if (options.fingerMode || options.pickStrokes) {
+      additionalBottomSpace += 15; // Space for pick-strokes or fingerstyle patterns
+    }
+    
+    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN + additionalBottomSpace;
     
     // Add space above for chord symbols (they are rendered at measureY - verticalOffset)
     const topMarginForChords = LAYOUT.TOP_MARGIN_FOR_CHORDS; // Space for chord symbols above staff
@@ -475,7 +491,7 @@ export class SVGRenderer {
     const timeSignatureRenderer = new TimeSignatureRenderer(placeAndSizeManager);
     const tieManager = new TieManager();
     const voltaManager = new VoltaManager();
-    const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[] = [];
+    const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number,countingNumber?:number,countingSize?:'t'|'m'|'s'}[] = [];
 
   // white background
   const bg = document.createElementNS(SVG_NS, 'rect');
@@ -669,10 +685,19 @@ export class SVGRenderer {
         
         // Render chords AFTER all measures are drawn (so stem metadata is available)
         const chordRenderer = new ChordRenderer();
+        
+        // Calculate chord vertical offset: in stem-down mode with counting and pick-strokes/fingerstyle,
+        // add extra space to avoid collision with annotations above the staff
+        let chordVerticalOffset = 40;
+        if (options.stemsDirection === 'down' && options.countingMode && (options.pickStrokes || options.fingerMode)) {
+            // Add minimal space for counting numbers + pick-strokes/fingerstyle
+            chordVerticalOffset += 20;
+        }
+        
         chordRenderer.renderChords(svg, lineMeasurePositions, placeAndSizeManager, {
             displayRepeatSymbol: options.displayRepeatSymbol,
             fontSize: 22,
-            verticalOffset: 40
+            verticalOffset: chordVerticalOffset
         });
         
         // Render measure numbers if enabled
@@ -699,6 +724,11 @@ export class SVGRenderer {
         
         // Draw Fingerstyle Symbols (Current line only)
         this.drawFingerSymbols(svg, grid, notePositions as any, stemsDirection, options, allowedMeasureIndices);
+        
+        // Draw Counting Numbers (Current line only) - if counting mode is enabled
+        if (options.countingMode) {
+          CountingRenderer.drawCountingNumbers(svg, notePositions as any, stemsDirection, allowedMeasureIndices, placeAndSizeManager);
+        }
         
         // 6. SAVE BARLINES before PlaceAndSizeManager is cleared
         // (needed for global volta rendering)
@@ -772,7 +802,7 @@ export class SVGRenderer {
    */
   private detectAndDrawTies(
     svg: SVGElement,
-    notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number}[],
+    notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number,countingNumber?:number,countingSize?:'t'|'m'|'s'}[],
     svgWidth: number,
     tieManager: TieManager,
     measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
@@ -1639,8 +1669,21 @@ export class SVGRenderer {
       const th = oh * scale;
 
       // Position with global offset to avoid ties
+      // Calculate extra offset for counting numbers (if enabled)
+      let countingOffset = 0;
+      if (options.countingMode) {
+        // When counting is active, add space for counting numbers
+        // Below (stems-up): push pick-strokes down
+        // Above (stems-down): push pick-strokes up
+        countingOffset = NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+      }
+      
+      // Adjust margin: smaller margin below (stems-up) to bring pick-strokes closer to notes
+      // BUT only when counting is active, otherwise keep normal margin
+      const effectiveMargin = placeAbove ? MARGIN : (options.countingMode ? (MARGIN - 2) : MARGIN);
+      
       // Offset is applied in the same direction as placement (placeAbove)
-      const baseY = placeAbove ? (noteHeadEdgeY - MARGIN - th) : (noteHeadEdgeY + MARGIN);
+      const baseY = placeAbove ? (noteHeadEdgeY - effectiveMargin - th - countingOffset) : (noteHeadEdgeY + effectiveMargin + countingOffset);
       const finalY = baseY + globalVerticalOffset;
       const finalX = anchorX - tw / 2;
 
@@ -1836,10 +1879,22 @@ export class SVGRenderer {
         arrow = '';
       }
 
+      // Calculate extra offset for counting numbers (if enabled)
+      let countingOffset = 0;
+      if (options.countingMode) {
+        // When counting is active, add space for counting numbers
+        // Below (stems-up): push fingerstyle down
+        // Above (stems-down): push fingerstyle up
+        countingOffset = NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+      }
+      
+      // Adjust margin: smaller margin below (stems-up) to bring fingerstyle closer to notes
+      const effectiveMargin = placeAbove ? MARGIN : -5;
+      
       // Calculate Y position (use larger arrow size for spacing)
       const textY = placeAbove 
-        ? (noteHeadEdgeY - MARGIN)
-        : (noteHeadEdgeY + MARGIN + ARROW_FONT_SIZE);
+        ? (noteHeadEdgeY - effectiveMargin - countingOffset)
+        : (noteHeadEdgeY + effectiveMargin + ARROW_FONT_SIZE + countingOffset);
 
       // Calculate horizontal spacing
       // Letter width approximation: ~0.6 * font size for 'p' or 'm'

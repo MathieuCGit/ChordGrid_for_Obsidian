@@ -131,6 +131,7 @@ export class ChordGridParser {
     let measuresPerLine: number | undefined = undefined;
     let measureNumbering: { startNumber: number, interval: number, enabled: boolean } | undefined = undefined;
     let transposeSettings: { semitones: number, accidental?: '#' | 'b' } | undefined = undefined;
+    let countingMode: boolean | undefined = undefined;
     
     // Scan initial lines for directives (stop when we find time signature or barline)
     let lineIndex = 0;
@@ -226,6 +227,13 @@ export class ChordGridParser {
         };
         
         line = line.replace(/transpose:\s*[+-]\d+(?:\s*,\s*[#b])?\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Parse counting directive
+      if (/\b(count|counting)\b/i.test(line)) {
+        countingMode = true;
+        line = line.replace(/\b(count|counting)\b\s*/i, '');
         hasAnyDirective = true;
       }
       
@@ -486,7 +494,7 @@ export class ChordGridParser {
       this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
 
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode };
   }
 
 
@@ -1702,6 +1710,7 @@ class BeamAndTieAnalyzer {
   // ...existing code...
 }
 import { Transposer } from '../utils/Transposer';
+import { CountingAnalyzer } from '../analyzer/CountingAnalyzer';
 import {
   NoteValue,
   NoteElement,

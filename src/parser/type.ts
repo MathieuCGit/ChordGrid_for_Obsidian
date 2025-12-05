@@ -145,6 +145,23 @@ export interface NoteElement {
    * Examples: 4d, 8u, 16d
    */
   pickDirection?: 'd' | 'u' | 'down' | 'up';
+  /**
+   * Counting number for pedagogical beat counting (optional).
+   * Sequential number: 1, 2, 3, 4, 5, 6, 7, 8...
+   */
+  countingNumber?: number;
+  /**
+   * Counting label for pedagogical beat counting (optional).
+   * Can be a number (1, 2, 3, 4), '&' for eighth note subdivisions, or empty string.
+   */
+  countingLabel?: string;
+  /**
+   * Size of the counting number for visual display (optional).
+   * - 't' (Tall/bold) : beat starts
+   * - 'm' (Medium) : subdivisions within beats
+   * - 's' (Small) : rests
+   */
+  countingSize?: 't' | 'm' | 's';
 }
 
 /**
@@ -299,4 +316,6 @@ export interface ParseResult {
   measuresPerLine?: number;
   /** Measure numbering configuration */
   measureNumbering?: { startNumber: number, interval: number, enabled: boolean };
+  /** Counting mode for pedagogical beat counting */
+  countingMode?: boolean;
 }

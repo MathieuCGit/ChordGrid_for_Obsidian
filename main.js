@@ -136,6 +136,142 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 
+// src/utils/Transposer.ts
+var Transposer = class {
+  /**
+   * Transpose a single chord by semitones
+   * @param chord - The chord to transpose (e.g., "Cmaj7", "F#m", "Bb/D")
+   * @param semitones - Number of semitones to transpose (positive = up, negative = down)
+   * @param preference - Force 'sharp' or 'flat' accidentals
+   * @returns Transposed chord
+   */
+  static transposeChord(chord, semitones, preference) {
+    if (!chord || chord.trim() === "") return "";
+    const rootMatch = chord.match(/^([A-G][#b]?)/);
+    if (!rootMatch) return chord;
+    const root = rootMatch[1];
+    const suffix = chord.substring(root.length);
+    let bassSuffix = "";
+    const slashMatch = suffix.match(/^(.*)\/([A-G][#b]?)$/);
+    if (slashMatch) {
+      const quality = slashMatch[1];
+      const bassNote = slashMatch[2];
+      const transposedBass = this.transposeNote(bassNote, semitones, preference);
+      bassSuffix = `/${transposedBass}`;
+      return this.transposeNote(root, semitones, preference) + quality + bassSuffix;
+    }
+    const transposedRoot = this.transposeNote(root, semitones, preference);
+    return transposedRoot + suffix;
+  }
+  /**
+   * Transpose multiple chords with automatic key analysis
+   * @param chords - Array of chords to transpose
+   * @param semitones - Number of semitones to transpose
+   * @param forceAccidental - Force '#' or 'b' for all chords
+   * @returns Array of transposed chords
+   */
+  static transposeChords(chords, semitones, forceAccidental) {
+    if (chords.length === 0) return [];
+    let preference;
+    if (forceAccidental) {
+      preference = forceAccidental === "#" ? "sharp" : "flat";
+    } else {
+      preference = this.analyzeTargetKey(chords, semitones);
+    }
+    return chords.map((chord) => this.transposeChord(chord, semitones, preference));
+  }
+  /**
+   * Transpose a single note (root only, no chord quality)
+   * @private
+   */
+  static transposeNote(note, semitones, preference) {
+    const sharpIndex = this.SHARPS.indexOf(note.replace("b", this.getEnharmonicSharp(note)));
+    const flatIndex = this.FLATS.indexOf(note);
+    let startIndex;
+    if (sharpIndex !== -1) {
+      startIndex = sharpIndex;
+    } else if (flatIndex !== -1) {
+      startIndex = flatIndex;
+    } else {
+      return note;
+    }
+    let targetIndex = (startIndex + semitones) % 12;
+    if (targetIndex < 0) targetIndex += 12;
+    if (preference === "sharp") {
+      return this.SHARPS[targetIndex];
+    } else if (preference === "flat") {
+      return this.FLATS[targetIndex];
+    }
+    const sharpNote = this.SHARPS[targetIndex];
+    const flatNote = this.FLATS[targetIndex];
+    if (sharpNote === flatNote) return sharpNote;
+    return sharpNote;
+  }
+  /**
+   * Get enharmonic sharp equivalent of a flat note
+   * @private
+   */
+  static getEnharmonicSharp(flatNote) {
+    const enharmonics = {
+      "Db": "C#",
+      "Eb": "D#",
+      "Gb": "F#",
+      "Ab": "G#",
+      "Bb": "A#"
+    };
+    return enharmonics[flatNote] || flatNote;
+  }
+  /**
+   * Analyze the target key to determine sharp/flat preference
+   * @private
+   */
+  static analyzeTargetKey(chords, semitones) {
+    if (chords.length === 0) return "sharp";
+    const firstChord = chords[0];
+    const rootMatch = firstChord.match(/^([A-G][#b]?)/);
+    if (!rootMatch) return "sharp";
+    const originalRoot = rootMatch[1];
+    const isMinor = firstChord.match(/^[A-G][#b]?m(?!aj)/);
+    const targetRoot = this.transposeNote(originalRoot, semitones, void 0);
+    let targetKey = targetRoot;
+    if (isMinor) {
+      const minorKey = targetRoot + "m";
+      targetKey = this.RELATIVE_MAJORS[minorKey] || targetRoot;
+    }
+    if (this.SHARP_KEYS.has(targetKey)) {
+      return "sharp";
+    } else if (this.FLAT_KEYS.has(targetKey)) {
+      return "flat";
+    }
+    const sharpCount = chords.filter((c) => c.includes("#")).length;
+    const flatCount = chords.filter((c) => c.includes("b")).length;
+    return flatCount > sharpCount ? "flat" : "sharp";
+  }
+};
+// Chromatic scales
+__publicField(Transposer, "SHARPS", ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
+__publicField(Transposer, "FLATS", ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]);
+// Circle of fifths - major keys preferring sharps
+__publicField(Transposer, "SHARP_KEYS", /* @__PURE__ */ new Set(["C", "G", "D", "A", "E", "B", "F#", "C#"]));
+// Circle of fifths - major keys preferring flats  
+__publicField(Transposer, "FLAT_KEYS", /* @__PURE__ */ new Set(["F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"]));
+// Minor keys and their relative majors
+__publicField(Transposer, "RELATIVE_MAJORS", {
+  "Am": "C",
+  "Em": "G",
+  "Bm": "D",
+  "F#m": "A",
+  "C#m": "E",
+  "G#m": "B",
+  "D#m": "F#",
+  "Dm": "F",
+  "Gm": "Bb",
+  "Cm": "Eb",
+  "Fm": "Ab",
+  "Bbm": "Db",
+  "Ebm": "Gb"
+});
+
 // src/parser/ChordGridParser.ts
 var _ChordGridParser = class _ChordGridParser {
   /**
@@ -183,6 +319,8 @@ var _ChordGridParser = class _ChordGridParser {
     let fingerMode = void 0;
     let measuresPerLine = void 0;
     let measureNumbering = void 0;
+    let transposeSettings = void 0;
+    let countingMode = void 0;
     let lineIndex = 0;
     while (lineIndex < lines.length) {
       let line = lines[lineIndex].trim();
@@ -237,6 +375,22 @@ var _ChordGridParser = class _ChordGridParser {
           enabled: true
         };
         line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const transposeMatch = /transpose:\s*([+-]\d+)(?:\s*,\s*([#b]))?/i.exec(line);
+      if (transposeMatch) {
+        const semitones = parseInt(transposeMatch[1], 10);
+        const accidental = transposeMatch[2];
+        transposeSettings = {
+          semitones,
+          accidental
+        };
+        line = line.replace(/transpose:\s*[+-]\d+(?:\s*,\s*[#b])?\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/\b(count|counting)\b/i.test(line)) {
+        countingMode = true;
+        line = line.replace(/\b(count|counting)\b\s*/i, "");
         hasAnyDirective = true;
       }
       line = line.trim();
@@ -381,7 +535,39 @@ var _ChordGridParser = class _ChordGridParser {
         }
       }
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering };
+    if (transposeSettings) {
+      this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
+    }
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode };
+  }
+  applyTransposition(measures, semitones, forceAccidental) {
+    const allChords = [];
+    const chordToSegments = /* @__PURE__ */ new Map();
+    for (const measure of measures) {
+      if (measure.chordSegments) {
+        for (const segment of measure.chordSegments) {
+          if (segment.chord && segment.chord.trim() !== "") {
+            if (segment.chord === "%" || segment.chord === "[%]") continue;
+            if (!chordToSegments.has(segment.chord)) {
+              allChords.push(segment.chord);
+              chordToSegments.set(segment.chord, []);
+            }
+            chordToSegments.get(segment.chord).push(segment);
+          }
+        }
+      }
+    }
+    if (allChords.length > 0) {
+      const transposedChords = Transposer.transposeChords(allChords, semitones, forceAccidental);
+      for (let i = 0; i < allChords.length; i++) {
+        const segments = chordToSegments.get(allChords[i]);
+        if (segments) {
+          for (const segment of segments) {
+            segment.chord = transposedChords[i];
+          }
+        }
+      }
+    }
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -554,6 +740,7 @@ var _ChordGridParser = class _ChordGridParser {
           continue;
         }
         const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar, t.repeatCount);
+        clonedMeasure.source = "%";
         if (pendingStartBarline === "||:") {
           clonedMeasure.isRepeatStart = true;
           pendingStartBarline = null;
@@ -1430,6 +1617,22 @@ var NOTATION = {
   PATTERN_MARGIN: 7,
   /** Note head half height for pattern positioning (px) */
   PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
+  /** Counting number font size for tall (beat starts) (px) */
+  COUNTING_FONT_SIZE_TALL: 14,
+  /** Counting number font size for medium (subdivisions) (px) */
+  COUNTING_FONT_SIZE_MEDIUM: 12,
+  /** Counting number font size for small (rests) (px) */
+  COUNTING_FONT_SIZE_SMALL: 11,
+  /** Distance from note head to counting number (px) */
+  COUNTING_MARGIN: 10,
+  /** Font weight for tall counting numbers */
+  COUNTING_FONT_WEIGHT_TALL: "normal",
+  /** Font weight for medium/small counting numbers */
+  COUNTING_FONT_WEIGHT_NORMAL: "normal",
+  /** Color for rest counting numbers (gray) */
+  COUNTING_COLOR_REST: "#777",
+  /** Color for normal counting numbers (black) */
+  COUNTING_COLOR_NORMAL: "#000",
   /** Measure number font size (px) @plannedFor v2.3 */
   MEASURE_NUMBER_FONT_SIZE: 14,
   /** Measure number X offset from left barline (px) @plannedFor v2.3 */
@@ -1557,8 +1760,9 @@ var RestRenderer = class {
    * @param note - Note marked as rest (isRest=true)
    * @param x - X position of the rest
    * @param y - Reference Y position (staff line)
+   * @param stemsDirection - Stem direction ('up' or 'down'), affects vertical positioning
    */
-  drawRest(svg, note, x, y) {
+  drawRest(svg, note, x, y, stemsDirection = "up") {
     if (note.value === 1) {
       this.drawWholeRest(svg, x, y, note.dotted);
       this.registerRestBBox(x, y, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
@@ -1566,16 +1770,16 @@ var RestRenderer = class {
       this.drawHalfRest(svg, x, y, note.dotted);
       this.registerRestBBox(x, y - 4, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 4) {
-      this.drawQuarterRest(svg, x, y, note.dotted);
+      this.drawQuarterRest(svg, x, y, note.dotted, stemsDirection);
       this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_EIGHTH, SEGMENT_WIDTH.REST_WIDTH_QUARTER, NOTATION.REST_HEIGHT_EIGHTH, note);
     } else if (note.value === 8) {
-      this.drawEighthRest(svg, x, y, note.dotted);
+      this.drawEighthRest(svg, x, y, note.dotted, stemsDirection);
       this.registerRestBBox(x, y - 18, SEGMENT_WIDTH.REST_WIDTH_QUARTER, 18, note);
     } else if (note.value === 16) {
-      this.drawSixteenthRest(svg, x, y, note.dotted);
+      this.drawSixteenthRest(svg, x, y, note.dotted, stemsDirection);
       this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTEENTH, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_SIXTEENTH, note);
     } else if (note.value === 32) {
-      this.drawThirtySecondRest(svg, x, y, note.dotted);
+      this.drawThirtySecondRest(svg, x, y, note.dotted, stemsDirection);
       this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_THIRTY_SECOND, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_THIRTY_SECOND, note);
     } else if (note.value === 64) {
       this.drawSixtyFourthRest(svg, x, y, note.dotted);
@@ -1616,13 +1820,14 @@ var RestRenderer = class {
       this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y - 2);
     }
   }
-  drawQuarterRest(svg, x, y, dotted) {
+  drawQuarterRest(svg, x, y, dotted, stemsDirection = "up") {
     const SYMBOL_HEIGHT = 12;
     const SCALE = NOTATION.REST_HEIGHT_EIGHTH / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 512;
     const SYMBOL_CENTER_Y = 75;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 512.254,71.019 c -0.137,0.058 -0.219,0.258 -0.156,0.398 0.019,0.02 0.218,0.258 0.418,0.52 0.457,0.515 0.535,0.637 0.636,0.875 0.399,0.816 0.18,1.855 -0.519,2.512 -0.059,0.078 -0.317,0.296 -0.559,0.476 -0.695,0.598 -1.015,0.938 -1.133,1.238 -0.043,0.079 -0.043,0.157 -0.043,0.278 -0.019,0.277 0,0.301 0.821,1.254 1.113,1.336 1.91,2.273 1.972,2.332 l 0.059,0.058 -0.078,-0.039 c -1.098,-0.457 -2.332,-0.676 -2.75,-0.476 -0.141,0.058 -0.223,0.14 -0.281,0.277 -0.161,0.34 -0.118,0.84 0.121,1.574 0.218,0.66 0.656,1.535 1.093,2.192 0.18,0.281 0.52,0.718 0.559,0.738 0.059,0.059 0.141,0.039 0.199,0 0.059,-0.078 0.059,-0.141 -0.058,-0.277 -0.418,-0.598 -0.617,-1.836 -0.379,-2.493 0.097,-0.296 0.219,-0.457 0.437,-0.558 0.578,-0.258 1.856,0.062 2.391,0.597 0.039,0.04 0.121,0.122 0.16,0.141 0.141,0.059 0.34,-0.019 0.399,-0.16 0.082,-0.141 0.039,-0.238 -0.141,-0.457 -0.336,-0.399 -1.352,-1.594 -1.492,-1.774 -0.36,-0.418 -0.52,-0.816 -0.559,-1.316 -0.019,-0.637 0.238,-1.312 0.719,-1.754 0.058,-0.078 0.316,-0.297 0.555,-0.476 0.738,-0.618 1.039,-0.957 1.156,-1.278 0.082,-0.258 0.043,-0.496 -0.137,-0.715 -0.062,-0.058 -0.758,-0.918 -1.574,-1.894 -1.117,-1.313 -1.516,-1.793 -1.574,-1.813 -0.082,-0.019 -0.18,-0.019 -0.262,0.02 z");
     path.setAttribute("fill", VISUAL.COLOR_BLACK);
@@ -1630,14 +1835,15 @@ var RestRenderer = class {
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 12, y - 4);
   }
-  drawEighthRest(svg, x, y, dotted) {
+  drawEighthRest(svg, x, y, dotted, stemsDirection = "up") {
     const TARGET_HEIGHT = 18;
     const SYMBOL_HEIGHT = 9;
     const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 531;
     const SYMBOL_CENTER_Y = 78;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 531.098,74.847 c -0.52,0.098 -0.918,0.457 -1.098,0.953 -0.039,0.16 -0.039,0.199 -0.039,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.094,0.836 0.5,0.141 1.336,0.02 2.293,-0.297 l 0.238,-0.082 -1.176,3.25 -1.156,3.246 c 0,0 0.039,0.02 0.102,0.063 0.117,0.078 0.316,0.137 0.457,0.137 0.238,0 0.539,-0.137 0.578,-0.258 0,-0.039 0.558,-1.934 1.234,-4.184 l 1.195,-4.125 -0.039,-0.058 c -0.097,-0.121 -0.296,-0.16 -0.418,-0.063 -0.039,0.039 -0.101,0.121 -0.14,0.18 -0.18,0.301 -0.637,0.836 -0.875,1.035 -0.219,0.18 -0.34,0.199 -0.539,0.121 -0.18,-0.098 -0.239,-0.199 -0.36,-0.738 -0.117,-0.535 -0.257,-0.778 -0.558,-0.977 -0.278,-0.179 -0.637,-0.238 -0.953,-0.156 z");
     path.setAttribute("fill", "#000000");
@@ -1645,14 +1851,15 @@ var RestRenderer = class {
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
-  drawSixteenthRest(svg, x, y, dotted) {
+  drawSixteenthRest(svg, x, y, dotted, stemsDirection = "up") {
     const TARGET_HEIGHT = 24;
     const SYMBOL_HEIGHT = 14.5;
     const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 544;
     const SYMBOL_CENTER_Y = 81;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 544.191,74.847 c -0.519,0.098 -0.918,0.457 -1.093,0.953 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.098,0.836 0.496,0.141 1.292,0.039 2.25,-0.277 0.14,-0.059 0.257,-0.102 0.257,-0.082 0,0.023 -0.894,2.93 -0.933,3.031 -0.102,0.258 -0.442,0.735 -0.739,1.035 -0.277,0.278 -0.418,0.34 -0.636,0.239 -0.18,-0.098 -0.239,-0.2 -0.36,-0.739 -0.101,-0.398 -0.179,-0.617 -0.339,-0.773 -0.418,-0.461 -1.137,-0.52 -1.692,-0.16 -0.262,0.179 -0.461,0.457 -0.578,0.758 -0.043,0.156 -0.043,0.199 -0.043,0.417 0,0.297 0.023,0.458 0.16,0.696 0.199,0.398 0.617,0.719 1.098,0.836 0.219,0.062 0.777,0.062 1.156,0 0.316,-0.059 0.695,-0.157 1.074,-0.278 0.16,-0.058 0.301,-0.097 0.301,-0.078 0,0 -1.953,6.356 -1.992,6.453 0,0.02 0.156,0.141 0.316,0.18 0.16,0.063 0.321,0.063 0.481,0 0.156,-0.039 0.316,-0.137 0.316,-0.199 0.02,-0.02 0.817,-3.027 1.793,-6.676 l 1.774,-6.633 -0.039,-0.058 c -0.079,-0.121 -0.239,-0.141 -0.379,-0.082 -0.079,0.039 -0.079,0.039 -0.317,0.398 -0.199,0.32 -0.48,0.656 -0.64,0.816 -0.219,0.18 -0.336,0.219 -0.536,0.141 -0.179,-0.098 -0.242,-0.199 -0.359,-0.738 -0.121,-0.535 -0.262,-0.778 -0.559,-0.977 -0.277,-0.179 -0.636,-0.238 -0.957,-0.156 z");
     path.setAttribute("fill", "#000000");
@@ -1660,14 +1867,15 @@ var RestRenderer = class {
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
-  drawThirtySecondRest(svg, x, y, dotted) {
+  drawThirtySecondRest(svg, x, y, dotted, stemsDirection = "up") {
     const TARGET_HEIGHT = 28;
     const SYMBOL_HEIGHT = 21;
     const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 554;
     const SYMBOL_CENTER_Y = 76;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 553.789,69.863 c -0.516,0.101 -0.918,0.461 -1.094,0.957 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.218 0,0.3 0.043,0.418 0.137,0.441 0.418,0.777 0.856,0.976 0.297,0.16 0.437,0.18 0.855,0.18 0.52,0 0.957,-0.078 1.657,-0.297 0.179,-0.063 0.316,-0.102 0.316,-0.102 0.019,0 -0.16,0.7 -0.399,1.536 -0.296,1.175 -0.417,1.554 -0.457,1.671 -0.16,0.301 -0.5,0.758 -0.718,0.957 -0.2,0.18 -0.317,0.219 -0.516,0.141 -0.18,-0.098 -0.242,-0.199 -0.359,-0.738 -0.102,-0.399 -0.18,-0.617 -0.34,-0.778 -0.418,-0.457 -1.137,-0.515 -1.692,-0.156 -0.261,0.176 -0.46,0.457 -0.578,0.754 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.301 0.024,0.461 0.161,0.699 0.199,0.399 0.617,0.719 1.097,0.836 0.219,0.063 0.778,0.063 1.156,0 0.317,-0.058 0.696,-0.16 1.075,-0.277 0.179,-0.059 0.32,-0.102 0.32,-0.102 0,0.02 -0.797,3.051 -0.84,3.11 -0.156,0.34 -0.476,0.758 -0.715,0.996 -0.258,0.258 -0.398,0.301 -0.617,0.219 -0.18,-0.098 -0.242,-0.2 -0.359,-0.739 -0.102,-0.398 -0.18,-0.617 -0.34,-0.773 -0.418,-0.461 -1.137,-0.52 -1.692,-0.16 -0.261,0.179 -0.46,0.457 -0.578,0.758 -0.043,0.156 -0.043,0.199 -0.043,0.417 0,0.219 0,0.297 0.043,0.418 0.137,0.438 0.418,0.778 0.856,0.977 0.32,0.16 0.437,0.18 0.875,0.18 0.32,0 0.422,0 0.679,-0.043 0.36,-0.059 0.739,-0.176 1.157,-0.297 l 0.258,-0.102 v 0.063 c -0.02,0.078 -1.696,6.375 -1.715,6.414 -0.02,0.082 0.34,0.238 0.558,0.238 0.219,0 0.539,-0.137 0.559,-0.238 0.019,-0.02 0.976,-4.145 2.172,-9.164 2.133,-9.086 2.133,-9.106 2.094,-9.168 -0.063,-0.078 -0.161,-0.117 -0.282,-0.117 -0.14,0.019 -0.199,0.078 -0.34,0.316 -0.277,0.481 -0.597,0.898 -0.773,1.039 -0.121,0.078 -0.223,0.078 -0.379,0.02 -0.18,-0.102 -0.242,-0.2 -0.359,-0.739 -0.121,-0.539 -0.262,-0.777 -0.559,-0.976 -0.277,-0.18 -0.637,-0.238 -0.957,-0.16 z");
     path.setAttribute("fill", "#000000");
@@ -1824,7 +2032,7 @@ var NoteRenderer = class {
    */
   drawSingleNoteWithoutBeam(svg, nv, x, staffLineY, drawFlagsForIsolated = false) {
     if (nv.isRest) {
-      this.restRenderer.drawRest(svg, nv, x, staffLineY);
+      this.restRenderer.drawRest(svg, nv, x, staffLineY, this.stemsDirection);
       return {};
     }
     let stemInfo;
@@ -1906,8 +2114,20 @@ var NoteRenderer = class {
         noteX = notePositionsX[noteIndex];
       }
       if (nv.isRest) {
-        this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-        segmentNoteCursor[chordIndex]++;
+        this.restRenderer.drawRest(svg, nv, noteX, staffLineY, this.stemsDirection);
+        notePositions.push({
+          x: noteX,
+          y: staffLineY,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          noteIndex,
+          segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+          value: nv.value,
+          countingNumber: nv.countingNumber,
+          countingLabel: nv.countingLabel,
+          countingSize: nv.countingSize
+        });
         if (firstNoteX === null) firstNoteX = noteX;
         return;
       }
@@ -1947,7 +2167,10 @@ var NoteRenderer = class {
         globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
         stemTopY,
         stemBottomY,
-        value: nv.value
+        value: nv.value,
+        countingNumber: nv.countingNumber,
+        countingLabel: nv.countingLabel,
+        countingSize: nv.countingSize
       });
       if (this.placeAndSizeManager) {
         const noteHeadBBox = {
@@ -2300,6 +2523,7 @@ var MeasureRenderer = class {
    * @param grid - Complete grid (for time signature context, etc.)
    */
   drawMeasure(svg, measureIndex, notePositions, grid) {
+    var _a;
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
     if (this.measure.__isEmpty) {
@@ -2308,7 +2532,9 @@ var MeasureRenderer = class {
     }
     if (this.displayRepeatSymbol && this.measure.isRepeat) {
       const isChordOnly = this.measure.__isChordOnlyMode;
-      if (isChordOnly) {
+      const isSimpleRepeat = this.measure.source === "%";
+      const isBracketPercent = (_a = this.measure.source) == null ? void 0 : _a.includes("[%]");
+      if (isChordOnly || isSimpleRepeat || isBracketPercent) {
         this.drawChordOnlyRepeatMeasure(svg, measureIndex);
       } else {
         this.drawRhythmRepeatMeasure(svg, measureIndex);
@@ -2371,8 +2597,8 @@ var MeasureRenderer = class {
       return NOTE_SPACING.QUARTER_AND_LONGER;
     };
     const requiredBeatWidth = (beat) => {
-      var _a;
-      const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
+      var _a2;
+      const noteCount = ((_a2 = beat == null ? void 0 : beat.notes) == null ? void 0 : _a2.length) || 0;
       if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
       const spacing = Math.max(
         ...beat.notes.map((n) => {
@@ -2769,7 +2995,7 @@ var MeasureRenderer = class {
    */
   drawRepeatSymbol(svg) {
     const centerX = this.x + this.width / 2;
-    const centerY = this.y + POSITIONING.CHORD_ONLY_Y_CENTER;
+    const centerY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
     const targetHeight = 30;
     const originalHeight = 178;
     const originalWidth = 188;
@@ -4248,15 +4474,20 @@ var ChordRenderer = class {
     const displayRepeatSymbol = (_c = options.displayRepeatSymbol) != null ? _c : false;
     const STAFF_LINE_OFFSET = NOTATION.STAFF_LINE_Y_OFFSET;
     measurePositions.forEach((mp) => {
+      var _a2;
       if (!mp.x || !mp.y) return;
       const measure = mp.measure;
       const measureX = mp.x;
       const measureY = mp.y;
-      if (measure.__isChordOnlyMode) {
+      const isBracketPercent = displayRepeatSymbol && ((_a2 = measure.source) == null ? void 0 : _a2.includes("[%]"));
+      if (measure.__isChordOnlyMode || isBracketPercent) {
         this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager);
         return;
       }
       const staffLineY = measureY + STAFF_LINE_OFFSET;
+      if (displayRepeatSymbol && measure.isRepeat && measure.source === "%") {
+        return;
+      }
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
       segments.forEach((segment, segmentIndex) => {
         const chordSymbol = segment.chord;
@@ -4438,8 +4669,10 @@ var ChordRenderer = class {
    * @param placeAndSizeManager - Placement manager
    */
   renderChordOnlyMeasure(svg, measurePosition, placeAndSizeManager) {
+    var _a;
     const measure = measurePosition.measure;
-    if (measure.__hasRepeatSymbol) {
+    const isSimpleRepeat = measure.isRepeat && measure.source === "%";
+    if (isSimpleRepeat) {
       return;
     }
     const measureX = measurePosition.x;
@@ -4452,8 +4685,20 @@ var ChordRenderer = class {
       return;
     } else if (chordCount === 1) {
       const chord = segments[0].chord;
-      const chordX = measureX + measureWidth / 2;
-      const chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+      const isRepeatWithChord = (_a = measure.source) == null ? void 0 : _a.includes("[%]");
+      let chordX;
+      let chordY;
+      let textAnchor;
+      if (isRepeatWithChord) {
+        chordX = measureX + LAYOUT.BASE_LEFT_PADDING + 5;
+        const staffLineY = measureY + NOTATION.STAFF_LINE_Y_OFFSET;
+        chordY = staffLineY - POSITIONING.CHORD_VERTICAL_OFFSET;
+        textAnchor = "start";
+      } else {
+        chordX = measureX + measureWidth / 2;
+        chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+        textAnchor = "middle";
+      }
       const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
       this.renderChordSymbol(
         svg,
@@ -4461,7 +4706,7 @@ var ChordRenderer = class {
         chordX,
         chordY,
         fontSize,
-        "middle",
+        textAnchor,
         placeAndSizeManager,
         measureIndex,
         0
@@ -4786,6 +5031,111 @@ var StrumPatternRenderer = class {
   }
 };
 
+// src/renderer/CountingRenderer.ts
+var CountingRenderer = class {
+  /**
+   * Draw counting numbers on notes.
+   * 
+   * This method renders sequential counting numbers (1, 2, 3...) below or above
+   * note heads depending on stem direction. Numbers are styled according to their
+   * countingSize property:
+   * - 't' (tall): Bold, larger font - for beat starts
+   * - 'm' (medium): Normal weight, medium font - for subdivisions
+   * - 's' (small): Normal weight, small font, gray - for rests
+   * 
+   * Position logic:
+   * - Stems-up: numbers placed BELOW note head (default)
+   * - Stems-down: numbers placed ABOVE note head
+   * - Spacing: 5px from note head edge (closer than pick/finger symbols)
+   * 
+   * @param svg - Parent SVG element to append counting numbers to
+   * @param notePositions - Array of note positions with counting metadata
+   * @param stemsDirection - Global stem direction ('up' or 'down')
+   * @param allowedMeasureIndices - Optional filter to render only specific measures (line-based rendering)
+   * @param placeAndSizeManager - Optional collision detection manager for future enhancements
+   */
+  static drawCountingNumbers(svg, notePositions, stemsDirection, allowedMeasureIndices, placeAndSizeManager) {
+    const FONT_SIZE_TALL = NOTATION.COUNTING_FONT_SIZE_TALL;
+    const FONT_SIZE_MEDIUM = NOTATION.COUNTING_FONT_SIZE_MEDIUM;
+    const FONT_SIZE_SMALL = NOTATION.COUNTING_FONT_SIZE_SMALL;
+    const MARGIN = NOTATION.COUNTING_MARGIN;
+    const FONT_WEIGHT_TALL = NOTATION.COUNTING_FONT_WEIGHT_TALL;
+    const FONT_WEIGHT_NORMAL = NOTATION.COUNTING_FONT_WEIGHT_NORMAL;
+    const COLOR_REST = NOTATION.COUNTING_COLOR_REST;
+    const COLOR_NORMAL = NOTATION.COUNTING_COLOR_NORMAL;
+    const NOTE_HEAD_HALF_HEIGHT = NOTATION.PATTERN_NOTE_HEAD_HALF_HEIGHT;
+    notePositions.forEach((notePos) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(notePos.measureIndex)) {
+        return;
+      }
+      if (notePos.countingLabel === void 0 || notePos.countingSize === void 0) {
+        return;
+      }
+      if (notePos.countingLabel === "") {
+        return;
+      }
+      const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
+      const noteStemDirection = hasStem ? notePos.stemTopY < notePos.y ? "up" : "down" : stemsDirection;
+      const placeBelow = noteStemDirection === "up";
+      const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadEdgeY = placeBelow ? noteHeadBottom : noteHeadTop;
+      let fontSize;
+      let fontWeight;
+      let color;
+      switch (notePos.countingSize) {
+        case "t":
+          fontSize = FONT_SIZE_TALL;
+          fontWeight = FONT_WEIGHT_TALL;
+          color = COLOR_NORMAL;
+          break;
+        case "m":
+          fontSize = FONT_SIZE_MEDIUM;
+          fontWeight = FONT_WEIGHT_NORMAL;
+          color = COLOR_NORMAL;
+          break;
+        case "s":
+          fontSize = FONT_SIZE_SMALL;
+          fontWeight = FONT_WEIGHT_NORMAL;
+          color = COLOR_REST;
+          break;
+        default:
+          fontSize = FONT_SIZE_MEDIUM;
+          fontWeight = FONT_WEIGHT_NORMAL;
+          color = COLOR_NORMAL;
+      }
+      const textY = placeBelow ? noteHeadEdgeY + MARGIN + fontSize * 0.75 : noteHeadEdgeY - MARGIN;
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", notePos.x.toString());
+      text.setAttribute("y", textY.toString());
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("font-family", "Arial, sans-serif");
+      text.setAttribute("font-size", `${fontSize}px`);
+      text.setAttribute("font-weight", fontWeight);
+      text.setAttribute("fill", color);
+      text.setAttribute("data-counting", "true");
+      text.setAttribute("data-counting-size", notePos.countingSize);
+      text.textContent = notePos.countingLabel;
+      svg.appendChild(text);
+      if (placeAndSizeManager) {
+        const estimatedWidth = fontSize * 0.6 * notePos.countingLabel.length;
+        const bbox = {
+          x: notePos.x - estimatedWidth / 2,
+          y: placeBelow ? noteHeadEdgeY + MARGIN : textY - fontSize,
+          width: estimatedWidth,
+          height: fontSize
+        };
+        placeAndSizeManager.registerElement("counting", bbox, 6, {
+          label: notePos.countingLabel,
+          size: notePos.countingSize,
+          exactX: notePos.x,
+          exactY: textY
+        });
+      }
+    });
+  }
+};
+
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
   constructor() {
@@ -5077,12 +5427,19 @@ var SVGRenderer = class {
     const lines = renderLines.length;
     const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN;
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
-    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN;
+    const isStemDown = options.stemsDirection === "down";
+    let additionalBottomSpace = 0;
+    if (options.countingMode) {
+      additionalBottomSpace += NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+    }
+    if (options.fingerMode || options.pickStrokes) {
+      additionalBottomSpace += 15;
+    }
+    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN + additionalBottomSpace;
     const topMarginForChords = LAYOUT.TOP_MARGIN_FOR_CHORDS;
     const totalHeight = height + topMarginForChords;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
-    svg.setAttribute("height", totalHeight.toString());
     svg.setAttribute("viewBox", `0 ${-topMarginForChords} ${width} ${totalHeight}`);
     svg.setAttribute("xmlns", SVG_NS);
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
@@ -5235,10 +5592,14 @@ var SVGRenderer = class {
         }
       });
       const chordRenderer = new ChordRenderer();
+      let chordVerticalOffset = 40;
+      if (options.stemsDirection === "down" && options.countingMode && (options.pickStrokes || options.fingerMode)) {
+        chordVerticalOffset += 20;
+      }
       chordRenderer.renderChords(svg, lineMeasurePositions, placeAndSizeManager, {
         displayRepeatSymbol: options.displayRepeatSymbol,
         fontSize: 22,
-        verticalOffset: 40
+        verticalOffset: chordVerticalOffset
       });
       if (options.measureNumbering && lineIndex === 0) {
         this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber);
@@ -5252,6 +5613,9 @@ var SVGRenderer = class {
       this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
       this.drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices);
+      if (options.countingMode) {
+        CountingRenderer.drawCountingNumbers(svg, notePositions, stemsDirection, allowedMeasureIndices, placeAndSizeManager);
+      }
       const lineBarlines = placeAndSizeManager.getElements().filter((el) => {
         var _a, _b;
         return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0 && ((_b = el.metadata) == null ? void 0 : _b.measureIndex) !== void 0;
@@ -5880,7 +6244,12 @@ var SVGRenderer = class {
       const scale = TARGET_H / oh;
       const tw = ow * scale;
       const th = oh * scale;
-      const baseY = placeAbove ? noteHeadEdgeY - MARGIN - th : noteHeadEdgeY + MARGIN;
+      let countingOffset = 0;
+      if (options.countingMode) {
+        countingOffset = NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+      }
+      const effectiveMargin = placeAbove ? MARGIN : options.countingMode ? MARGIN - 2 : MARGIN;
+      const baseY = placeAbove ? noteHeadEdgeY - effectiveMargin - th - countingOffset : noteHeadEdgeY + effectiveMargin + countingOffset;
       const finalY = baseY + globalVerticalOffset;
       const finalX = anchorX - tw / 2;
       const translateX = finalX - origX * scale;
@@ -6022,7 +6391,12 @@ var SVGRenderer = class {
         letter = symbol;
         arrow = "";
       }
-      const textY = placeAbove ? noteHeadEdgeY - MARGIN : noteHeadEdgeY + MARGIN + ARROW_FONT_SIZE;
+      let countingOffset = 0;
+      if (options.countingMode) {
+        countingOffset = NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+      }
+      const effectiveMargin = placeAbove ? MARGIN : -5;
+      const textY = placeAbove ? noteHeadEdgeY - effectiveMargin - countingOffset : noteHeadEdgeY + effectiveMargin + ARROW_FONT_SIZE + countingOffset;
       const letterWidth = LETTER_FONT_SIZE * 0.6;
       const spacing = 1;
       const letterX = notePos.x - letterWidth / 2 - spacing / 2;
@@ -6110,6 +6484,151 @@ var SVGRenderer = class {
   }
 };
 
+// src/analyzer/CountingAnalyzer.ts
+var CountingAnalyzer = class {
+  /**
+   * Analyze and annotate all notes with counting information.
+   * 
+   * @param measures - All measures in the grid
+   * @param timeSignature - Time signature (e.g., { beats: 4, beatValue: 4 })
+   */
+  static analyzeCounting(measures, timeSignature) {
+    measures.forEach((measure) => {
+      this.analyzeMeasure(measure, timeSignature);
+    });
+  }
+  /**
+   * Analyze a single measure and assign counting to its notes.
+   * Counting restarts at 1 for each measure.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   */
+  static analyzeMeasure(measure, timeSignature) {
+    const segments = measure.chordSegments || [];
+    if (segments.length === 0) return;
+    const beats = this.groupNotesByBeats(measure, timeSignature);
+    beats.forEach((beat, beatIndex) => {
+      const beatNumber = beatIndex + 1;
+      this.assignCountingToBeat(beat, beatNumber, timeSignature);
+    });
+  }
+  /**
+   * Group all notes in a measure by their beats.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   * @returns Array of beats, each containing notes and metadata
+   */
+  static groupNotesByBeats(measure, timeSignature) {
+    const segments = measure.chordSegments || [];
+    const beats = [];
+    const subdivisionUnit = this.findSmallestNoteValue(measure);
+    const subdivisionsPerBeat = subdivisionUnit / timeSignature.beatUnit;
+    let currentSubdivision = 0;
+    segments.forEach((segment) => {
+      segment.beats.forEach((beat) => {
+        beat.notes.forEach((note) => {
+          const beatIndex = Math.floor(currentSubdivision / subdivisionsPerBeat);
+          if (!beats[beatIndex]) {
+            beats[beatIndex] = {
+              notes: [],
+              startSubdivision: beatIndex * subdivisionsPerBeat,
+              hasSmallestValue: 4
+            };
+          }
+          beats[beatIndex].notes.push(note);
+          if (note.value > beats[beatIndex].hasSmallestValue) {
+            beats[beatIndex].hasSmallestValue = note.value;
+          }
+          const noteSubdivisions = this.calculateNoteSubdivisions(note, timeSignature.beatUnit, subdivisionUnit);
+          currentSubdivision += noteSubdivisions;
+        });
+      });
+    });
+    return beats;
+  }
+  /**
+   * Assign counting labels to all notes in a beat.
+   * 
+   * @param beat - Beat information
+   * @param beatNumber - Beat number (1, 2, 3, 4...)
+   * @param timeSignature - Time signature
+   */
+  static assignCountingToBeat(beat, beatNumber, timeSignature) {
+    const smallestInBeat = beat.hasSmallestValue;
+    let useAndNotation = false;
+    let useNumericSubdivision = false;
+    if (smallestInBeat <= 8 && smallestInBeat > 4) {
+      useAndNotation = true;
+    } else if (smallestInBeat > 8) {
+      useNumericSubdivision = true;
+    }
+    let subdivisionCounter = 1;
+    beat.notes.forEach((note, index) => {
+      if (index === 0) {
+        note.countingNumber = beatNumber;
+        note.countingLabel = beatNumber.toString();
+        note.countingSize = note.isRest ? "s" : "t";
+      } else {
+        if (useAndNotation) {
+          note.countingLabel = "&";
+          note.countingNumber = void 0;
+        } else if (useNumericSubdivision) {
+          subdivisionCounter++;
+          note.countingLabel = subdivisionCounter.toString();
+          note.countingNumber = subdivisionCounter;
+        } else {
+          note.countingLabel = "";
+          note.countingNumber = void 0;
+        }
+        note.countingSize = note.isRest ? "s" : "m";
+      }
+    });
+  }
+  /**
+   * Find the smallest note value in a measure.
+   * 
+   * @param measure - Measure to analyze
+   * @returns Smallest note value (e.g., 8 for eighth notes, 16 for sixteenth notes)
+   */
+  static findSmallestNoteValue(measure) {
+    var _a;
+    let smallest = 4;
+    (_a = measure.chordSegments) == null ? void 0 : _a.forEach((segment) => {
+      segment.beats.forEach((beat) => {
+        beat.notes.forEach((note) => {
+          if (note.value > smallest) {
+            smallest = note.value;
+          }
+        });
+      });
+    });
+    return smallest;
+  }
+  /**
+   * Calculate how many subdivisions a note occupies.
+   * 
+   * @param note - Note element
+   * @param beatValue - Beat value from time signature (denominator)
+   * @param subdivisionUnit - Smallest note value in measure
+   * @returns Number of subdivisions this note occupies
+   * 
+   * @example
+   * // In 4/4 with 16th notes (subdivisionUnit=16):
+   * // Quarter note (4): 16/4 = 4 subdivisions
+   * // Eighth note (8): 16/8 = 2 subdivisions
+   * // Sixteenth note (16): 16/16 = 1 subdivision
+   */
+  static calculateNoteSubdivisions(note, beatValue, subdivisionUnit) {
+    let subdivisions = subdivisionUnit / note.value;
+    if (note.dotted) {
+      subdivisions *= 1.5;
+    }
+    return Math.round(subdivisions);
+  }
+};
+
 // main.ts
 var ChordGridPlugin = class extends import_obsidian.Plugin {
   /**
@@ -6138,6 +6657,9 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             const pre = el.createEl("pre", { cls: "chord-grid-error" });
             pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
           }
+          if (result.countingMode) {
+            CountingAnalyzer.analyzeCounting(result.measures, result.grid.timeSignature);
+          }
           const renderer = new SVGRenderer();
           const svg = renderer.render(grid, {
             stemsDirection: result.stemsDirection,
@@ -6145,7 +6667,8 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             pickStrokes: result.pickMode,
             fingerMode: result.fingerMode,
             measuresPerLine: result.measuresPerLine,
-            measureNumbering: result.measureNumbering
+            measureNumbering: result.measureNumbering,
+            countingMode: result.countingMode
           });
           el.appendChild(svg);
         } catch (err) {

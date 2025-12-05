@@ -36,6 +36,9 @@ export interface NotePosition {
     stemTopY?: number;
     stemBottomY?: number;
     value?: number;
+    countingNumber?: number;
+    countingLabel?: string;
+    countingSize?: 't' | 'm' | 's';
 }
 
 /**
@@ -202,7 +205,7 @@ export class NoteRenderer {
     ): { stemTopY?: number; stemBottomY?: number; stemX?: number } {
         // Silences gérés par RestRenderer
         if (nv.isRest) {
-            this.restRenderer.drawRest(svg, nv, x, staffLineY);
+            this.restRenderer.drawRest(svg, nv, x, staffLineY, this.stemsDirection);
             return {};
         }
 
@@ -325,8 +328,23 @@ export class NoteRenderer {
 
             // Silences
             if (nv.isRest) {
-                this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-                segmentNoteCursor[chordIndex]++;
+                this.restRenderer.drawRest(svg, nv, noteX, staffLineY, this.stemsDirection);
+                
+                // Enregistrer la position du silence pour le système de counting
+                notePositions.push({
+                    x: noteX,
+                    y: staffLineY,
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    noteIndex,
+                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+                    value: nv.value,
+                    countingNumber: nv.countingNumber,
+                    countingLabel: nv.countingLabel,
+                    countingSize: nv.countingSize
+                });
+                
                 if (firstNoteX === null) firstNoteX = noteX;
                 return;
             }
@@ -374,7 +392,10 @@ export class NoteRenderer {
                 globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
                 stemTopY,
                 stemBottomY,
-                value: nv.value
+                value: nv.value,
+                countingNumber: nv.countingNumber,
+                countingLabel: nv.countingLabel,
+                countingSize: nv.countingSize
             });
 
             // Enregistrement dans PlaceAndSizeManager

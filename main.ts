@@ -28,6 +28,7 @@
 import { Plugin } from 'obsidian';
 import { ChordGridParser } from './src/parser/ChordGridParser';
 import { SVGRenderer } from './src/renderer/SVGRenderer';
+import { CountingAnalyzer } from './src/analyzer/CountingAnalyzer';
 // DebugLogger removed for user release
 
 /**
@@ -71,6 +72,11 @@ export default class ChordGridPlugin extends Plugin {
             pre.setText('Rhythm validation errors:\n' + result.errors.map(e => e.message).join('\n'));
           }
 
+          // Apply counting analysis if counting mode is enabled
+          if (result.countingMode) {
+            CountingAnalyzer.analyzeCounting(result.measures, result.grid.timeSignature);
+          }
+
           // DebugLogger removed
           const renderer = new SVGRenderer();
           const svg = renderer.render(grid, {
@@ -79,7 +85,8 @@ export default class ChordGridPlugin extends Plugin {
             pickStrokes: result.pickMode,
             fingerMode: result.fingerMode,
             measuresPerLine: result.measuresPerLine,
-            measureNumbering: result.measureNumbering
+            measureNumbering: result.measureNumbering,
+            countingMode: result.countingMode
           });
           el.appendChild(svg);
         } catch (err) {
