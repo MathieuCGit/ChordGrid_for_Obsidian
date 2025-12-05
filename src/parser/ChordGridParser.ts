@@ -130,6 +130,7 @@ export class ChordGridParser {
     let fingerMode: 'en' | 'fr' | undefined = undefined;
     let measuresPerLine: number | undefined = undefined;
     let measureNumbering: { startNumber: number, interval: number, enabled: boolean } | undefined = undefined;
+    let transposeSettings: { semitones: number, accidental?: '#' | 'b' } | undefined = undefined;
     
     // Scan initial lines for directives (stop when we find time signature or barline)
     let lineIndex = 0;
@@ -209,6 +210,22 @@ export class ChordGridParser {
         };
         
         line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for transpose directive
+      // Syntax: transpose: +N or transpose: -N or transpose: +N, # or transpose: -N, b
+      const transposeMatch = /transpose:\s*([+-]\d+)(?:\s*,\s*([#b]))?/i.exec(line);
+      if (transposeMatch) {
+        const semitones = parseInt(transposeMatch[1], 10);
+        const accidental = transposeMatch[2] as '#' | 'b' | undefined;
+        
+        transposeSettings = {
+          semitones,
+          accidental
+        };
+        
+        line = line.replace(/transpose:\s*[+-]\d+(?:\s*,\s*[#b])?\s*/i, '');
         hasAnyDirective = true;
       }
       
@@ -462,11 +479,46 @@ export class ChordGridParser {
       }
       // Chord-only measures (e.g., "Dm", "C / G", or "%" copying a chord-only measure) 
       // are implicitly valid and don't need rhythm validation
+
+    }
+    // End of for loop over all measures
+    if (transposeSettings) {
+      this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
 
-  return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering };
   }
 
+
+  private applyTransposition(measures: Measure[], semitones: number, forceAccidental?: '#' | 'b'): void {
+    const allChords: string[] = [];
+    const chordToSegments: Map<string, ChordSegment[]> = new Map();
+    for (const measure of measures) {
+      if (measure.chordSegments) {
+        for (const segment of measure.chordSegments) {
+          if (segment.chord && segment.chord.trim() !== '') {
+            if (segment.chord === '%' || segment.chord === '[%]') continue;
+            if (!chordToSegments.has(segment.chord)) {
+              allChords.push(segment.chord);
+              chordToSegments.set(segment.chord, []);
+            }
+            chordToSegments.get(segment.chord)!.push(segment);
+          }
+        }
+      }
+    }
+    if (allChords.length > 0) {
+      const transposedChords = Transposer.transposeChords(allChords, semitones, forceAccidental);
+      for (let i = 0; i < allChords.length; i++) {
+        const segments = chordToSegments.get(allChords[i]);
+        if (segments) {
+          for (const segment of segments) {
+            segment.chord = transposedChords[i];
+          }
+        }
+      }
+    }
+  }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
    * This ignores any beam grouping and only preserves the raw note sequence per chord segment.
@@ -1649,6 +1701,7 @@ class BeamAndTieAnalyzer {
 
   // ...existing code...
 }
+import { Transposer } from '../utils/Transposer';
 import {
   NoteValue,
   NoteElement,
