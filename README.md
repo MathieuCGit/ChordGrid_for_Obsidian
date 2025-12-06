@@ -53,7 +53,8 @@ Create a code block with the `chordgrid` language:
 ````
 
 **Result:**
-![Simple chord progression example](https://github.com/user-attachments/assets/c876d0c9-e121-44d9-92e0-6baddd0433c5)
+<img width="782" height="115" alt="image" src="https://github.com/user-attachments/assets/6e05c00d-42fa-4fac-9ba0-02aa2fe1ff98" />
+
 
 That's it! You just created your first chord chart. 🎉
 
