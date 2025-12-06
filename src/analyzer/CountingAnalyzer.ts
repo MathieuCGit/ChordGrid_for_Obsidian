@@ -1,22 +1,25 @@
 /**
  * @file CountingAnalyzer.ts
- * @description Analyzer for pedagogical beat counting.
+ * @description Analyzer for pedagogical beat counting with hybrid approach.
  * 
  * This analyzer assigns counting numbers and sizes to each note for pedagogical display:
  * - Counting restarts at 1 for each measure
- * - Beat numbers are shown in tall (t) size
- * - Subdivisions use '&' for eighth notes or '2 3 4' for sixteenth notes and smaller
- * - Size 't' (Tall) for beat starts (notes only)
- * - Size 'm' (Medium) for subdivisions within beats (notes only)
- * - Size 's' (Small) for all rests (regardless of position)
+ * - Numbering based on metric unit (noires in 4/4, croches in 5/8)
+ * - First note of beat = (t) tall, except tieEnd = (s) small
+ * - Subdivisions = (m) medium, using & for eighths or position numbers for smaller
+ * 
+ * Hybrid approach:
+ * - Regular meters with equal beats → mathematical grouping (backward compatible)
+ * - Irregular meters (5/8, 7/8) → user-defined beats (respects spaces)
+ * - Regular meters with unequal beat durations → user-defined beats
  */
 
-import { Measure, NoteElement, TimeSignature } from '../parser/type';
+import { Measure, NoteElement, TimeSignature, Beat } from '../parser/type';
 
 interface BeatInfo {
   notes: NoteElement[];
   startSubdivision: number;
-  hasSmallestValue: number; // Smallest note value in this beat
+  hasSmallestValue: number;
 }
 
 export class CountingAnalyzer {
@@ -46,12 +49,198 @@ export class CountingAnalyzer {
     const segments = measure.chordSegments || [];
     if (segments.length === 0) return;
 
-    // Step 1: Group notes by beats
+    // Decide which approach to use: user-defined beats or mathematical grouping
+    if (this.shouldUseUserDefinedBeats(measure, timeSignature)) {
+      this.analyzeWithUserDefinedBeats(measure, timeSignature);
+    } else {
+      this.analyzeWithMathematicalBeats(measure, timeSignature);
+    }
+  }
+
+  /**
+   * Determine if we should use user-defined beats (spaces) or mathematical grouping.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   * @returns true if user-defined beats should be used
+   */
+  private static shouldUseUserDefinedBeats(
+    measure: Measure,
+    timeSignature: TimeSignature
+  ): boolean {
+    // Always use user-defined beats for irregular meters
+    if (this.isIrregularMeter(timeSignature)) {
+      return true;
+    }
+
+    // Check if beats have unequal durations
+    return this.hasUnequalBeatDurations(measure, timeSignature);
+  }
+
+  /**
+   * Check if time signature is irregular (not standard binary/ternary).
+   * 
+   * @param timeSignature - Time signature
+   * @returns true if irregular (5/8, 7/8, 11/8, etc.)
+   */
+  private static isIrregularMeter(timeSignature: TimeSignature): boolean {
+    const { numerator, denominator } = timeSignature;
+    
+    // Binary meters: denominators <= 4
+    if (denominator <= 4) {
+      return false; // Regular binary
+    }
+    
+    // Ternary meters: denominators >= 8 with numerators 3, 6, 9, 12
+    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+      return false; // Regular ternary
+    }
+    
+    // Everything else is irregular
+    return true;
+  }
+
+  /**
+   * Check if the measure has beats with unequal durations.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   * @returns true if beats have different durations
+   */
+  private static hasUnequalBeatDurations(
+    measure: Measure,
+    timeSignature: TimeSignature
+  ): boolean {
+    const segments = measure.chordSegments || [];
+    const beatDurations: number[] = [];
+    
+    segments.forEach(segment => {
+      segment.beats.forEach(beat => {
+        const duration = this.calculateBeatDurationInSubdivisions(beat, timeSignature);
+        beatDurations.push(duration);
+      });
+    });
+    
+    if (beatDurations.length <= 1) {
+      return false;
+    }
+    
+    // Check if all durations are equal (within tolerance)
+    const firstDuration = beatDurations[0];
+    const hasUnequal = beatDurations.some(d => Math.abs(d - firstDuration) > 0.01);
+    
+    return hasUnequal;
+  }
+
+  /**
+   * Calculate beat duration in smallest subdivision units.
+   * 
+   * @param beat - Beat to measure
+   * @param timeSignature - Time signature
+   * @returns Duration in subdivision units
+   */
+  private static calculateBeatDurationInSubdivisions(
+    beat: Beat,
+    timeSignature: TimeSignature
+  ): number {
+    const subdivisionUnit = 16; // Use sixteenth notes as subdivision unit
+    let totalDuration = 0;
+    
+    beat.notes.forEach(note => {
+      let duration = subdivisionUnit / note.value;
+      if (note.dotted) {
+        duration *= 1.5;
+      }
+      totalDuration += duration;
+    });
+    
+    return totalDuration;
+  }
+
+  /**
+   * Analyze measure using user-defined beats (respects spaces).
+   * Counts based on metric unit position (noires in 4/4, croches in 5/8).
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   */
+  private static analyzeWithUserDefinedBeats(
+    measure: Measure,
+    timeSignature: TimeSignature
+  ): void {
+    const segments = measure.chordSegments || [];
+    const metricUnit = timeSignature.denominator; // 4 for 4/4, 8 for 5/8
+    const subdivisionUnit = 16; // Use sixteenth notes for position calculation
+    const subdivisionsPerMetricUnit = subdivisionUnit / metricUnit; // 4 for 4/4, 2 for 5/8
+    
+    let measureSubdivisionPosition = 0; // Absolute position in measure (in sixteenths)
+    let currentMetricUnitSubdivisionStart = 0; // Start position of current metric unit
+    
+    segments.forEach(segment => {
+      segment.beats.forEach(beat => {
+        // Calculate smallest note value in this beat
+        const smallestValue = Math.max(...beat.notes.map(n => n.value));
+        const useAndNotation = smallestValue === 8 && beat.notes.every(n => n.value <= 8 && !n.isRest);
+        
+        beat.notes.forEach((note, noteIndex) => {
+          const isFirstNoteOfBeat = noteIndex === 0;
+          
+          // Calculate which metric unit this note falls into
+          const metricNumber = Math.floor(measureSubdivisionPosition / subdivisionsPerMetricUnit) + 1;
+          
+          // Check if this note starts on a metric unit boundary
+          const isOnMetricBoundary = measureSubdivisionPosition % subdivisionsPerMetricUnit === 0;
+          
+          // Position within current metric unit
+          const positionInMetricUnit = measureSubdivisionPosition - currentMetricUnitSubdivisionStart + 1;
+          
+          if (isOnMetricBoundary) {
+            // On metric boundary: show metric number
+            note.countingLabel = metricNumber.toString();
+            note.countingSize = note.tieEnd ? 's' : 't'; // Always tall on metric boundary (unless tied)
+            
+            // Update the start of the current metric unit
+            currentMetricUnitSubdivisionStart = measureSubdivisionPosition;
+          } else {
+            // Subdivision within metric unit
+            if (useAndNotation && positionInMetricUnit === (subdivisionsPerMetricUnit / 2) + 1) {
+              // Use & notation for eighth subdivisions (middle of metric unit)
+              note.countingLabel = '&';
+              note.countingSize = note.isRest ? 's' : 'm';
+            } else {
+              // Use position number within metric unit (1-indexed)
+              note.countingLabel = positionInMetricUnit.toString();
+              note.countingSize = note.isRest ? 's' : 'm'; // Subdivisions always medium
+            }
+          }
+          
+          // Calculate note duration in sixteenths
+          let noteDuration = subdivisionUnit / note.value;
+          if (note.dotted) {
+            noteDuration *= 1.5;
+          }
+          
+          measureSubdivisionPosition += noteDuration;
+        });
+      });
+    });
+  }
+
+  /**
+   * Analyze measure using mathematical beat grouping (backward compatible).
+   * Groups notes into beats based on time signature.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   */
+  private static analyzeWithMathematicalBeats(
+    measure: Measure,
+    timeSignature: TimeSignature
+  ): void {
     const beats = this.groupNotesByBeats(measure, timeSignature);
     
-    // Step 2: Assign counting labels to each beat
     beats.forEach((beat, beatIndex) => {
-      const beatNumber = beatIndex + 1; // Beat numbers: 1, 2, 3, 4...
+      const beatNumber = beatIndex + 1;
       this.assignCountingToBeat(beat, beatNumber, timeSignature);
     });
   }
