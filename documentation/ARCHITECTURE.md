@@ -30,9 +30,10 @@ ChordGrid_for_Obsidian/
 │   ├── GROUPING_CONVENTIONS.md      # Binary/ternary grouping
 │   └── release_notes_v2.1.0.md      # Release notes
 ├── src/
-│   ├── analyzer/                    # Musical analysis (beams across segments, levels)
+│   ├── analyzer/                    # Musical analysis (beams, counting)
 │   │   ├── analyzer-types.ts        # BeamGroup, NoteReference, etc.
-│   │   └── MusicAnalyzer.ts         # Analyzer implementation
+│   │   ├── CountingAnalyzer.ts      # Pedagogical counting system (hybrid)
+│   │   └── MusicAnalyzer.ts         # Beam analysis implementation
 │   ├── models/                      # Data models
 │   │   ├── Beat.ts                  # Beat model
 │   │   ├── Measure.ts               # Measure model
@@ -45,25 +46,30 @@ ChordGrid_for_Obsidian/
 │   │   ├── BeamRenderer.ts          # Beam rendering
 │   │   ├── ChordRenderer.ts         # Chord symbol rendering
 │   │   ├── constants.ts             # Centralized rendering constants (v3 preparation)
+│   │   ├── CountingRenderer.ts      # Pedagogical counting numbers rendering
 │   │   ├── MeasureRenderer.ts       # Measure rendering
 │   │   ├── NoteRenderer.ts          # Note rendering
 │   │   ├── PlaceAndSizeManager.ts   # Placement & collision management
 │   │   ├── RestRenderer.ts          # Rest rendering
+│   │   ├── StrumPatternRenderer.ts  # Strum pattern (pick/finger) rendering
 │   │   ├── SVGRenderer.ts           # Main renderer (orchestration)
 │   │   └── TimeSignatureRenderer.ts # Time signature rendering
 │   └── utils/
 │       ├── DebugLogger.ts           # Debug logging system
 │       ├── TieManager.ts            # Cross-measure tie management
 │       └── VoltaManager.ts          # Multi-line volta bracket management
-└── test/                            # Unit tests (40 test files, 275 tests)
-    ├── *.spec.ts                    # Jest test files
+└── test/                            # Unit tests (46 test suites, 315 tests)
+    ├── *.spec.ts                    # Jest test files (46 suites)
     ├── analyzer.spec.ts             # Analyzer tests
     ├── beam_*.spec.ts               # Beam tests
     ├── chord_*.spec.ts              # Chord rendering tests
+    ├── counting_*.spec.ts           # Counting system tests
     ├── tie_*.spec.ts                # Tie tests
     ├── tuplet_*.spec.ts             # Tuplet tests
     ├── repeat_*.spec.ts             # Repeat notation tests
     ├── volta_*.spec.ts              # Volta bracket tests
+    ├── debug/                       # Debug scripts (not tests)
+    ├── manual/                      # Manual test files (markdown)
     └── ...                          # Parser, renderer tests
 
 ```
@@ -169,6 +175,22 @@ flowchart LR
 
 **Ties:**
 - Analyzer does not invent ties; it uses parser tie markers and TieManager for cross-line resolution
+
+### CountingAnalyzer
+
+**Responsibilities (v2.2.0):**
+- Assign pedagogical counting labels to notes for rhythm learning
+- Support hybrid counting system: mathematical beats (regular meters) + user-defined beats (irregular meters)
+- Handle irregular time signatures (5/8, 7/8, 11/8) and complex beat groupings
+- Calculate subdivision positions within metric units (not just beats)
+
+**Counting System:**
+- **Hierarchical approach**: Beat numbers (1, 2, 3, 4) + subdivisions ('&' for eighths, numeric for sixteenths)
+- **Hybrid mode detection**: Automatic selection between mathematical and user-defined counting
+- **Irregular meter support**: Metric-unit-based counting for unconventional beat groupings
+- **Size markers**: 't' (tall) for beat starts, 'm' (medium) for subdivisions, 's' (small) for rests/ties
+
+**Counting restarts at measure 1** for each measure (not continuous across measures).
 
 ## Module Modèles
 
@@ -331,22 +353,61 @@ NoteRenderer / RestRenderer (par note)
 
 ### RestRenderer
 
-**Responsabilités :**
-- Dessiner tous types de silences
-- Gérer silences pointés
-- Enregistrer bounding boxes dans PlaceAndSizeManager (v2.1.0)
+**Responsibilities:**
+- Draw all rest types
+- Handle dotted rests
+- Register bounding boxes in PlaceAndSizeManager (v2.1.0)
 
-**Types de silences :**
-- Pause (1) : rectangle suspendu
-- Demi-pause (2) : rectangle posé
-- Soupir (4) : forme Z stylisée
-- Demi-soupir (8) : crochet simple
-- Quart de soupir (16) : double crochet
+**Rest types:**
+- Whole rest (1): suspended rectangle
+- Half rest (2): seated rectangle
+- Quarter rest (4): stylized Z shape
+- Eighth rest (8): single flag
+- Sixteenth rest (16): double flag
 - Etc.
 
-**Enregistrement collision (v2.1.0) :**
-- Chaque silence enregistré avec bbox approprié
-- Permet évitement par autres éléments (accords, tuplets, liaisons)
+**Collision registration (v2.1.0):**
+- Each rest registered with appropriate bbox
+- Enables avoidance by other elements (chords, tuplets, ties)
+
+### CountingRenderer
+
+**Responsibilities (v2.2.0):**
+- Render pedagogical counting numbers on notes for rhythm learning
+- Position numbers below/above note heads based on stem direction
+- Apply size-based styling (tall/medium/small) according to CountingAnalyzer output
+- Coordinate with PlaceAndSizeManager for collision detection
+
+**Visual properties:**
+- **Tall (t)**: 14px bold, black - for beat starts (1, 2, 3, 4)
+- **Medium (m)**: 12px normal, black - for subdivisions (&, 2, 3, 4)
+- **Small (s)**: 11px normal, gray (#777) - for rests and tied notes
+
+**Positioning:**
+- **Stems-up**: numbers placed BELOW note head (5px margin)
+- **Stems-down**: numbers placed ABOVE note head (5px margin)
+- **Horizontal**: centered on note head (text-anchor: middle)
+
+**Collision awareness:**
+- Registers bounding boxes in PlaceAndSizeManager
+- Future: coordinate with pick/finger patterns for optimal spacing
+
+### StrumPatternRenderer
+
+**Responsibilities:**
+- Render pick stroke symbols (↓ ↑) and finger patterns (p, i, m, a)
+- Position patterns below/above notes based on stem direction and counting mode
+- Support timeline-based pattern sequences
+- Handle pattern spacing and collision with counting numbers
+
+**Pattern types:**
+- **Pick strokes**: downstroke (↓), upstroke (↑)
+- **Finger patterns**: thumb (p), index (i), middle (m), ring (a)
+
+**Positioning:**
+- **With counting**: patterns placed further from note head (after counting)
+- **Without counting**: patterns placed directly below/above note head
+- Automatic spacing adjustment based on active features
 
 ### TieManager
 
@@ -490,22 +551,35 @@ Le TieManager et VoltaManager (v2.2.0) observent les notes avec liaisons / mesur
 
 ## Tests
 
-Les tests sont organisés par fonctionnalité :
-- `parse.spec.ts` : tests de parsing général
-- `beam_parse.spec.ts` : tests de ligatures
-- `beam_render.test.ts` : tests de rendu de ligatures
-- `debug_*.ts` : scripts de débogage
+Tests are organized by functionality with a clean directory structure (v2.2.0):
 
-### Lancer les tests :
+### Test Structure:
+- **46 test suites** in `test/*.spec.ts` (315 tests total)
+- **test/debug/**: Debug scripts and development helpers (10 files)
+- **test/manual/**: Manual/visual test files in markdown format (14 files)
+
+### Key Test Files:
+- `parse.spec.ts`: General parsing tests
+- `beam_parse.spec.ts`: Beam grouping tests
+- `counting_*.spec.ts`: Counting system tests (hybrid, new system, beat structure)
+- `tie_*.spec.ts`: Tie rendering and collision tests
+- `tuplet_*.spec.ts`: Tuplet parsing and rendering tests
+- `volta_*.spec.ts`: Volta bracket tests
+- `repeat_*.spec.ts`: Repeat notation tests
+- `chord_*.spec.ts`: Chord rendering and collision tests
+
+### Running Tests:
 ```bash
-npm test
+npm test                    # Run all test suites
+npm test -- <filename>      # Run specific test file
+npm test -- --no-coverage   # Run without coverage report
 ```
 
-Scripts supplémentaires :
-```bash
-ts-node ./test/run_analyzer_tests.ts
-ts-node ./test/run_integration_analyzer.ts
-```
+### Test Organization Principles (v2.2.0):
+- **Automated tests**: All `.spec.ts` files in root test directory
+- **Debug scripts**: Moved to `test/debug/` (not executed by Jest)
+- **Manual tests**: Markdown files in `test/manual/` for visual verification
+- **Obsolete tests**: Removed (old counting system, broken integration tests)
 
 ## Performance
 

@@ -30,8 +30,9 @@ ChordGrid_for_Obsidian/
 │   ├── GROUPING_CONVENTIONS.md      # Groupement binary/ternary
 │   └── release_notes_v2.1.0.md      # Notes de version
 ├── src/
-│   ├── analyzer/                    # Module d'analyse musicale
+│   ├── analyzer/                    # Module d'analyse musicale (ligatures, comptage)
 │   │   ├── analyzer-types.ts        # Types d'analyse
+│   │   ├── CountingAnalyzer.ts      # Système de comptage pédagogique (hybride)
 │   │   └── MusicAnalyzer.ts         # Analyseur principal
 │   ├── models/                      # Modèles de données
 │   │   ├── Beat.ts                  # Modèle Beat
@@ -45,25 +46,30 @@ ChordGrid_for_Obsidian/
 │   │   ├── BeamRenderer.ts          # Rendu des ligatures
 │   │   ├── ChordRenderer.ts         # Rendu des symboles d'accords
 │   │   ├── constants.ts             # Constantes SVG
+│   │   ├── CountingRenderer.ts      # Rendu des numéros de comptage pédagogiques
 │   │   ├── MeasureRenderer.ts       # Rendu de mesures
 │   │   ├── NoteRenderer.ts          # Rendu de notes
 │   │   ├── PlaceAndSizeManager.ts   # Gestion placement & collisions
 │   │   ├── RestRenderer.ts          # Rendu de silences
+│   │   ├── StrumPatternRenderer.ts  # Rendu des patterns de jeu (médiator/doigts)
 │   │   ├── SVGRenderer.ts           # Renderer principal
 │   │   └── TimeSignatureRenderer.ts # Rendu signatures rythmiques
 │   └── utils/
 │       ├── DebugLogger.ts           # Logs de débogage
 │       ├── TieManager.ts            # Gestion liaisons cross-mesure
 │       └── VoltaManager.ts          # Gestion crochets volta multi-lignes
-└── test/                            # Tests unitaires (40 fichiers, 275 tests)
-    ├── *.spec.ts                    # Fichiers de test Jest
+└── test/                            # Tests unitaires (46 suites, 315 tests)
+    ├── *.spec.ts                    # Fichiers de test Jest (46 suites)
     ├── analyzer.spec.ts             # Tests analyseur
     ├── beam_*.spec.ts               # Tests ligatures
     ├── chord_*.spec.ts              # Tests rendu d'accords
+    ├── counting_*.spec.ts           # Tests système de comptage
     ├── tie_*.spec.ts                # Tests liaisons
     ├── tuplet_*.spec.ts             # Tests tuplets
     ├── repeat_*.spec.ts             # Tests notation répétition
     ├── volta_*.spec.ts              # Tests crochets volta
+    ├── debug/                       # Scripts de débogage (pas de tests)
+    ├── manual/                      # Fichiers de tests manuels (markdown)
     └── ...                          # Tests parser, renderer
 ```
 
@@ -172,24 +178,35 @@ flowchart LR
 ### MusicAnalyzer
 
 **Responsabilités :**
-- Analyser la structure musicale des mesures
-- Identifier les groupes de ligatures (BeamGroup)
-- Enrichir la structure ChordGrid avec métadonnées d'analyse
-- Support des tuplets avec ratios personnalisables
+- Calculer les groupes de ligatures par mesure, pouvant traverser plusieurs segments d'accords
+- Support des ligatures multi-niveaux (croches/doubles/triples/quadruples)
+- Respecter les silences et espaces comme ruptures de ligature
+- Produire des références stables vers les notes via `NoteReference`
 
-**Algorithme d'analyse :**
-1. Parcourir toutes les mesures de la grille
-2. Identifier les séquences de notes ligaturables (valeur >= 8)
-3. Respecter les séparations d'espace (breaks de ligature)
-4. Détecter les tuplets et calculer leurs ratios effectifs
-5. Créer les BeamGroup avec positions précises
+**Règles de ligature :**
+- Valeurs ≥ 8 (croches et plus courtes) éligibles pour ligature
+- Les silences cassent les ligatures ; les espaces entre segments aussi
+- Les notes pointées influencent la direction des barres partielles
+- Notes courtes isolées reçoivent des barres appropriées
 
-**Support des tuplets :**
-- Syntaxe : `(N:M notes)` où N = notes jouées, M = notes théoriques
-- Ratios par défaut : (3:2), (5:4), (6:4), (7:4), (9:8)
-- Ratios explicites supportés : `(5:6 notes)`, `(7:8 notes)`, etc.
-- Validation de durée : durée totale des notes doit correspondre au ratio
-- Affichage automatique du ratio dans le rendu SVG
+**Liaisons :**
+- L'analyseur n'invente pas de liaisons ; il utilise les marqueurs du parser et TieManager pour résolution cross-ligne
+
+### CountingAnalyzer
+
+**Responsabilités (v2.2.0) :**
+- Assigner des labels de comptage pédagogiques aux notes pour l'apprentissage du rythme
+- Support du système hybride : comptage mathématique (métriques régulières) + comptage défini par l'utilisateur (métriques irrégulières)
+- Gérer les signatures temporelles irrégulières (5/8, 7/8, 11/8) et groupements rythmiques complexes
+- Calculer les positions de subdivision à l'intérieur des unités métriques (pas seulement des beats)
+
+**Système de comptage :**
+- **Approche hiérarchique** : Numéros de beat (1, 2, 3, 4) + subdivisions ('&' pour les croches, numérique pour les doubles)
+- **Détection de mode hybride** : Sélection automatique entre comptage mathématique et défini par l'utilisateur
+- **Support métriques irrégulières** : Comptage basé sur les unités métriques pour groupements non conventionnels
+- **Marqueurs de taille** : 't' (tall) pour débuts de beats, 'm' (medium) pour subdivisions, 's' (small) pour silences/liaisons
+
+**Le comptage recommence à 1** pour chaque mesure (pas de comptage continu entre mesures).
 
 ## Module Modèles
 
@@ -368,6 +385,45 @@ NoteRenderer / RestRenderer (par note)
 - Chaque silence enregistré avec bbox approprié
 - Permet évitement par autres éléments (accords, tuplets, liaisons)
 
+### CountingRenderer
+
+**Responsabilités (v2.2.0) :**
+- Rendre les numéros de comptage pédagogiques sur les notes pour l'apprentissage du rythme
+- Positionner les numéros sous/au-dessus des têtes de notes selon la direction des hampes
+- Appliquer le style basé sur la taille (tall/medium/small) selon la sortie de CountingAnalyzer
+- Coordonner avec PlaceAndSizeManager pour la détection de collision
+
+**Propriétés visuelles :**
+- **Tall (t)** : 14px gras, noir - pour débuts de beats (1, 2, 3, 4)
+- **Medium (m)** : 12px normal, noir - pour subdivisions (&, 2, 3, 4)
+- **Small (s)** : 11px normal, gris (#777) - pour silences et notes liées
+
+**Positionnement :**
+- **Hampes vers le haut** : numéros placés SOUS la tête de note (marge 5px)
+- **Hampes vers le bas** : numéros placés AU-DESSUS de la tête de note (marge 5px)
+- **Horizontal** : centré sur la tête de note (text-anchor: middle)
+
+**Gestion des collisions :**
+- Enregistre les bounding boxes dans PlaceAndSizeManager
+- Futur : coordination avec les patterns de jeu pour espacement optimal
+
+### StrumPatternRenderer
+
+**Responsabilités :**
+- Rendre les symboles de coups de médiator (↓ ↑) et patterns de doigts (p, i, m, a)
+- Positionner les patterns sous/au-dessus des notes selon direction hampes et mode comptage
+- Support des séquences de patterns basées sur timeline
+- Gérer espacement et collision avec numéros de comptage
+
+**Types de patterns :**
+- **Coups de médiator** : coup vers le bas (↓), coup vers le haut (↑)
+- **Patterns de doigts** : pouce (p), index (i), majeur (m), annulaire (a)
+
+**Positionnement :**
+- **Avec comptage** : patterns placés plus loin de la tête de note (après comptage)
+- **Sans comptage** : patterns placés directement sous/au-dessus de la tête de note
+- Ajustement automatique de l'espacement selon les fonctionnalités actives
+
 ### TieManager
 
 **Responsabilités :**
@@ -465,16 +521,35 @@ Le TieManager observe les notes avec liaisons et résout les références cross-
 
 ## Tests
 
-Les tests sont organisés par fonctionnalité :
-- `parse.spec.ts` : tests de parsing général
-- `beam_parse.spec.ts` : tests de ligatures
-- `beam_render.test.ts` : tests de rendu de ligatures
-- `debug_*.ts` : scripts de débogage
+Les tests sont organisés par fonctionnalité avec une structure de répertoire propre (v2.2.0) :
+
+### Structure des tests :
+- **46 suites de tests** dans `test/*.spec.ts` (315 tests au total)
+- **test/debug/** : Scripts de débogage et helpers de développement (10 fichiers)
+- **test/manual/** : Fichiers de tests manuels/visuels au format markdown (14 fichiers)
+
+### Fichiers de tests clés :
+- `parse.spec.ts` : Tests de parsing général
+- `beam_parse.spec.ts` : Tests de groupement de ligatures
+- `counting_*.spec.ts` : Tests du système de comptage (hybride, nouveau système, structure de beats)
+- `tie_*.spec.ts` : Tests de rendu et collision des liaisons
+- `tuplet_*.spec.ts` : Tests de parsing et rendu des tuplets
+- `volta_*.spec.ts` : Tests des crochets de volta
+- `repeat_*.spec.ts` : Tests de la notation de répétition
+- `chord_*.spec.ts` : Tests de rendu et collision des accords
 
 ### Lancer les tests :
 ```bash
-npm test
+npm test                    # Lancer toutes les suites de tests
+npm test -- <filename>      # Lancer un fichier de test spécifique
+npm test -- --no-coverage   # Lancer sans rapport de couverture
 ```
+
+### Principes d'organisation des tests (v2.2.0) :
+- **Tests automatisés** : Tous les fichiers `.spec.ts` dans le répertoire racine test
+- **Scripts de débogage** : Déplacés dans `test/debug/` (non exécutés par Jest)
+- **Tests manuels** : Fichiers markdown dans `test/manual/` pour vérification visuelle
+- **Tests obsolètes** : Supprimés (ancien système de comptage, tests d'intégration cassés)
 
 ## Performance
 
