@@ -8,6 +8,21 @@
 
 [🇫🇷 Version française](./README.fr.md) | [📖 Full Documentation](./documentation/) | [🐛 Report Bug](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/issues)
 
+**For this entry**
+````markdown
+```chordgrid
+show% measure-num count pick
+4/4 
+| Em[4 88 4 88] | D[%] | % | Em[%] 
+| Em[4 88] G[4 88] | C[4 88] G[4 88] | G[4 88 4 88] | C[4 88] G[4 88]
+|2/4 G[4 -4] | 4/4 C[4 88 4 88] | % | G[%] 
+| G[4 88] Em[4 88] | 2/4 G[4 88] | 4/4 D[4 88 88 88] | Em[%]
+```
+````
+**Get this result**
+
+<img width="778" height="462" alt="image" src="https://github.com/user-attachments/assets/f1af29a3-db21-4969-a855-e4a22e892394" />
+
 ---
 
 ## What is Chord Grid?
@@ -26,8 +41,9 @@
 - ⚡ **Lightning fast** - Write chords as text, see results instantly
 - 🎯 **Precise rhythm** - Support for complex time signatures (4/4, 6/8, 5/8, 7/8, 12/8...)
 - 🔄 **Repeat notation** - Repeat signs, volta brackets, measure symbols (%)
+- ✨ **Transposition tool** - Quickly transpose chord grid by using transpose:+/-
 - 📚 **Pedagogical tools** - Optional counting numbers for rhythm learning
-- 🎸 **Guitar/Bass friendly** - Pick strokes (↓↑) and fingerpicking patterns (p,i,m,a)
+- 🎸 **Guitar/Bass friendly** - Pick strokes (↓↑) and finger strum patterns (Thumb, Hand)
 - 📐 **Smart layout** - Automatic collision detection and element positioning
 - 📱 **Responsive** - Scales beautifully on any screen size
 
@@ -42,19 +58,18 @@
 3. Click **Browse** and search for **"Chord Grid"**
 4. Click **Install**, then **Enable**
 
-### Your First Chord Chart
+### Your First Chord Chart Whitout rhythm
 
 Create a code block with the `chordgrid` language:
 
 ````markdown
 ```chordgrid
-4/4 | C[4 4 4 4] | G[4 4 4 4] | Am[4 4 4 4] | F[4 4 4 4] |
+4/4 | C | G | Am | F / G |
 ```
 ````
 
 **Result:**
-<img width="782" height="115" alt="image" src="https://github.com/user-attachments/assets/6e05c00d-42fa-4fac-9ba0-02aa2fe1ff98" />
-
+<img width="781" height="110" alt="image" src="https://github.com/user-attachments/assets/b7185c58-4b49-43ab-a70f-63e9ae53caa3" />
 
 That's it! You just created your first chord chart. 🎉
 
@@ -64,14 +79,14 @@ That's it! You just created your first chord chart. 🎉
 
 ### Chord Notation
 
-| Syntax | Description | Example |
-|--------|-------------|---------|
-| `C` | Major chord | `C[4444]` |
-| `Am` | Minor chord | `Am[4444]` |
-| `C7` | Dominant 7th | `C7[4444]` |
-| `Cmaj7` | Major 7th | `Cmaj7[4444]` |
-| `F#m` | Sharp minor | `F#m[4444]` |
-| `Bb` | Flat major | `Bb[4444]` |
+| Syntax | Description | 
+|--------|-------------|
+| `C` | Major chord |
+| `Am` | Minor chord |
+| `C7` | Dominant 7th |
+| `Cmaj7` | Major 7th |
+| `F#m` | Sharp minor |
+| `Bb` | Flat major |
 
 ### Rhythm Values
 
@@ -80,8 +95,8 @@ That's it! You just created your first chord chart. 🎉
 | 1 | `1` | Whole note | `C[1]` |
 | 2 | `2` | Half note | `C[2 2]` |
 | 4 | `4` | Quarter note | `C[4 4 4 4]` |
-| 8 | `8` | Eighth note | `C[88 88]` |
-| 16 | `16` | Sixteenth note | `C[16 16 16 16]` |
+| 8 | `8` | Eighth note | `C[88 88 88 88]` |
+| 16 | `16` | Sixteenth note | `C[16161616 16161616 16161616 16161616]` |
 
 **Note:** Notes of value ≥8 are automatically beamed when grouped together.
 
