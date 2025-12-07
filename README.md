@@ -58,7 +58,7 @@ show% measure-num count pick
 3. Click **Browse** and search for **"Chord Grid"**
 4. Click **Install**, then **Enable**
 
-### Your First Chord Chart Whitout rhythm
+### Your First Chord Chart Without Rhythm
 
 Create a code block with the `chordgrid` language:
 
@@ -72,7 +72,7 @@ Create a code block with the `chordgrid` language:
 That's it! You just created your first chord chart.
 
 ---
-You want to add repeat bar ? No worry !
+Want to add a repeat bar? No worries!
 ````markdown
 ```chordgrid
 4/4 ||: C | G | Am | F / G :||
@@ -82,7 +82,7 @@ You want to add repeat bar ? No worry !
 
 ---
 
-Let's say now we need to change the last measure for another chord, but keep the previous ones :
+Now let's say we need to change the last measure to a different chord while keeping the previous ones:
 
 ````markdown
 ```chordgrid
@@ -94,7 +94,7 @@ Let's say now we need to change the last measure for another chord, but keep the
 
 ---
 
-Oh, and now I think we should note this awesome rhythm strum pattern to avoid forgetting it !
+Now let's add this awesome rhythm strum pattern so we don't forget it!
 ````markdown
 ```chordgrid
 4/4 ||: C[8.16 88 4 168.] | G | Am |.1-3 F / G :||.4 Bb |
@@ -104,7 +104,7 @@ Oh, and now I think we should note this awesome rhythm strum pattern to avoid fo
 
 ---
 
-Ok, not so bad but I'd really love to get all the chords on the same line ! Of course, use `measures-per-line:` to force the number of measure on each line
+OK, not bad, but I'd really like to fit all the chords on the same line! You can use `measures-per-line:` to specify the number of measures per line
 ````markdown
 ```chordgrid
 measures-per-line:5
@@ -115,7 +115,7 @@ measures-per-line:5
 
 ---
 
-Ah, yes! It's better now, but, as a guitarist, I want to see the pick strokes, can I ? **Sure!** simply use the keyword `pick`
+Ah yes! That's better, but as a guitarist, I'd like to see the pick strokes. Can I? **Sure!** Just use the `pick` keyword
 ````markdown
 ```chordgrid
 measures-per-line:5 pick
@@ -126,7 +126,7 @@ measures-per-line:5 pick
 
 ---
 
-Oh, nice! But now I'd like to use this rhythm pattern on the next measures, ok, so I imagine I can copy/paste the rhythm pattern...or ??
+Nice! Now I'd like to apply this rhythm pattern to the following measures. I could copy/paste the rhythm pattern... or?
 
 ````markdown
 ```chordgrid
@@ -138,7 +138,7 @@ measures-per-line:5 pick
 
 ---
 
-Wow! Amazing ! But I think now there are too many informations on each measure, can I make this a bit cleaner ? Yes, use `show%`
+Wow! Amazing! But now there's too much information in each measure. Can I make this cleaner? Yes, use `show%`
 
 ````markdown
 ```chordgrid
@@ -150,7 +150,7 @@ measures-per-line:5 pick show%
 
 ---
 
-And finally I think I gonna play this rhythm with fingers instead of pick can I? **sure** use `finger`instead of `pick`
+Finally, I think I'll play this rhythm with fingers instead of a pick. Can I? **Sure!** Use `finger` instead of `pick`
 ````markdown
 ```chordgrid
 measures-per-line:5 finger show%
@@ -209,8 +209,8 @@ Add a `-` prefix before any note value to create a rest:
 ````
 <img width="328" height="96" alt="image" src="https://github.com/user-attachments/assets/98ce95eb-97ed-47bd-9086-e5b1f063adc8" />
 
-#### BE CAREFULL
-:warning: **If you want to keep beam grouped by beat <ins>take care of space placement</ins>. For example**:warning:
+#### BE CAREFUL
+:warning: **If you want to keep beams grouped by beat, <ins>pay attention to space placement</ins>. For example:**:warning:
 ````markdown
   ```chordgrid
   C[4 88_] G[_88 4]
@@ -241,9 +241,9 @@ is different from
   - `| 4_ | {_8 8 8}3 |` = cross-measure tie into tuplet
 
 
-### Stems Direction
- Control the direction of note stems following musical notation standards
-- `stems-up` or `stem-up` (default) - you will probably never have to do this.
+### Stem Direction
+Control the direction of note stems following musical notation standards
+- `stems-up` or `stem-up` (default) - You'll probably never need to use this.
 - `stems-down` or `stem-down` - Stems point downward
 
 - Example:
@@ -255,9 +255,9 @@ is different from
 ````
 <img width="780" height="148" alt="image" src="https://github.com/user-attachments/assets/2c6a243d-efc2-499c-bdbf-f04a0289b550" />
 
-### Pick Stroke Markers (Mediator) 
-Display alternate down / up pick strokes above or below notes for rhythmic subdivision practice.
-you can use either `pick`, or `picks`, or `picks-auto`
+### Pick Stroke Markers
+Display alternating down/up pick strokes above or below notes for rhythmic subdivision practice.
+You can use either `pick`, `picks`, or `picks-auto`
 ````markdown
   ```chordgrid
   pick
@@ -278,7 +278,7 @@ Display repeated measures content using notation shortcuts
 ````
   <img width="776" height="112" alt="image" src="https://github.com/user-attachments/assets/2b6bf698-c524-4dc8-977e-a8173e6fa3d1" />
 
-But you can even shorten more the reapeted content by using `show%` directive. it displays a visual repeat symbol (%) instead of rendering full rhythm
+You can shorten the repeated content even more by using the `show%` directive. It displays a visual repeat symbol (%) instead of rendering the full rhythm
 
 ````markdown
   ```chordgrid
