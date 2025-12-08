@@ -251,7 +251,7 @@ export class ChordRenderer {
             // Also handle [%] notation when displayRepeatSymbol is enabled
             const isBracketPercent = displayRepeatSymbol && measure.source?.includes('[%]');
             if (measure.__isChordOnlyMode || isBracketPercent) {
-                this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager);
+                this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager, displayRepeatSymbol);
                 return;
             }
             
@@ -555,14 +555,16 @@ export class ChordRenderer {
     private renderChordOnlyMeasure(
         svg: SVGElement,
         measurePosition: MeasurePosition,
-        placeAndSizeManager: PlaceAndSizeManager
+        placeAndSizeManager: PlaceAndSizeManager,
+        displayRepeatSymbol: boolean = false
     ): void {
         const measure = measurePosition.measure as any;
         
-        // Skip rendering chord if it's a simple % repeat (not D[%])
-        // Simple % repeats the entire measure including chord, so we only show the % symbol
+        // Skip rendering chord if it's a simple % repeat (not D[%]) AND show% is enabled
+        // When show% is disabled, we still render the chords even for repeated measures
+        // Simple % repeats the entire measure including chord, so we only show the % symbol when show% is enabled
         // D[%] repeats rhythm but changes chord, so we show both chord name and % symbol
-        const isSimpleRepeat = measure.isRepeat && measure.source === '%';
+        const isSimpleRepeat = displayRepeatSymbol && measure.isRepeat && measure.source === '%';
         if (isSimpleRepeat) {
             return;
         }

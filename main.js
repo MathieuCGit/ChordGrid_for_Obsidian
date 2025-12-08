@@ -4601,7 +4601,7 @@ var ChordRenderer = class {
       const measureY = mp.y;
       const isBracketPercent = displayRepeatSymbol && ((_a2 = measure.source) == null ? void 0 : _a2.includes("[%]"));
       if (measure.__isChordOnlyMode || isBracketPercent) {
-        this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager);
+        this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager, displayRepeatSymbol);
         return;
       }
       const staffLineY = measureY + STAFF_LINE_OFFSET;
@@ -4801,10 +4801,10 @@ var ChordRenderer = class {
    * @param measurePosition - Measure position info
    * @param placeAndSizeManager - Placement manager
    */
-  renderChordOnlyMeasure(svg, measurePosition, placeAndSizeManager) {
+  renderChordOnlyMeasure(svg, measurePosition, placeAndSizeManager, displayRepeatSymbol = false) {
     var _a;
     const measure = measurePosition.measure;
-    const isSimpleRepeat = measure.isRepeat && measure.source === "%";
+    const isSimpleRepeat = displayRepeatSymbol && measure.isRepeat && measure.source === "%";
     if (isSimpleRepeat) {
       return;
     }
