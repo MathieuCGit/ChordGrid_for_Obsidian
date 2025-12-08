@@ -2292,6 +2292,28 @@ var NoteRenderer = class {
     rightBar.setAttribute("stroke", "#000");
     rightBar.setAttribute("stroke-width", "1");
     svg.appendChild(rightBar);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement(
+        "tuplet-bracket",
+        {
+          x: startX,
+          y: bracketY,
+          width: endX - startX,
+          height: 5
+        },
+        10,
+        // High priority (fixed element)
+        {
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          tuplet: {
+            topY: bracketY,
+            bottomY: bracketY + 5
+          }
+        }
+      );
+    }
     const centerX = (startX + endX) / 2;
     const text = document.createElementNS(SVG_NS, "text");
     text.setAttribute("x", String(centerX));
@@ -2299,12 +2321,41 @@ var NoteRenderer = class {
     text.setAttribute("font-size", "12");
     text.setAttribute("font-weight", "bold");
     text.setAttribute("text-anchor", "middle");
+    let textContent;
     if (tupletGroup.ratio) {
-      text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+      textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
     } else {
-      text.textContent = String(tupletGroup.count);
+      textContent = String(tupletGroup.count);
     }
+    text.textContent = textContent;
     svg.appendChild(text);
+    if (this.placeAndSizeManager) {
+      const charWidth = 7;
+      const estimatedWidth = textContent.length * charWidth;
+      const textHeight = 12;
+      this.placeAndSizeManager.registerElement(
+        "tuplet-number",
+        {
+          x: centerX - estimatedWidth / 2,
+          y: bracketY - 3 - textHeight,
+          // y is baseline, so subtract height for top
+          width: estimatedWidth,
+          height: textHeight
+        },
+        10,
+        // High priority (fixed element)
+        {
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          tuplet: {
+            centerX,
+            topY: bracketY - 3 - textHeight,
+            text: textContent
+          }
+        }
+      );
+    }
   }
 };
 
@@ -4424,35 +4475,66 @@ var ChordRenderer = class {
     return firstNote.bbox.x;
   }
   /**
-   * Calculates safe Y position for a chord to avoid collisions with stems.
+   * Calculates safe Y position for a chord to avoid collisions with stems, tuplets, and voltas.
    * 
    * @param placeAndSizeManager - Placement manager
    * @param measureIndex - Measure index
    * @param staffLineY - Staff line Y position
    * @param baseVerticalOffset - Base vertical offset (minimum)
-   * @returns Adjusted Y position to avoid stems
+   * @returns Adjusted Y position to avoid stems, tuplets, and voltas
    */
   calculateSafeChordY(placeAndSizeManager, measureIndex, staffLineY, baseVerticalOffset) {
     const measureElements = placeAndSizeManager.getElementsByMeasure(measureIndex);
     const stems = measureElements.filter((el) => el.type === "stem");
-    if (stems.length === 0) {
-      return staffLineY - baseVerticalOffset;
-    }
-    let highestStemY = staffLineY;
-    stems.forEach((stem) => {
-      var _a;
-      if ((_a = stem.metadata) == null ? void 0 : _a.stem) {
-        const { topY, direction } = stem.metadata.stem;
-        if (direction === "up") {
-          highestStemY = Math.min(highestStemY, topY);
+    const tupletNumbers = measureElements.filter((el) => el.type === "tuplet-number");
+    const tupletBrackets = measureElements.filter((el) => el.type === "tuplet-bracket");
+    const voltaTexts = measureElements.filter((el) => el.type === "volta-text");
+    const voltaBrackets = measureElements.filter((el) => el.type === "volta-bracket");
+    let safeY = staffLineY - baseVerticalOffset;
+    if (stems.length > 0) {
+      let highestStemY = staffLineY;
+      stems.forEach((stem) => {
+        var _a;
+        if ((_a = stem.metadata) == null ? void 0 : _a.stem) {
+          const { topY, direction } = stem.metadata.stem;
+          if (direction === "up") {
+            highestStemY = Math.min(highestStemY, topY);
+          }
         }
+      });
+      const stemClearance = POSITIONING.STEM_CLEARANCE;
+      safeY = Math.min(safeY, highestStemY - stemClearance);
+    }
+    if (tupletNumbers.length > 0) {
+      const highestTupletY = Math.min(...tupletNumbers.map((t) => t.bbox.y));
+      const tupletClearance = 2;
+      safeY = Math.min(safeY, highestTupletY - tupletClearance);
+    }
+    if (tupletBrackets.length > 0 && tupletNumbers.length === 0) {
+      const highestBracketY = Math.min(...tupletBrackets.map((t) => t.bbox.y));
+      const bracketClearance = 2;
+      safeY = Math.min(safeY, highestBracketY - bracketClearance);
+    }
+    if (voltaBrackets.length > 0 || voltaTexts.length > 0) {
+      let lowestVoltaY = 0;
+      voltaBrackets.forEach((vb) => {
+        lowestVoltaY = Math.max(lowestVoltaY, vb.bbox.y);
+      });
+      voltaTexts.forEach((vt) => {
+        lowestVoltaY = Math.max(lowestVoltaY, vt.bbox.y + vt.bbox.height);
+      });
+      if (lowestVoltaY > 0) {
+        const voltaClearance = -2;
+        const chordTop = lowestVoltaY + voltaClearance;
+        safeY = Math.max(safeY, chordTop);
       }
-    });
-    const stemClearance = POSITIONING.STEM_CLEARANCE;
-    const safeY = Math.min(
-      staffLineY - baseVerticalOffset,
-      highestStemY - stemClearance
-    );
+    }
+    const CHORD_HEIGHT = 22;
+    const MIN_TOP_MARGIN = 5;
+    const minY = MIN_TOP_MARGIN + CHORD_HEIGHT;
+    if (safeY < minY) {
+      safeY = minY;
+    }
     return safeY;
   }
   /**
@@ -4506,10 +4588,23 @@ var ChordRenderer = class {
           segmentIndex
         );
         if (firstNoteX !== null) {
+          let adjustedX = firstNoteX;
+          const measureElements = placeAndSizeManager.getElementsByMeasure(mp.globalIndex);
+          const voltaTexts = measureElements.filter((el) => el.type === "volta-text");
+          if (voltaTexts.length > 0) {
+            voltaTexts.forEach((vt) => {
+              const voltaTextRight = vt.bbox.x + vt.bbox.width;
+              const voltaTextY = vt.bbox.y;
+              const chordHeight = 22;
+              if (chordY >= voltaTextY - chordHeight - 10 && chordY <= voltaTextY + vt.bbox.height + 10) {
+                adjustedX = Math.max(adjustedX, voltaTextRight);
+              }
+            });
+          }
           this.renderChordSymbol(
             svg,
             chordSymbol,
-            firstNoteX,
+            adjustedX,
             chordY,
             fontSize,
             "start",

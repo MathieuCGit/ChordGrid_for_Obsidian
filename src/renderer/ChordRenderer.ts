@@ -107,13 +107,13 @@ export class ChordRenderer {
     }
 
     /**
-     * Calculates safe Y position for a chord to avoid collisions with stems.
+     * Calculates safe Y position for a chord to avoid collisions with stems, tuplets, and voltas.
      * 
      * @param placeAndSizeManager - Placement manager
      * @param measureIndex - Measure index
      * @param staffLineY - Staff line Y position
      * @param baseVerticalOffset - Base vertical offset (minimum)
-     * @returns Adjusted Y position to avoid stems
+     * @returns Adjusted Y position to avoid stems, tuplets, and voltas
      */
     private calculateSafeChordY(
         placeAndSizeManager: PlaceAndSizeManager,
@@ -121,39 +121,96 @@ export class ChordRenderer {
         staffLineY: number,
         baseVerticalOffset: number
     ): number {
-        // Get all stems from this measure
+        // Get all relevant elements from this measure
         const measureElements = placeAndSizeManager.getElementsByMeasure(measureIndex);
         const stems = measureElements.filter(el => el.type === 'stem');
+        const tupletNumbers = measureElements.filter(el => el.type === 'tuplet-number');
+        const tupletBrackets = measureElements.filter(el => el.type === 'tuplet-bracket');
+        const voltaTexts = measureElements.filter(el => el.type === 'volta-text');
+        const voltaBrackets = measureElements.filter(el => el.type === 'volta-bracket');
         
-        if (stems.length === 0) {
-            // No stems: use base offset
-            return staffLineY - baseVerticalOffset;
+        // Start with base offset
+        let safeY = staffLineY - baseVerticalOffset;
+        
+        // Check stems
+        if (stems.length > 0) {
+            // Find the highest point of all stems (smallest Y value)
+            let highestStemY = staffLineY;
+            
+            stems.forEach(stem => {
+                if (stem.metadata?.stem) {
+                    const { topY, direction } = stem.metadata.stem;
+                    
+                    // For upward stems, topY is the highest point
+                    // For downward stems, we don't consider them (chords go above)
+                    if (direction === 'up') {
+                        highestStemY = Math.min(highestStemY, topY);
+                    }
+                }
+            });
+            
+            // Add minimum clearance above the highest stem
+            const stemClearance = POSITIONING.STEM_CLEARANCE;
+            safeY = Math.min(safeY, highestStemY - stemClearance);
         }
         
-        // Find the highest point of all stems (smallest Y value)
-        let highestStemY = staffLineY;
+        // Check tuplet numbers (most critical for collision)
+        if (tupletNumbers.length > 0) {
+            // Find the highest tuplet number (smallest Y value)
+            const highestTupletY = Math.min(...tupletNumbers.map(t => t.bbox.y));
+            
+            // Add minimal clearance for chord height (approx 15px) + small spacing
+            const tupletClearance = 2;
+            safeY = Math.min(safeY, highestTupletY - tupletClearance);
+        }
         
-        stems.forEach(stem => {
-            if (stem.metadata?.stem) {
-                const { topY, direction } = stem.metadata.stem;
-                
-                // For upward stems, topY is the highest point
-                // For downward stems, we don't consider them (chords go above)
-                if (direction === 'up') {
-                    highestStemY = Math.min(highestStemY, topY);
-                }
+        // Check tuplet brackets (less critical but still important)
+        if (tupletBrackets.length > 0 && tupletNumbers.length === 0) {
+            // Only if no tuplet numbers were found (numbers are already above brackets)
+            const highestBracketY = Math.min(...tupletBrackets.map(t => t.bbox.y));
+            
+            // Add minimal clearance
+            const bracketClearance = 2;
+            safeY = Math.min(safeY, highestBracketY - bracketClearance);
+        }
+        
+        // Check volta brackets and texts - chord must be BELOW volta line
+        // Volta horizontal line is typically at y=20, text at y=36
+        if (voltaBrackets.length > 0 || voltaTexts.length > 0) {
+            // Find the lowest point of volta elements (largest Y value)
+            let lowestVoltaY = 0;
+            
+            // Check volta bracket lines (horizontal line at top)
+            voltaBrackets.forEach(vb => {
+                // The horizontal line is at bbox.y, we need chord to be below it
+                lowestVoltaY = Math.max(lowestVoltaY, vb.bbox.y);
+            });
+            
+            // Check volta text positions (below the line)
+            voltaTexts.forEach(vt => {
+                // Text bottom is at bbox.y + bbox.height
+                lowestVoltaY = Math.max(lowestVoltaY, vt.bbox.y + vt.bbox.height);
+            });
+            
+            // Place chord below volta with clearance
+            if (lowestVoltaY > 0) {
+                const voltaClearance = -2; // Negative to move chord UP (reduce spacing)
+                const chordTop = lowestVoltaY + voltaClearance;
+                // Use Math.max to ensure chord is below volta (larger Y = lower position)
+                safeY = Math.max(safeY, chordTop);
             }
-        });
+        }
         
-        // Add minimum clearance above the highest stem
-        const stemClearance = POSITIONING.STEM_CLEARANCE;
+        // Ensure chord remains visible (minimum Y position to keep chord in view)
+        // Chord font size is ~22px, so we need at least that much space from top
+        const CHORD_HEIGHT = 22;
+        const MIN_TOP_MARGIN = 5;
+        const minY = MIN_TOP_MARGIN + CHORD_HEIGHT;
         
-        // Chord position = highest stem - clearance
-        // But at least baseVerticalOffset above the staff
-        const safeY = Math.min(
-            staffLineY - baseVerticalOffset,
-            highestStemY - stemClearance
-        );
+        // If collision avoidance pushed chord off-screen, clamp it to minimum visible position
+        if (safeY < minY) {
+            safeY = minY;
+        }
         
         return safeY;
     }
@@ -217,7 +274,7 @@ export class ChordRenderer {
                     return;
                 }
 
-                // Calculate safe Y position to avoid collisions with stems
+                // Calculate safe Y position to avoid collisions with stems, tuplets, and volta
                 const chordY = this.calculateSafeChordY(
                     placeAndSizeManager,
                     mp.globalIndex,
@@ -233,11 +290,31 @@ export class ChordRenderer {
                 );
 
                 if (firstNoteX !== null) {
+                    // Check if there's a volta text that might overlap with the chord
+                    let adjustedX = firstNoteX;
+                    const measureElements = placeAndSizeManager.getElementsByMeasure(mp.globalIndex);
+                    const voltaTexts = measureElements.filter(el => el.type === 'volta-text');
+                    
+                    if (voltaTexts.length > 0) {
+                        // Check if chord would overlap with volta text
+                        voltaTexts.forEach(vt => {
+                            const voltaTextRight = vt.bbox.x + vt.bbox.width;
+                            const voltaTextY = vt.bbox.y;
+                            const chordHeight = 22;
+                            
+                            // If chord Y position is close to volta text Y, adjust X position
+                            if (chordY >= voltaTextY - chordHeight - 10 && chordY <= voltaTextY + vt.bbox.height + 10) {
+                                // Place chord right after volta text
+                                adjustedX = Math.max(adjustedX, voltaTextRight);
+                            }
+                        });
+                    }
+                    
                     // Align chord with the start of the first note (text-anchor='start')
                     this.renderChordSymbol(
                         svg,
                         chordSymbol,
-                        firstNoteX,
+                        adjustedX,
                         chordY,
                         fontSize,
                         'start',

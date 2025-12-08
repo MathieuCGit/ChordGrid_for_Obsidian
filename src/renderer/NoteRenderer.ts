@@ -579,6 +579,29 @@ export class NoteRenderer {
         rightBar.setAttribute('stroke-width', '1');
         svg.appendChild(rightBar);
 
+        // Register tuplet bracket in collision manager
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement(
+                'tuplet-bracket',
+                {
+                    x: startX,
+                    y: bracketY,
+                    width: endX - startX,
+                    height: 5
+                },
+                10, // High priority (fixed element)
+                {
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    tuplet: {
+                        topY: bracketY,
+                        bottomY: bracketY + 5
+                    }
+                }
+            );
+        }
+
         // Si un ratio explicite est fourni (ex: 5:4), l'afficher au lieu du count
         const centerX = (startX + endX) / 2;
         const text = document.createElementNS(SVG_NS, 'text');
@@ -588,14 +611,45 @@ export class NoteRenderer {
         text.setAttribute('font-weight', 'bold');
         text.setAttribute('text-anchor', 'middle');
 
+        let textContent: string;
         if (tupletGroup.ratio) {
             // Afficher le ratio explicite N:M
-            text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+            textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
         } else {
             // Afficher seulement le count (comportement par défaut)
-            text.textContent = String(tupletGroup.count);
+            textContent = String(tupletGroup.count);
         }
+        text.textContent = textContent;
 
         svg.appendChild(text);
+
+        // Register tuplet number/text in collision manager (this is the critical one for chord collision)
+        if (this.placeAndSizeManager) {
+            // Estimate text width based on content length
+            const charWidth = 7; // Approximate width per character at font-size 12
+            const estimatedWidth = textContent.length * charWidth;
+            const textHeight = 12; // Font size
+            
+            this.placeAndSizeManager.registerElement(
+                'tuplet-number',
+                {
+                    x: centerX - estimatedWidth / 2,
+                    y: bracketY - 3 - textHeight, // y is baseline, so subtract height for top
+                    width: estimatedWidth,
+                    height: textHeight
+                },
+                10, // High priority (fixed element)
+                {
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    tuplet: {
+                        centerX,
+                        topY: bracketY - 3 - textHeight,
+                        text: textContent
+                    }
+                }
+            );
+        }
     }
 }
