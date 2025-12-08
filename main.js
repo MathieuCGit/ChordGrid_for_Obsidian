@@ -3568,10 +3568,21 @@ var MusicAnalyzer = class {
           if (mid && mid.isRest) {
             const restLevel = this.getBeamLevel(mid.value);
             if (inTuplet) {
-              if (restLevel < notesLevel) {
-                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              const aTuplet = allNotes[aIdx].tuplet;
+              const bTuplet = allNotes[bIdx].tuplet;
+              const sameTupletNoSpace = aTuplet && bTuplet && aTuplet.groupId === bTuplet.groupId && !bNote.hasLeadingSpace;
+              if (sameTupletNoSpace) {
+                if (restLevel < notesLevel) {
+                  blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+                } else {
+                  blockFromLevel = Math.min(blockFromLevel, Math.max(2, restLevel));
+                }
               } else {
-                blockFromLevel = Math.min(blockFromLevel, restLevel);
+                if (restLevel < notesLevel) {
+                  blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+                } else {
+                  blockFromLevel = Math.min(blockFromLevel, restLevel);
+                }
               }
             } else {
               if (restLevel === notesLevel - 1) {

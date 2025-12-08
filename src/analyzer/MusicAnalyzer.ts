@@ -273,16 +273,35 @@ export class MusicAnalyzer {
             const restLevel = this.getBeamLevel((mid as any).value);
             
             if (inTuplet) {
-              // In tuplets: rests below notes level don't break that level
-              // But rests at same level DO break that level (create beamlets)
-              // Example: {16-1616}3 → rest -16 DOES break level 2 (creates beamlets)
-              // Example: {16-816}3 → rest -8 doesn't break level 2 (maintains beam)
-              // Rule: if rest level < notes level, block from (notes level + 1)
-              //       if rest level >= notes level, block from rest level
-              if (restLevel < notesLevel) {
-                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              // In tuplets: beam behavior depends on whether there are explicit spaces
+              // Check if both notes are in same tuplet group without space separation
+              const aTuplet = (allNotes[aIdx] as any).tuplet;
+              const bTuplet = (allNotes[bIdx] as any).tuplet;
+              const sameTupletNoSpace = aTuplet && bTuplet && 
+                                       aTuplet.groupId === bTuplet.groupId &&
+                                       !(bNote as any).hasLeadingSpace;
+              
+              if (sameTupletNoSpace) {
+                // Continuous tuplet notation (e.g., {8-88}3 without internal spaces)
+                // Primary beam (level 1) should remain continuous despite rests
+                // Only break higher levels based on rest value
+                // Example: {8-88}3 → level 1 beam continuous, rest doesn't break it
+                // Example: {16-1616}3 → level 1 continuous, level 2 may break at -16
+                if (restLevel < notesLevel) {
+                  // Rest is shorter: block from (notes level + 1)
+                  blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+                } else {
+                  // Rest at same level or longer: block from level 2 minimum (preserve level 1)
+                  blockFromLevel = Math.min(blockFromLevel, Math.max(2, restLevel));
+                }
               } else {
-                blockFromLevel = Math.min(blockFromLevel, restLevel);
+                // Spaced tuplet notation (e.g., {8 -8 8}3 with explicit spaces)
+                // Original rule: rests at same level DO break that level
+                if (restLevel < notesLevel) {
+                  blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+                } else {
+                  blockFromLevel = Math.min(blockFromLevel, restLevel);
+                }
               }
             } else {
               // Outside tuplets: use original rule
