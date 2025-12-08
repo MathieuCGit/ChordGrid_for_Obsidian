@@ -79,6 +79,14 @@ export class ChordGridParser {
   };
 
   /**
+   * Get the default tuplet ratio for a given count.
+   * Returns the ratio or undefined if no default exists.
+   */
+  private getTupletRatio(tupletCount: number): { numerator: number, denominator: number } | undefined {
+    return (this.constructor as typeof ChordGridParser).DEFAULT_TUPLET_RATIOS[tupletCount];
+  }
+
+  /**
    * Parse volta numbers from different syntaxes.
    * Supports:
    * - Single: "1" -> [1]
@@ -1379,6 +1387,7 @@ class BeamAndTieAnalyzer {
           
           // Check if an explicit ratio is provided (:M)
           let explicitRatio: { numerator: number, denominator: number } | undefined;
+          let hasExplicitRatio = false;  // Track whether user explicitly wrote the ratio
           if (j < rhythmStr.length && rhythmStr[j] === ':') {
             j++; // Skip the ':'
             let ratioStr = '';
@@ -1392,11 +1401,32 @@ class BeamAndTieAnalyzer {
                 numerator: parseInt(numStr, 10),
                 denominator: denominatorValue
               };
+              hasExplicitRatio = true;  // User explicitly wrote }N:M
             }
           }
           
           const tupletCount = parseInt(numStr, 10);
           if (tupletCount > 0) {
+            // Calculate ratio: use explicit ratio if provided, otherwise use default table or fallback
+            let finalRatio: { numerator: number, denominator: number };
+            if (explicitRatio) {
+              finalRatio = explicitRatio;
+            } else {
+              // Check default ratio table (access via class name since we're in inner class)
+              const defaultRatio = (ChordGridParser as any).DEFAULT_TUPLET_RATIOS[tupletCount];
+              if (defaultRatio) {
+                finalRatio = defaultRatio;
+              } else {
+                // Fallback: N notes in the time of (power-of-2 ≤ N) notes
+                // For example: 3 notes → 2 (triplet: 3 in time of 2)
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletCount)));
+                finalRatio = {
+                  numerator: tupletCount,
+                  denominator: normalCount
+                };
+              }
+            }
+            
             // Extract the content between { }
             const inner = rhythmStr.slice(i + 1, closeIdx);
             // Split by space to handle sub-groups
@@ -1449,14 +1479,15 @@ class BeamAndTieAnalyzer {
                   this.tieContext.lastNote = null;
                 }
                 
-                // Add tuplet property (use tupletCount from annotation)
+                // Add tuplet property (use tupletCount from annotation and calculated ratio)
                 note.tuplet = {
                   count: tupletCount,
                   groupId: `T${i}_${closeIdx}`,
                   position:
                     tupletNoteIndex === 0 ? 'start' :
                     tupletNoteIndex === tupletCount - 1 ? 'end' : 'middle',
-                  ...(explicitRatio && { ratio: explicitRatio })
+                  ratio: finalRatio,
+                  explicitRatio: hasExplicitRatio  // true only if user wrote }3:2, false for }3
                 };
                 // Mark first note of each subgroup after the first with leading space flag
                 if (g > 0 && isFirstNoteOfThisSubGroup) {

@@ -126,7 +126,7 @@ describe('Tuplet Ratios', () => {
       expect(result.errors).toHaveLength(1);
       
       const firstNote = result.grid.measures[0].beats[0].notes[0];
-      expect(firstNote.tuplet?.ratio).toBeUndefined(); // Uses default
+      expect(firstNote.tuplet?.ratio).toEqual({ numerator: 3, denominator: 2 }); // Default triplet ratio now populated
       
       const quintupletNote = result.grid.measures[0].beats[1].notes[0];
       expect(quintupletNote.tuplet?.ratio).toEqual({ numerator: 5, denominator: 6 });

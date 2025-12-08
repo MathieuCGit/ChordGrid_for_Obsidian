@@ -180,7 +180,7 @@ describe('Tuplet beam continuation with rests', () => {
         const beamCount = (svgString.match(/stroke-width="3"/g) || []).length;
         expect(beamCount).toBeGreaterThan(8); // At least one beam per tuplet
         
-        // Should have tuplet brackets and numbers
+        // Should have tuplet brackets and numbers (just "3" for default triplets)
         const tupletNumbers = (svgString.match(/text-anchor="middle">3</g) || []).length;
         expect(tupletNumbers).toBeGreaterThanOrEqual(4); // 4 tuplets in first measure + 1 in last
     });

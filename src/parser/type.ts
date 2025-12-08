@@ -97,6 +97,8 @@ export interface NoteElement {
    * - position: 'start' | 'middle' | 'end' (facilitates bracket and beam rendering)
    * - ratio: explicit numerator:denominator ratio (e.g., {8 8 8}3:2 → {numerator: 3, denominator: 2})
    *          If not provided, the default or automatic ratio will be used
+   * - explicitRatio: true if the ratio was explicitly written by the user (e.g., }3:2)
+   *                  false if the ratio was calculated automatically (e.g., }3 → default 3:2)
    */
   tuplet?: {
     count: number;
@@ -106,6 +108,7 @@ export interface NoteElement {
       numerator: number;
       denominator: number;
     };
+    explicitRatio?: boolean;
   };
   /**
    * Flag indicating there was a lexical space before this note in the source text.

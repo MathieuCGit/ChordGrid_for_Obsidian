@@ -275,6 +275,13 @@ __publicField(Transposer, "RELATIVE_MAJORS", {
 // src/parser/ChordGridParser.ts
 var _ChordGridParser = class _ChordGridParser {
   /**
+   * Get the default tuplet ratio for a given count.
+   * Returns the ratio or undefined if no default exists.
+   */
+  getTupletRatio(tupletCount) {
+    return this.constructor.DEFAULT_TUPLET_RATIOS[tupletCount];
+  }
+  /**
    * Parse volta numbers from different syntaxes.
    * Supports:
    * - Single: "1" -> [1]
@@ -1183,6 +1190,7 @@ var BeamAndTieAnalyzer = class {
             j++;
           }
           let explicitRatio;
+          let hasExplicitRatio = false;
           if (j < rhythmStr.length && rhythmStr[j] === ":") {
             j++;
             let ratioStr = "";
@@ -1196,10 +1204,26 @@ var BeamAndTieAnalyzer = class {
                 numerator: parseInt(numStr, 10),
                 denominator: denominatorValue
               };
+              hasExplicitRatio = true;
             }
           }
           const tupletCount = parseInt(numStr, 10);
           if (tupletCount > 0) {
+            let finalRatio;
+            if (explicitRatio) {
+              finalRatio = explicitRatio;
+            } else {
+              const defaultRatio = ChordGridParser.DEFAULT_TUPLET_RATIOS[tupletCount];
+              if (defaultRatio) {
+                finalRatio = defaultRatio;
+              } else {
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletCount)));
+                finalRatio = {
+                  numerator: tupletCount,
+                  denominator: normalCount
+                };
+              }
+            }
             const inner = rhythmStr.slice(i + 1, closeIdx);
             const subGroups = inner.split(" ");
             let tupletNoteIndex = 0;
@@ -1241,7 +1265,9 @@ var BeamAndTieAnalyzer = class {
                   count: tupletCount,
                   groupId: `T${i}_${closeIdx}`,
                   position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle",
-                  ...explicitRatio && { ratio: explicitRatio }
+                  ratio: finalRatio,
+                  explicitRatio: hasExplicitRatio
+                  // true only if user wrote }3:2, false for }3
                 };
                 if (g > 0 && isFirstNoteOfThisSubGroup) {
                   note2.hasLeadingSpace = true;
@@ -2241,7 +2267,8 @@ var NoteRenderer = class {
           endIndex,
           count: note.tuplet.count,
           groupId: note.tuplet.groupId,
-          ratio: note.tuplet.ratio
+          ratio: note.tuplet.ratio,
+          explicitRatio: note.tuplet.explicitRatio
         });
       }
     });
@@ -2322,7 +2349,7 @@ var NoteRenderer = class {
     text.setAttribute("font-weight", "bold");
     text.setAttribute("text-anchor", "middle");
     let textContent;
-    if (tupletGroup.ratio) {
+    if (tupletGroup.explicitRatio && tupletGroup.ratio) {
       textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
     } else {
       textContent = String(tupletGroup.count);

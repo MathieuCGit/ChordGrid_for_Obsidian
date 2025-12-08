@@ -463,14 +463,16 @@ export class NoteRenderer {
         endIndex: number,
         count: number,
         groupId: string,
-        ratio?: {numerator: number, denominator: number}
+        ratio?: {numerator: number, denominator: number},
+        explicitRatio?: boolean
     }> {
         const groups: Array<{
             startIndex: number,
             endIndex: number,
             count: number,
             groupId: string,
-            ratio?: {numerator: number, denominator: number}
+            ratio?: {numerator: number, denominator: number},
+            explicitRatio?: boolean
         }> = [];
         const seenGroups = new Set<string>();
 
@@ -493,7 +495,8 @@ export class NoteRenderer {
                     endIndex,
                     count: note.tuplet.count,
                     groupId: note.tuplet.groupId,
-                    ratio: note.tuplet.ratio
+                    ratio: note.tuplet.ratio,
+                    explicitRatio: note.tuplet.explicitRatio
                 });
             }
         });
@@ -511,7 +514,8 @@ export class NoteRenderer {
             startIndex: number,
             endIndex: number,
             count: number,
-            ratio?: {numerator: number, denominator: number}
+            ratio?: {numerator: number, denominator: number},
+            explicitRatio?: boolean
         },
         beat: Beat,
         notePositions: NotePosition[],
@@ -612,8 +616,8 @@ export class NoteRenderer {
         text.setAttribute('text-anchor', 'middle');
 
         let textContent: string;
-        if (tupletGroup.ratio) {
-            // Afficher le ratio explicite N:M
+        if (tupletGroup.explicitRatio && tupletGroup.ratio) {
+            // Afficher le ratio explicite N:M seulement si l'utilisateur l'a écrit
             textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
         } else {
             // Afficher seulement le count (comportement par défaut)
