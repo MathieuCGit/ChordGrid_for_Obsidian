@@ -150,7 +150,7 @@ measures-per-line:5 pick show%
 
 ---
 
-Enfin, je pense que je vais jouer ce rythme aux doigts plutôt qu'au médiator. Je peux ? **Bien sûr !** Utilisez `finger` au lieu de `pick`
+Enfin, je pense que je vais jouer ce rythme aux doigts plutôt qu'au médiator. Je peux ? **Bien sûr !** Utilisez `finger` voire `finger:fr` pour la version francisée au lieu de `pick`
 ````markdown
 ```chordgrid
 measures-per-line:5 finger show%
