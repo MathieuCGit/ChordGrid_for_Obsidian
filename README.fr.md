@@ -153,11 +153,12 @@ measures-per-line:5 pick show%
 Enfin, je pense que je vais jouer ce rythme aux doigts plutôt qu'au médiator. Je peux ? **Bien sûr !** Utilisez `finger` voire `finger:fr` pour la version francisée au lieu de `pick`
 ````markdown
 ```chordgrid
-measures-per-line:5 finger show%
+measures-per-line:5 finger:fr show%
 4/4 ||: C[8.16 88 4 168.] | G[%] | Am[%] |.1-3 F / G :||.4 Bb[8.16 88 4 168.] |
 ```
 ````
-<img width="782" height="134" alt="image" src="https://github.com/user-attachments/assets/48ab7d5e-b37c-4d88-b684-801b3f0e77e7" />
+<img width="784" height="133" alt="image" src="https://github.com/user-attachments/assets/b2bf0bde-b5f8-48d1-8736-a0862f7794cf" />
+
 
 ## 🎓 Fonctionnalités Avancées
 
