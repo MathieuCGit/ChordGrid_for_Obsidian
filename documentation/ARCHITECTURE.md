@@ -2,7 +2,15 @@
 
 ## Overview
 
-This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models**, **Utilities**, and an intelligent **PlaceAndSizeManager** system. The v2.2.0 release includes **VoltaManager** for multi-line volta brackets, **empty measure support**, and enhanced **repeat notation** with full tuplet support, complex time signatures (12+), and professional collision avoidance integrated.
+This Obsidian plugin renders chord grids with rhythmic notation in SVG format. It follows a clean three-stage pipeline: **Parser → Analyzer → Renderer**, backed by shared **Models**, **Utilities**, and an intelligent **PlaceAndSizeManager** system. 
+
+Key features include:
+- **Flexible grouping system**: Space-based control (default), auto-beam mode, and explicit binary/ternary modes
+- **VoltaManager** for multi-line volta brackets
+- **Empty measure support** and enhanced repeat notation
+- Full tuplet support with complex time signatures (12+)
+- Professional collision avoidance system
+- Cross-measure tie management
 
 ## Project Structure
 
@@ -58,9 +66,10 @@ ChordGrid_for_Obsidian/
 │       ├── DebugLogger.ts           # Debug logging system
 │       ├── TieManager.ts            # Cross-measure tie management
 │       └── VoltaManager.ts          # Multi-line volta bracket management
-└── test/                            # Unit tests (46 test suites, 315 tests)
-    ├── *.spec.ts                    # Jest test files (46 suites)
+└── test/                            # Unit tests (58 test suites, 429 tests)
+    ├── *.spec.ts                    # Jest test files (58 suites)
     ├── analyzer.spec.ts             # Analyzer tests
+    ├── grouping_*.spec.ts           # Grouping system tests (space-based, auto-beam, modes)
     ├── beam_*.spec.ts               # Beam tests
     ├── chord_*.spec.ts              # Chord rendering tests
     ├── counting_*.spec.ts           # Counting system tests
@@ -169,7 +178,12 @@ flowchart LR
 
 **Beam Rules (summary):**
 - Values ≥ 8 (eighth and shorter) are eligible for beaming
-- Rests break beams; whitespace between segments breaks beams
+- **Grouping modes**: Space-based (default), auto-beam, binary, ternary
+  - `space-based`: User controls beam groups with explicit spacing
+  - `auto-beam`: Algorithmic grouping based on time signature
+  - `binary`/`ternary`: Forced grouping patterns
+- Rests do NOT break level-1 beams (primary beam), but block secondary beams (level 2+)
+- Whitespace between segments creates hard breaks in space-based mode
 - Dotted notes influence beamlet direction (follow/precede logic)
 - Single short notes get beamlets where musically appropriate
 

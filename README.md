@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-315%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-429%20passing-brightgreen.svg)](#)
 
 > **Transform simple text notation into beautiful, professional chord charts with rhythmic notation—right inside your Obsidian notes.**
 
@@ -204,7 +204,7 @@ Add a `-` prefix before any note value to create a rest:
 
 ````markdown
   ````chordgrid
-  C[4 -4 88_16-161616]
+  C[4 -4 88 _16-161616]
   ```
 ````
 <img width="328" height="96" alt="image" src="https://github.com/user-attachments/assets/98ce95eb-97ed-47bd-9086-e5b1f063adc8" />
@@ -232,10 +232,10 @@ is different from
 - `_` **after** a note = note starts a tie (sends/emits)
 - `_` **before** a note = note receives a tie (receives/ends)
 - Examples:
-  - `[88_4]` = tie between last eighth note and quarter note
-  - `[2 4_88_]` = tie from quarter to two eighths
-  - `C[2 4_88_] | [_8]` = tie across measure boundary (last eighth of measure 1 tied to first eighth of measure 2)
-  - `{8_8_8}3` = all three notes of triplet tied together
+  - `[88_ 4]` = tie between last eighth note and quarter note
+  - `[2 4_ 88_]` = tie from quarter to two eighths
+  - `C[2 4_ 88_] | [_8]` = tie across measure boundary (last eighth of measure 1 tied to first eighth of measure 2)
+  - `{8_ 8_ 8}3` = all three notes of triplet tied together
   - `4_{8 8 8}3` = quarter note tied to first note of triplet
   - `{8 8 8_}3 4` = last note of triplet tied to following quarter
   - `| 4_ | {_8 8 8}3 |` = cross-measure tie into tuplet
@@ -313,7 +313,7 @@ First example: volta 1-3 covers one measure, volta 4 covers one measure
 Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to Am using `|.` marker
   ````markdown
   ```chordgrid
-  4/4 ||: C[4 88_4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+  4/4 ||: C[4 88_ 4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
   ```
   ````
   <img width="773" height="211" alt="image" src="https://github.com/user-attachments/assets/51136327-2286-4381-84e4-08bb64d40e10" />
@@ -325,7 +325,7 @@ Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to A
 | `8 8` | Two separate eighths (space splits beams) |
 | `4.` | Dotted quarter ( = quarter + eighth ) |
 | `16.32` | Beamlet direction adapts (analyzer path) |
-| `4_88_ \| [_8]` | Tie across measure boundary |
+| `4_ 88_ \| [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
 | `%` | Repeat previous measure's rhythm |
@@ -335,7 +335,7 @@ Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to A
 | `{888}3` | Eighth note triplet (fully beamed) |
 | `{8 8 8}3` | Eighth note triplet (separate flags) |
 | `{161616 161616}6` | Sextuplet with multi-level beaming (2×3) |
-| `{8_8_8}3` | Triplet with all notes tied together |
+| `{8_ 8_ 8}3` | Triplet with all notes tied together but no beaming ( look at spaces) |
 | `4_{8 8 8}3` | Quarter note tied to first note of triplet |
 | `{8 8 8_}3 4` | Last note of triplet tied to quarter |
 | `\| 4_ \| {_8 8 8}3 \|` | Cross-measure tie into tuplet |

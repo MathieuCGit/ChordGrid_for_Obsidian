@@ -32,7 +32,7 @@ This folder contains all technical documentation for the Chord Grid for Obsidian
 
 #### Rhythmic Grouping
 
-- **[GROUPING_CONVENTIONS.md](./GROUPING_CONVENTIONS.md)** - Note grouping conventions (binary/ternary)
+- **[GROUPING_CONVENTIONS.md](./GROUPING_CONVENTIONS.md)** - Grouping system (space-based, auto-beam, binary/ternary modes)
 
 ## 🔍 Quick Navigation
 
@@ -43,7 +43,7 @@ This folder contains all technical documentation for the Chord Grid for Obsidian
 - **How to debug?** → `DEBUG_IMPLEMENTATION.md` + `DEBUG_LOGGER.md`
 - **Tuplets with explicit ratios** → `TUPLET_RATIOS.md`
 - **Mixed tuplets (8+16)** → `MIXED_TUPLETS.md`
-- **Binary/ternary grouping** → `GROUPING_CONVENTIONS.md`
+- **Grouping modes (space-based, auto-beam, explicit)** → `GROUPING_CONVENTIONS.md`
 
 ### I'm looking for...
 
@@ -68,7 +68,13 @@ Most documents are available in **English** (primary version) and **French** (wi
 - [Unit tests](../test/)
 - [Source code](../src/)
 
+### Technical Comparisons & Proposals
+
+- **[COLLISION_SYSTEM_PROPOSAL.md](./COLLISION_SYSTEM_PROPOSAL.md)** - Collision detection system proposal
+- **[COMPARISON_MUSESCORE.md](./COMPARISON_MUSESCORE.md)** - ChordGrid vs MuseScore architecture comparison
+- **[COUNTING_SYSTEM_ANALYSIS.md](./COUNTING_SYSTEM_ANALYSIS.md)** - Pedagogical counting system analysis
+
 ---
 
-**Last updated**: November 24, 2025  
-**Plugin version**: 2.2.0
+**Documentation reflects the current state of the plugin**  
+**Test coverage**: 429 tests across 58 test suites

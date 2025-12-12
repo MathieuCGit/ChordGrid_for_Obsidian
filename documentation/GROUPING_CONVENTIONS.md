@@ -1,11 +1,43 @@
 # Conventions de groupement rythmique
 
-**Date**: 17 novembre 2025  
-**Version**: v2.1.0
-
 ## Principe général
 
 Le groupement des notes courtes (croches et plus courtes) doit refléter la **pulsation naturelle** de la métrique utilisée.
+
+## Modes de groupement
+
+Le plugin propose plusieurs modes de groupement pour s'adapter à différents besoins :
+
+### Mode par défaut : `space-based` (contrôle utilisateur)
+
+Par défaut, le plugin respecte **exactement les espaces** que vous mettez dans votre notation. Les ligatures (beams) sont créées selon vos groupements explicites.
+
+```chordgrid
+4/4 | C[88 88 88 88] |      ✅ 4 groupes séparés (espaces explicites)
+4/4 | C[8888 8888] |        ✅ 2 groupes (collés)
+4/4 | C[88888888] |         ✅ 1 seul groupe (tout collé)
+```
+
+### Mode `auto-beam` (groupement algorithmique)
+
+Ajouter la directive `auto-beam` active le groupement automatique selon les conventions musicales :
+
+```chordgrid
+auto-beam
+4/4 | C[88888888] |         → Groupé automatiquement en binaire (par 2)
+6/8 | C[888888] |           → Groupé automatiquement en ternaire (par 3)
+```
+
+### Modes explicites : `binary` et `ternary`
+
+Vous pouvez forcer un groupement spécifique :
+
+```chordgrid
+4/4 binary | C[88888888] |  → Force le groupement par 2 (binaire)
+6/8 ternary | C[888888] |   → Force le groupement par 3 (ternaire)
+```
+
+## Conventions musicales (pour mode auto-beam)
 
 ## Temps binaire vs Temps composé
 
@@ -146,7 +178,14 @@ Les tuplets peuvent avoir leur propre groupement interne, indépendamment de la 
 
 ## Silences
 
-Les silences **coupent toujours** les ligatures :
+Les silences **ne cassent PAS les ligatures de niveau 1** (poutre primaire), mais **bloquent les ligatures secondaires** (niveau 2+) :
+
+```chordgrid
+4/4 | C[1616-1616] |        ✅ Poutre niveau 1 continue, niveau 2 bloqué
+4/4 | C[88-88] |            ✅ Niveau 1 continu (dans le même groupe)
+```
+
+Les silences séparés par des espaces créent des ruptures complètes :
 
 ```chordgrid
 3/4 | C[88 -88 4] |         ✅ Le silence coupe le groupe
@@ -180,13 +219,16 @@ Le parser valide que la durée totale correspond à la métrique :
 3/4 | C[888 888] |          ❌ Groupement incorrect (métrique binaire)
 ```
 
-## Flexibilité pour l'utilisateur
+## Philosophie de conception
 
-Le plugin **permet** à l'utilisateur de choisir ses groupements, mais :
+Le plugin privilégie la **flexibilité et le contrôle utilisateur** :
 
-1. **La validation rythmique** vérifie toujours la durée totale
-2. **Les tests** doivent respecter les conventions standard
-3. **La documentation** doit montrer les bonnes pratiques
+1. **Par défaut** : Vous contrôlez le groupement avec des espaces (`space-based`)
+2. **Mode auto** : Disponible via `auto-beam` pour suivre les conventions automatiquement
+3. **Modes explicites** : `binary` et `ternary` pour forcer un comportement spécifique
+4. **Validation rythmique** : Vérifie toujours que la durée totale correspond à la métrique
+
+Cette approche permet aux musiciens expérimentés d'avoir un contrôle précis, tout en offrant des assistants pour les débutants.
 
 ## Références
 
