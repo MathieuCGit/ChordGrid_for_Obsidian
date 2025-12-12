@@ -43,10 +43,10 @@ describe('Grouping Modes (v2.1)', () => {
       expect(result.grid.timeSignature.groupingMode).toBe('ternary');
     });
     
-    it('should default to auto mode when not specified', () => {
+    it('should default to space-based mode when not specified', () => {
       const result = parser.parse('4/4 | C[88 88 88 88] |');
       
-      expect(result.grid.timeSignature.groupingMode).toBe('auto');
+      expect(result.grid.timeSignature.groupingMode).toBe('space-based');
     });
     
     it('should allow forcing ternary in binary time: 4/4 ternary', () => {
@@ -65,67 +65,67 @@ describe('Grouping Modes (v2.1)', () => {
   });
 
   describe('Auto-detection of grouping mode', () => {
-    it('should auto-detect binary for 4/4', () => {
+    it('should default to space-based for 4/4', () => {
       const result = parser.parse('4/4 | C[8888 8888] |');
       const analyzed = parser.parseForAnalyzer('4/4 | C[8888 8888] |');
       
-      expect(result.grid.timeSignature.groupingMode).toBe('auto');
-      // Auto should resolve to binary (denominator <= 4)
+      expect(result.grid.timeSignature.groupingMode).toBe('space-based');
+      // v3.0: Default is space-based (user controls grouping)
     });
     
-    it('should auto-detect ternary for 6/8', () => {
+    it('should default to space-based for 6/8', () => {
       const result = parser.parse('6/8 | C[888888] |');
       
-      expect(result.grid.timeSignature.groupingMode).toBe('auto');
-      // Auto should resolve to ternary (denominator 8, numerator 6)
+      expect(result.grid.timeSignature.groupingMode).toBe('space-based');
+      // v3.0: Default is space-based (no auto-detection without explicit directive)
     });
     
-    it('should auto-detect ternary for 9/8', () => {
+    it('should default to space-based for 9/8', () => {
       const result = parser.parse('9/8 | C[888 888 888] |');
       
-      expect(result.grid.timeSignature.groupingMode).toBe('auto');
+      expect(result.grid.timeSignature.groupingMode).toBe('space-based');
       expect(result.grid.timeSignature.numerator).toBe(9);
     });
     
-    it('should treat 5/8 as irregular (space-based)', () => {
+    it('should default to space-based for 5/8', () => {
       const result = parser.parse('5/8 | C[888 88] |');
       
-      expect(result.grid.timeSignature.groupingMode).toBe('auto');
-      // Auto should resolve to irregular (not 3,6,9,12)
+      expect(result.grid.timeSignature.groupingMode).toBe('space-based');
+      // v3.0: All meters default to space-based
     });
     
-    it('should treat 7/8 as irregular (space-based)', () => {
+    it('should default to space-based for 7/8', () => {
       const result = parser.parse('7/8 | C[88 88 888] |');
       
-      expect(result.grid.timeSignature.groupingMode).toBe('auto');
+      expect(result.grid.timeSignature.groupingMode).toBe('space-based');
       expect(result.grid.timeSignature.numerator).toBe(7);
     });
   });
 
   describe('Automatic beam breaking based on grouping mode', () => {
-    it('should break beams every 2 eighths in binary mode (4/4)', () => {
-      const parsed = parser.parseForAnalyzer('4/4 | C[8888 8888] |');
+    it('should break beams at beat boundaries with auto-beam in 4/4', () => {
+      const parsed = parser.parseForAnalyzer('auto-beam\n4/4 | C[88888888] |');
       const analyzed = analyzer.analyze(parsed.measures[0]);
       
-      // In binary mode, 8888 should be split into 88 88
-      // Expecting 4 groups of 2 eighths each (or 2 groups of 4 with breaks)
-      expect(analyzed.beamGroups.length).toBeGreaterThan(1);
+      // In auto-beam mode with 4/4, breaks at each beat (quarter note)
+      // 8 eighths = 4 beats → 4 groups
+      expect(analyzed.beamGroups.length).toBe(4);
     });
     
-    it('should break beams every 3 eighths in ternary mode (6/8)', () => {
-      const parsed = parser.parseForAnalyzer('6/8 | C[888888] |');
+    it('should break beams at beat boundaries with auto-beam in 6/8', () => {
+      const parsed = parser.parseForAnalyzer('auto-beam\n6/8 | C[888888] |');
       const analyzed = analyzer.analyze(parsed.measures[0]);
       
-      // In ternary mode, 888888 should be split into 888 888
-      // Expecting 2 groups of 3 eighths each
-      expect(analyzed.beamGroups.length).toBeGreaterThanOrEqual(1);
+      // In auto-beam mode with 6/8, breaks at dotted quarter boundaries
+      // 6 eighths = 2 beats → 2 groups
+      expect(analyzed.beamGroups.length).toBe(2);
     });
     
-    it('should not auto-break in irregular meters (5/8)', () => {
+    it('should respect spaces in space-based mode (5/8)', () => {
       const parsed = parser.parseForAnalyzer('5/8 | C[888 88] |');
       const analyzed = analyzer.analyze(parsed.measures[0]);
       
-      // In irregular mode, space controls grouping
+      // In space-based mode (default), spaces control grouping
       // 888 88 should create 2 separate groups
       expect(analyzed.beamGroups.length).toBe(2);
     });

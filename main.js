@@ -328,6 +328,7 @@ var _ChordGridParser = class _ChordGridParser {
     let measureNumbering = void 0;
     let transposeSettings = void 0;
     let countingMode = void 0;
+    let groupingModeDirective = void 0;
     let lineIndex = 0;
     while (lineIndex < lines.length) {
       let line = lines[lineIndex].trim();
@@ -400,6 +401,25 @@ var _ChordGridParser = class _ChordGridParser {
         line = line.replace(/\b(count|counting)\b\s*/i, "");
         hasAnyDirective = true;
       }
+      if (/^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.test(line)) {
+        const modeMatch = /^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.exec(line);
+        if (modeMatch) {
+          const rawMode = modeMatch[1].toLowerCase();
+          if (rawMode === "auto") {
+            console.warn('[ChordGrid] Directive "auto" is deprecated. Use "auto-beam" instead. Converting automatically.');
+            groupingModeDirective = "auto-beam";
+          } else if (rawMode === "noauto") {
+            console.warn('[ChordGrid] Directive "noauto" is deprecated and ignored (space-based is now the default behavior).');
+            groupingModeDirective = void 0;
+          } else if (rawMode === "auto-beams") {
+            groupingModeDirective = "auto-beam";
+          } else {
+            groupingModeDirective = rawMode;
+          }
+          line = line.replace(/^\s*(auto-beams?|binary|ternary|auto|noauto)\b\s*/i, "");
+          hasAnyDirective = true;
+        }
+      }
       line = line.trim();
       if (line !== "") {
         if (/^\d+\/\d+/.test(line)) {
@@ -421,12 +441,18 @@ var _ChordGridParser = class _ChordGridParser {
     lines.splice(0, lineIndex);
     let timeSignatureLine = lines[0] || "";
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
-    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*/, "");
+    if (groupingModeDirective && timeSignature.groupingMode === "space-based") {
+      timeSignature.groupingMode = groupingModeDirective;
+    }
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:auto-beams?|binary|ternary|auto|noauto))?\s*/, "");
     lines[0] = timeSignatureLine;
     const allMeasures = [];
+    let lastExplicitMeasure = null;
     for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
       const line = lines[lineIndex2];
-      const measures = this.parseLine(line, lineIndex2 === 0, measuresPerLine);
+      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature);
+      const measures = result.measures;
+      lastExplicitMeasure = result.lastExplicitMeasure;
       if (measures.length > 0 && lineIndex2 < lines.length - 1) {
         measures[measures.length - 1].isLineBreak = true;
       }
@@ -619,7 +645,7 @@ var _ChordGridParser = class _ChordGridParser {
       });
       return {
         segments,
-        timeSignature: result.grid.timeSignature,
+        timeSignature: m.timeSignature || result.grid.timeSignature,
         barline: m.barline,
         isLineBreak: m.isLineBreak,
         source: m.source
@@ -627,7 +653,7 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine, measuresPerLine) {
+  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
@@ -674,7 +700,7 @@ var _ChordGridParser = class _ChordGridParser {
     const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
-    let lastExplicitMeasure = null;
+    let lastExplicitMeasure = lastExplicitMeasureFromPreviousLine || null;
     let pendingStartBarline = null;
     let pendingVolta = void 0;
     let pendingVoltaIsAfterRepeatEnd = false;
@@ -734,11 +760,14 @@ var _ChordGridParser = class _ChordGridParser {
       }
       let text = t.content;
       let measureTimeSignature;
-      const timeSignaturePattern = /^(\s*)(\d+\/\d+)(?:\s+(binary|ternary|noauto))?\s+/;
+      const timeSignaturePattern = /^(\s*)(\d+\/\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?\s+/;
       const tsMatch = timeSignaturePattern.exec(text);
       if (tsMatch) {
         const tsText = tsMatch[2] + (tsMatch[3] ? " " + tsMatch[3] : "");
         measureTimeSignature = this.parseTimeSignature(tsText);
+        if (measureTimeSignature.groupingMode === "space-based" && globalTimeSignature && globalTimeSignature.groupingMode !== "space-based") {
+          measureTimeSignature.groupingMode = globalTimeSignature.groupingMode;
+        }
         text = tsMatch[1] + text.slice(tsMatch[0].length);
       }
       if (text.trim() === "%") {
@@ -838,7 +867,8 @@ var _ChordGridParser = class _ChordGridParser {
           if (rhythm.length > 0) {
             const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
             const isLastSegment = segmentIndex === lastSegmentWithRhythmIndex;
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment);
+            const effectiveTS = measureTimeSignature || globalTimeSignature;
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS);
             chordSegments.push({
               chord,
               // use the current chord
@@ -856,7 +886,7 @@ var _ChordGridParser = class _ChordGridParser {
         const qualityPattern = "(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|\xF8|o|\\+|\\-)?";
         const extensionPattern = "[0-9]+";
         const alterationPattern = "(?:\\([#b\u266F\u266D]?[0-9]+\\)|[#b\u266F\u266D][0-9]+)";
-        const susPattern = "(?:sus[24]?|add[#b\u266F\u266D]?[0-9]+)";
+        const susPattern = "(?:\\((?:sus[24]?|add[#b\u266F\u266D]?[0-9]+)\\)|sus[24]?|add[#b\u266F\u266D]?[0-9]+)";
         const singleChordPattern = `${rootPattern}${qualityPattern}(?:${extensionPattern}|${alterationPattern}|${susPattern})*(?:/${rootPattern})?`;
         const chordPattern = new RegExp(`^${singleChordPattern}(?:\\s+\\/\\s+${singleChordPattern})*$`);
         const isChordOnly = chordPattern.test(trimmedText);
@@ -881,7 +911,8 @@ var _ChordGridParser = class _ChordGridParser {
           isChordOnlyMode = true;
         } else if (trimmedText.length > 0) {
           const rhythm = trimmedText;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true);
+          const effectiveTS = measureTimeSignature || globalTimeSignature;
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS);
           chordSegments.push({
             chord: "",
             beats: parsedBeats,
@@ -945,7 +976,7 @@ var _ChordGridParser = class _ChordGridParser {
       }
       lastExplicitMeasure = newMeasure;
     }
-    return measures;
+    return { measures, lastExplicitMeasure };
   }
   /**
    * Parse the time signature from the first line.
@@ -957,17 +988,31 @@ var _ChordGridParser = class _ChordGridParser {
   /**
    * Parse the time signature and optional grouping mode.
    * 
-   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary"
+   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary" or "4/4 auto-beam"
    * 
    * @param line - First line containing the time signature
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   parseTimeSignature(line) {
-    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?/.exec(line);
     if (m) {
       const numerator = parseInt(m[1], 10);
       const denominator = parseInt(m[2], 10);
-      const groupingMode = m[3] || "auto";
+      let groupingMode = "space-based";
+      if (m[3]) {
+        const rawMode = m[3].toLowerCase();
+        if (rawMode === "auto") {
+          console.warn('[ChordGrid] Mode "auto" is deprecated. Use "auto-beam" instead.');
+          groupingMode = "auto-beam";
+        } else if (rawMode === "noauto") {
+          console.warn('[ChordGrid] Mode "noauto" is deprecated (space-based is now default).');
+          groupingMode = "space-based";
+        } else if (rawMode === "auto-beams") {
+          groupingMode = "auto-beam";
+        } else {
+          groupingMode = rawMode;
+        }
+      }
       return {
         numerator,
         denominator,
@@ -981,7 +1026,8 @@ var _ChordGridParser = class _ChordGridParser {
       denominator: 4,
       beatsPerMeasure: 4,
       beatUnit: 4,
-      groupingMode: "auto"
+      groupingMode: "space-based"
+      // NEW default
     };
   }
   /**
@@ -1172,7 +1218,7 @@ var BeamAndTieAnalyzer = class {
       lastBeamableNotes: []
     };
   }
-  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true) {
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature) {
     var _a, _b, _c, _d, _e, _f, _g;
     const beats = [];
     let currentBeat = [];
@@ -3454,19 +3500,21 @@ var MusicAnalyzer = class {
     };
   }
   /**
-   * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
+   * Resolve grouping mode to concrete binary/ternary/irregular mode.
    * 
-   * Rules:
-   * - noauto: user controls grouping via spaces (no auto-breaking)
-   * - binary: group by 2 eighths (1.0 quarter)
-   * - ternary: group by 3 eighths (1.5 quarters)
-   * - auto: detect from time signature
-   *   - denominator <= 4: binary (quarter-note based, group by 2)
-   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
-   *   - else: irregular (space-based grouping, no auto-breaking)
+   * NEW PHILOSOPHY (v3.0.0):
+   * - 'space-based': (DEFAULT) user controls grouping via spaces only → irregular
+   * - 'auto-beam': enable algorithmic auto-breaking based on meter → binary or ternary
+   * - 'binary': force binary grouping (groups of 2 eighths = 1 quarter)
+   * - 'ternary': force ternary grouping (groups of 3 eighths = 1 dotted quarter)
+   * 
+   * Auto-detection logic for 'auto-beam':
+   *   - denominator <= 4: binary (simple time)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (compound time)
+   *   - else: irregular (no reliable pattern)
    */
   resolveGroupingMode(timeSignature) {
-    if (timeSignature.groupingMode === "noauto") {
+    if (timeSignature.groupingMode === "space-based") {
       return "irregular";
     }
     if (timeSignature.groupingMode === "binary") {
@@ -3475,12 +3523,15 @@ var MusicAnalyzer = class {
     if (timeSignature.groupingMode === "ternary") {
       return "ternary";
     }
-    const { numerator, denominator } = timeSignature;
-    if (denominator <= 4) {
-      return "binary";
-    }
-    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
-      return "ternary";
+    if (timeSignature.groupingMode === "auto-beam") {
+      const { numerator, denominator } = timeSignature;
+      if (denominator <= 4) {
+        return "binary";
+      }
+      if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+        return "ternary";
+      }
+      return "irregular";
     }
     return "irregular";
   }
@@ -3551,7 +3602,7 @@ var MusicAnalyzer = class {
     for (let k = 1; k < beamableIdxs.length; k++) {
       const a = beamableIdxs[k - 1];
       const b = beamableIdxs[k];
-      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure)) {
+      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure, allNotes)) {
         segments.push(seg);
         seg = [b];
       } else {
@@ -3727,8 +3778,8 @@ var MusicAnalyzer = class {
       }
     }
   }
-  isHardBreakBetween(a, b, measure) {
-    var _a, _b, _c, _d;
+  isHardBreakBetween(a, b, measure, allNotes) {
+    var _a, _b;
     if (a.forcedBeamThroughTie) {
       DebugLogger2.log("\u{1F517} Forced beam through tie [_]", {
         fromNote: a.absoluteIndex,
@@ -3736,7 +3787,8 @@ var MusicAnalyzer = class {
       });
       return false;
     }
-    if (a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
+    const resolvedMode = measure.timeSignature ? this.resolveGroupingMode(measure.timeSignature) : "irregular";
+    if (resolvedMode === "irregular" && a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
       const aTuplet = a.tuplet;
       const bTuplet = b.tuplet;
       if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
@@ -3749,28 +3801,36 @@ var MusicAnalyzer = class {
       });
       return true;
     }
-    if (a.segmentIndex === b.segmentIndex && ((_c = a.beatIndex) != null ? _c : -1) === ((_d = b.beatIndex) != null ? _d : -1)) {
+    if (resolvedMode !== "irregular") {
       const aTuplet2 = a.tuplet;
       const bTuplet2 = b.tuplet;
       if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
         return false;
       }
-      if (measure.timeSignature) {
-        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
-        if (resolvedMode !== "irregular" && a.quarterStart !== void 0 && b.quarterStart !== void 0) {
-          const groupSize = resolvedMode === "binary" ? 1 : 1.5;
-          const aGroup = Math.floor(a.quarterStart / groupSize);
-          const bGroup = Math.floor(b.quarterStart / groupSize);
-          if (aGroup !== bGroup) {
-            DebugLogger2.log(`\u{1F3B5} Auto-break at ${resolvedMode} boundary`, {
-              aStart: a.quarterStart,
-              bStart: b.quarterStart,
-              groupSize,
-              aGroup,
-              bGroup
-            });
-            return true;
-          }
+      if (a.quarterStart !== void 0 && b.quarterStart !== void 0 && measure.timeSignature) {
+        let groupSize;
+        const actualMode = measure.timeSignature.groupingMode;
+        if (actualMode === "binary") {
+          groupSize = 0.5;
+          groupSize = 1;
+        } else if (actualMode === "ternary") {
+          groupSize = 1.5;
+        } else if (actualMode === "auto-beam") {
+          groupSize = measure.timeSignature.denominator <= 4 ? 1 : 1.5;
+        } else {
+          return false;
+        }
+        const aGroup = Math.floor(a.quarterStart / groupSize);
+        const bGroup = Math.floor(b.quarterStart / groupSize);
+        if (aGroup !== bGroup) {
+          DebugLogger2.log(`\u{1F3B5} Auto-break at ${actualMode} boundary`, {
+            aStart: a.quarterStart,
+            bStart: b.quarterStart,
+            groupSize,
+            aGroup,
+            bGroup
+          });
+          return true;
         }
       }
     }
@@ -5633,7 +5693,7 @@ var SVGRenderer = class {
         });
         const parsedMeasure = {
           segments,
-          timeSignature: grid.timeSignature,
+          timeSignature: m.timeSignature || grid.timeSignature,
           barline: m.barline || "|",
           isLineBreak: m.isLineBreak || false,
           source: m.source || ""

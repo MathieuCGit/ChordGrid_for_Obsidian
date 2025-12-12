@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file analyzer.spec.ts
  * @description Unit tests for MusicAnalyzer
  * 
@@ -28,7 +28,7 @@ function createTestMeasure(segments: ParsedSegment[], beatsPerMeasure: number = 
       denominator: beatUnit,
       beatsPerMeasure,
       beatUnit,
-      groupingMode: 'auto' as any
+      groupingMode: 'space-based' as any
     },
   barline: BarlineType.Single,
   isLineBreak: false,
@@ -61,7 +61,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
         ],
-        timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any },
+        timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any },
         barline: BarlineType.Single,
         isLineBreak: false,
         source: '[test]'
@@ -96,7 +96,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: true // Espace avant ce segment
           }
         ],
-        timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any },
+        timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any },
         barline: BarlineType.Single,
         isLineBreak: false,
         source: '[test]'
@@ -131,7 +131,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -159,7 +159,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -193,7 +193,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
         ],
-        timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: '[test]'
+        timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: '[test]'
       };
 
       const result = analyzer.analyze(measure);
@@ -216,7 +216,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
   ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: '[test]'
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: '[test]'
       };
 
       const result = analyzer.analyze(measure);
@@ -240,7 +240,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -249,10 +249,12 @@ describe('MusicAnalyzer', () => {
       const beamlets = result.beamGroups.filter(g => g.isPartial && g.level === 2);
       expect(beamlets).toHaveLength(2);
       
-      // First beamlet should point right (before center)
+      // v3.0: Rest blocks level-2 beam but NOT level-1 beam
+      // The two 16th notes are connected at level 1, so beamlet directions follow group pattern
+      // First beamlet (16 before rest) points right (start of 2-note group)
       expect(beamlets[0].direction).toBe('right');
       
-      // Second beamlet should point left (after center)
+      // Second beamlet (16 after rest) points left (end of 2-note group)
       expect(beamlets[1].direction).toBe('left');
     });
   });
@@ -270,7 +272,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -306,7 +308,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -337,7 +339,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -373,7 +375,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: true  // Space breaks beam
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -396,7 +398,7 @@ describe('MusicAnalyzer', () => {
     it('should handle empty segments gracefully', () => {
       const measure: ParsedMeasure = {
     segments: [],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -417,7 +419,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -438,7 +440,7 @@ describe('MusicAnalyzer', () => {
             leadingSpace: false
           }
     ],
-  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'auto' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
+  timeSignature: { numerator: 4, denominator: 4, beatsPerMeasure: 4, beatUnit: 4, groupingMode: 'space-based' as any }, barline: BarlineType.Single, isLineBreak: false, source: "[test]"
       };
       
       const result = analyzer.analyze(measure);
@@ -449,5 +451,6 @@ describe('MusicAnalyzer', () => {
     });
   });
 });
+
 
 

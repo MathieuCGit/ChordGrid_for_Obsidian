@@ -556,7 +556,7 @@ export class SVGRenderer {
         });
         const parsedMeasure = {
           segments,
-          timeSignature: grid.timeSignature,
+          timeSignature: m.timeSignature || grid.timeSignature,
           barline: (m as any).barline || '|',
           isLineBreak: (m as any).isLineBreak || false,
           source: (m as any).source || ''

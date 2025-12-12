@@ -140,6 +140,7 @@ export class ChordGridParser {
     let measureNumbering: { startNumber: number, interval: number, enabled: boolean } | undefined = undefined;
     let transposeSettings: { semitones: number, accidental?: '#' | 'b' } | undefined = undefined;
     let countingMode: boolean | undefined = undefined;
+    let groupingModeDirective: GroupingMode | undefined = undefined;
     
     // Scan initial lines for directives (stop when we find time signature or barline)
     let lineIndex = 0;
@@ -245,6 +246,31 @@ export class ChordGridParser {
         hasAnyDirective = true;
       }
       
+      // Parse grouping mode directive (auto-beam, auto-beams, binary, ternary)
+      // Note: 'auto' and 'noauto' are deprecated but handled with warnings
+      // Only match if NOT preceded by a time signature pattern (to avoid matching "4/4 binary" in measures)
+      // This directive should be standalone or after other directives, not after time signatures
+      if (/^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.test(line)) {
+        const modeMatch = /^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.exec(line);
+        if (modeMatch) {
+          const rawMode = modeMatch[1].toLowerCase();
+          // Handle deprecated directives
+          if (rawMode === 'auto') {
+            console.warn('[ChordGrid] Directive "auto" is deprecated. Use "auto-beam" instead. Converting automatically.');
+            groupingModeDirective = 'auto-beam';
+          } else if (rawMode === 'noauto') {
+            console.warn('[ChordGrid] Directive "noauto" is deprecated and ignored (space-based is now the default behavior).');
+            groupingModeDirective = undefined; // Ignore, let default apply
+          } else if (rawMode === 'auto-beams') {
+            groupingModeDirective = 'auto-beam'; // Alias: auto-beams → auto-beam
+          } else {
+            groupingModeDirective = rawMode as GroupingMode;
+          }
+          line = line.replace(/^\s*(auto-beams?|binary|ternary|auto|noauto)\b\s*/i, '');
+          hasAnyDirective = true;
+        }
+      }
+      
       // After removing all directives, check what remains
       line = line.trim();
       
@@ -281,19 +307,27 @@ export class ChordGridParser {
 
     // Parse the time signature
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
+    
+    // Apply grouping mode directive if specified and no explicit mode in time signature
+    if (groupingModeDirective && timeSignature.groupingMode === 'space-based') {
+      timeSignature.groupingMode = groupingModeDirective;
+    }
 
-    // Remove the "N/M" or "N/M binary/ternary/noauto" pattern from the first line
+    // Remove the "N/M" or "N/M mode" pattern from the first line
     // to avoid parsing it as a measure
     // Does NOT consume barlines to allow proper barline parsing
-    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*/, '');
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:auto-beams?|binary|ternary|auto|noauto))?\s*/, '');
     lines[0] = timeSignatureLine;
     
   // Parse all measures
   const allMeasures: Measure[] = [];
+  let lastExplicitMeasure: Measure | null = null;
     
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const measures = this.parseLine(line, lineIndex === 0, measuresPerLine);
+      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature);
+      const measures = result.measures;
+      lastExplicitMeasure = result.lastExplicitMeasure; // Preserve for next line
       
       // Mark the last measure of each line
       if (measures.length > 0 && lineIndex < lines.length - 1) {
@@ -578,7 +612,7 @@ export class ChordGridParser {
 
       return {
         segments,
-        timeSignature: result.grid.timeSignature,
+        timeSignature: m.timeSignature || result.grid.timeSignature,
         barline: m.barline,
         isLineBreak: m.isLineBreak,
         source: m.source,
@@ -588,7 +622,7 @@ export class ChordGridParser {
     return { timeSignature: result.grid.timeSignature, measures };
   }
   
-  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number): Measure[] {
+  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature): { measures: Measure[], lastExplicitMeasure: Measure | null } {
     // Skip time signature on first line
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, '');
@@ -671,7 +705,8 @@ export class ChordGridParser {
     // to correctly determine isFirstMeasureOfLine for tie logic
 
     // Track the last explicit measure (non-%) for repeat notation
-    let lastExplicitMeasure: Measure | null = null;
+    // Initialize with value from previous line (if any)
+    let lastExplicitMeasure: Measure | null = lastExplicitMeasureFromPreviousLine || null;
     
     // Track pending start repeat barline (||:) that should apply to next measure
     let pendingStartBarline: string | null = null;
@@ -772,12 +807,18 @@ export class ChordGridParser {
       // TIME SIGNATURE CHANGE DETECTION
       // Check if this measure starts with a time signature (e.g., "3/4 Am[4 4 4]" or "2/4 Em[2]")
       let measureTimeSignature: TimeSignature | undefined;
-      const timeSignaturePattern = /^(\s*)(\d+\/\d+)(?:\s+(binary|ternary|noauto))?\s+/;
+      const timeSignaturePattern = /^(\s*)(\d+\/\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?\s+/;
       const tsMatch = timeSignaturePattern.exec(text);
       if (tsMatch) {
         // Extract time signature from captured groups (skip leading space)
         const tsText = tsMatch[2] + (tsMatch[3] ? ' ' + tsMatch[3] : '');
         measureTimeSignature = this.parseTimeSignature(tsText);
+        
+        // If no explicit groupingMode in the inline time signature, inherit from global
+        if (measureTimeSignature.groupingMode === 'space-based' && globalTimeSignature && globalTimeSignature.groupingMode !== 'space-based') {
+          measureTimeSignature.groupingMode = globalTimeSignature.groupingMode;
+        }
+        
         // Remove time signature from content, keep leading space
         text = tsMatch[1] + text.slice(tsMatch[0].length);
       }
@@ -923,8 +964,9 @@ export class ChordGridParser {
             // Use the capture group from the segment regex which preserves leading spaces
             const hasSignificantSpace = (leadingSpaceCapture || '').length > 0;
             const isLastSegment = (segmentIndex === lastSegmentWithRhythmIndex);
+            const effectiveTS = measureTimeSignature || globalTimeSignature;
 
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment);
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS);
             
             // Create a segment for each chord/rhythm group
             chordSegments.push({
@@ -964,7 +1006,9 @@ export class ChordGridParser {
         const extensionPattern = '[0-9]+';
         // Alterations can be in parentheses or not: b5, #11, (b9), (#11), etc.
         const alterationPattern = '(?:\\([#b♯♭]?[0-9]+\\)|[#b♯♭][0-9]+)';
-        const susPattern = '(?:sus[24]?|add[#b♯♭]?[0-9]+)';
+        // Suspensions and additions: with optional parentheses
+        // Examples: sus4, sus2, add9, (sus4), (add9), add#11, (add#11)
+        const susPattern = '(?:\\((?:sus[24]?|add[#b♯♭]?[0-9]+)\\)|sus[24]?|add[#b♯♭]?[0-9]+)';
         
         // A chord is: root + quality + (extension/alteration/sus)* + optional bass
         // Allow multiple alterations, extensions, etc. in any order
@@ -1007,7 +1051,8 @@ export class ChordGridParser {
         } else if (trimmedText.length > 0) {
           // Rhythm-only mode: parse as rhythm without chord
           const rhythm = trimmedText;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true);
+          const effectiveTS = measureTimeSignature || globalTimeSignature;
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS);
           
           chordSegments.push({
             chord: '',
@@ -1102,7 +1147,7 @@ export class ChordGridParser {
       lastExplicitMeasure = newMeasure;
     }
 
-    return measures;
+    return { measures, lastExplicitMeasure };
   }
 
   /**
@@ -1115,18 +1160,34 @@ export class ChordGridParser {
   /**
    * Parse the time signature and optional grouping mode.
    * 
-   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary"
+   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary" or "4/4 auto-beam"
    * 
    * @param line - First line containing the time signature
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   private parseTimeSignature(line: string): TimeSignature {
-    // Match: "4/4" optionally followed by "binary", "ternary", or "noauto"
-    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
+    // Match: "4/4" optionally followed by grouping mode
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?/.exec(line);
     if (m) {
       const numerator = parseInt(m[1], 10);
       const denominator = parseInt(m[2], 10);
-      const groupingMode = (m[3] as GroupingMode) || 'auto';
+      let groupingMode: GroupingMode = 'space-based'; // NEW default
+      
+      if (m[3]) {
+        const rawMode = m[3].toLowerCase();
+        // Handle deprecated modes
+        if (rawMode === 'auto') {
+          console.warn('[ChordGrid] Mode "auto" is deprecated. Use "auto-beam" instead.');
+          groupingMode = 'auto-beam';
+        } else if (rawMode === 'noauto') {
+          console.warn('[ChordGrid] Mode "noauto" is deprecated (space-based is now default).');
+          groupingMode = 'space-based';
+        } else if (rawMode === 'auto-beams') {
+          groupingMode = 'auto-beam';
+        } else {
+          groupingMode = rawMode as GroupingMode;
+        }
+      }
       
       return {
         numerator,
@@ -1142,7 +1203,7 @@ export class ChordGridParser {
       denominator: 4, 
       beatsPerMeasure: 4, 
       beatUnit: 4,
-      groupingMode: 'auto'
+      groupingMode: 'space-based' // NEW default
     };
   }
 
@@ -1356,7 +1417,8 @@ class BeamAndTieAnalyzer {
     isFirstMeasureOfLine: boolean,
     isLastMeasureOfLine: boolean,
     hasSignificantSpace: boolean = false,
-    isLastSegment: boolean = true
+    isLastSegment: boolean = true,
+    effectiveTimeSignature?: TimeSignature
   ): Beat[] {
     // NOTE: we should NOT overwrite lastGroupHasSpace here because the
     // continuity decision in createBeat must use the *previous* group's

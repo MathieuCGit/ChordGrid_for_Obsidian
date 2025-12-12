@@ -245,13 +245,17 @@ export interface Measure {
 }
 
 /**
- * Grouping mode for note beaming.
- * - 'binary': group by 2 (binary time) - e.g., 88 88
- * - 'ternary': group by 3 (compound time) - e.g., 888 888
- * - 'noauto': no auto-grouping, user controls via spaces
- * - 'auto': automatic detection based on time signature
+ * Grouping mode for beam breaks.
+ * - 'space-based': (DEFAULT) only user spaces create breaks, no auto-breaking
+ * - 'auto-beam': enable algorithmic auto-breaking (binary or ternary based on meter)
+ * - 'binary': force binary grouping (groups of 2 eighths = 1 quarter)
+ * - 'ternary': force ternary grouping (groups of 3 eighths = 1 dotted quarter)
+ * 
+ * Philosophy change (v3.0.0):
+ * - OLD: Auto-break enabled by default, 'noauto' to disable
+ * - NEW: Space-based by default, 'auto-beam' to enable algorithm
  */
-export type GroupingMode = 'binary' | 'ternary' | 'noauto' | 'auto';
+export type GroupingMode = 'space-based' | 'auto-beam' | 'binary' | 'ternary';
 
 /**
  * Time signature.

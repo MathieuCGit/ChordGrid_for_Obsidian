@@ -85,22 +85,26 @@ export class MusicAnalyzer {
   
   
   /**
-   * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
+   * Resolve grouping mode to concrete binary/ternary/irregular mode.
    * 
-   * Rules:
-   * - noauto: user controls grouping via spaces (no auto-breaking)
-   * - binary: group by 2 eighths (1.0 quarter)
-   * - ternary: group by 3 eighths (1.5 quarters)
-   * - auto: detect from time signature
-   *   - denominator <= 4: binary (quarter-note based, group by 2)
-   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
-   *   - else: irregular (space-based grouping, no auto-breaking)
+   * NEW PHILOSOPHY (v3.0.0):
+   * - 'space-based': (DEFAULT) user controls grouping via spaces only → irregular
+   * - 'auto-beam': enable algorithmic auto-breaking based on meter → binary or ternary
+   * - 'binary': force binary grouping (groups of 2 eighths = 1 quarter)
+   * - 'ternary': force ternary grouping (groups of 3 eighths = 1 dotted quarter)
+   * 
+   * Auto-detection logic for 'auto-beam':
+   *   - denominator <= 4: binary (simple time)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (compound time)
+   *   - else: irregular (no reliable pattern)
    */
   private resolveGroupingMode(timeSignature: TimeSignature): 'binary' | 'ternary' | 'irregular' {
-    // Handle explicit modes
-    if (timeSignature.groupingMode === 'noauto') {
+    // DEFAULT: space-based (no auto-breaking)
+    if (timeSignature.groupingMode === 'space-based') {
       return 'irregular';
     }
+    
+    // EXPLICIT force modes
     if (timeSignature.groupingMode === 'binary') {
       return 'binary';
     }
@@ -108,18 +112,25 @@ export class MusicAnalyzer {
       return 'ternary';
     }
     
-    // Auto-detection for 'auto' mode
-    const { numerator, denominator } = timeSignature;
-    
-    if (denominator <= 4) {
-      return 'binary';
+    // AUTO-BEAM: enable algorithmic detection
+    if (timeSignature.groupingMode === 'auto-beam') {
+      const { numerator, denominator } = timeSignature;
+      
+      // Simple meters (denominator ≤ 4) → binary
+      if (denominator <= 4) {
+        return 'binary';
+      }
+      
+      // Compound meters (6/8, 9/8, 12/8) → ternary
+      if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+        return 'ternary';
+      }
+      
+      // Irregular meters (5/8, 7/8, etc.) → no auto-grouping
+      return 'irregular';
     }
     
-    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
-      return 'ternary';
-    }
-    
-    // Irregular meters default to no auto-grouping
+    // Fallback (should not happen with new type system)
     return 'irregular';
   }
   
@@ -206,7 +217,7 @@ export class MusicAnalyzer {
     for (let k = 1; k < beamableIdxs.length; k++) {
       const a = beamableIdxs[k - 1];
       const b = beamableIdxs[k];
-      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure)) {
+      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure, allNotes)) {
         segments.push(seg);
         seg = [b];
       } else {
@@ -454,7 +465,7 @@ export class MusicAnalyzer {
     }
   }
 
-  private isHardBreakBetween(a: NoteWithPosition, b: NoteWithPosition, measure: ParsedMeasure): boolean {
+  private isHardBreakBetween(a: NoteWithPosition, b: NoteWithPosition, measure: ParsedMeasure, allNotes: NoteWithPosition[]): boolean {
      // Check if previous note has forced beam through tie ([_] syntax)
      // This takes absolute priority over all other rules
      if ((a as any).forcedBeamThroughTie) {
@@ -465,13 +476,22 @@ export class MusicAnalyzer {
        return false; // Don't break beam
      }
      
-    // PRIORITY 1: Beat boundary within same segment (explicit space in syntax)
+    // NOTE: Rests do NOT create hard breaks at level 1 (primary beam).
+    // They only block secondary beams (level 2+), handled by blocksBetween logic.
+    // This allows patterns like [1616-1616] to maintain a continuous primary beam.
+     
+    // DETERMINE GROUPING STRATEGY FIRST
+    const resolvedMode = measure.timeSignature ? this.resolveGroupingMode(measure.timeSignature) : 'irregular';
+    
+    // NEW PHILOSOPHY (v3.0.0):
+    // - irregular (space-based): only user spaces create breaks
+    // - binary/ternary/auto-beam: algorithm decides, spaces are IGNORED
+    
+    // PRIORITY 1 (space-based modes only): Beat boundary within same segment (explicit space)
     // If notes are in different beats, they are separated by space = hard break
-    // EXCEPTION: when both notes belong to the SAME tuplet group, we do NOT create a hard break here.
-    //            Instead, we preserve the primary beam (level 1) and let higher-level beams
-    //            be blocked via blocksBetween using hasLeadingSpace logic. This matches common
-    //            engraving where tuplets keep a continuous primary beam even if spaced.
-    if (a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) {
+    // EXCEPTION 1: when both notes belong to the SAME tuplet group, preserve primary beam
+    // EXCEPTION 2: in auto-beam/binary/ternary modes, spaces are IGNORED
+    if (resolvedMode === 'irregular' && a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) {
       const aTuplet = (a as any).tuplet;
       const bTuplet = (b as any).tuplet;
       if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
@@ -486,40 +506,54 @@ export class MusicAnalyzer {
       return true;
     }
     
-    // PRIORITY 2: Auto-break at beat boundaries based on grouping mode
-    // Only applies WITHIN the same beat (no explicit space)
-    if (a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) === (b.beatIndex ?? -1)) {
-      // Do NOT auto-break within the same tuplet group; tuplets should keep primary beam continuity
+    // PRIORITY 2 (algorithmic modes only): Auto-break at beat/group boundaries
+    // Only applies in auto-beam, binary, or ternary modes
+    // Spaces are IGNORED - algorithm decides grouping
+    if (resolvedMode !== 'irregular') {
+      // Do NOT auto-break within the same tuplet group
       const aTuplet2 = (a as any).tuplet;
       const bTuplet2 = (b as any).tuplet;
       if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
-        // Skip auto-breaks for tuplets; spacing-level breaks handled by blocksBetween
+        // Skip auto-breaks for tuplets
         return false;
       }
-      if (measure.timeSignature) {
-        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
+      
+      if (a.quarterStart !== undefined && b.quarterStart !== undefined && measure.timeSignature) {
+        let groupSize: number;
         
-        // Skip auto-breaking for irregular meters and noauto mode
-        if (resolvedMode !== 'irregular' && a.quarterStart !== undefined && b.quarterStart !== undefined) {
-          // Group size in quarter-note units:
-          // - binary: 2 eighths = 1.0 quarters
-          // - ternary: 3 eighths = 1.5 quarters
-          const groupSize = resolvedMode === 'binary' ? 1.0 : 1.5;
-          
-          // Determine which beat group each note belongs to
-          const aGroup = Math.floor(a.quarterStart / groupSize);
-          const bGroup = Math.floor(b.quarterStart / groupSize);
-          
-          if (aGroup !== bGroup) {
-            DebugLogger.log(`🎵 Auto-break at ${resolvedMode} boundary`, {
-              aStart: a.quarterStart,
-              bStart: b.quarterStart,
-              groupSize,
-              aGroup,
-              bGroup
-            });
-            return true;
-          }
+        // Determine grouping strategy based on actual mode (not resolved mode for explicit force)
+        const actualMode = measure.timeSignature.groupingMode;
+        
+        if (actualMode === 'binary') {
+          // FORCE binary: always group by 2 eighths = 0.5 quarters (1 eighth = 0.5 quarters)
+          groupSize = 0.5; // But we want groups of 2 eighths, so 2 * 0.5 = 1.0
+          groupSize = 1.0;
+        } else if (actualMode === 'ternary') {
+          // FORCE ternary: always group by 3 eighths = 0.75 quarters
+          groupSize = 1.5;
+        } else if (actualMode === 'auto-beam') {
+          // AUTO-BEAM: break at beat boundaries based on time signature
+          // Simple time (denominator ≤ 4): beat = quarter note (1.0)
+          // Compound time (denominator ≥ 8): beat = dotted quarter (1.5)
+          groupSize = measure.timeSignature.denominator <= 4 ? 1.0 : 1.5;
+        } else {
+          // Fallback (shouldn't happen)
+          return false;
+        }
+        
+        // Determine which group each note belongs to
+        const aGroup = Math.floor(a.quarterStart / groupSize);
+        const bGroup = Math.floor(b.quarterStart / groupSize);
+        
+        if (aGroup !== bGroup) {
+          DebugLogger.log(`🎵 Auto-break at ${actualMode} boundary`, {
+            aStart: a.quarterStart,
+            bStart: b.quarterStart,
+            groupSize,
+            aGroup,
+            bGroup
+          });
+          return true;
         }
       }
     }

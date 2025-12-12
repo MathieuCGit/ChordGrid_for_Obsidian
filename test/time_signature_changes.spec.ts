@@ -32,7 +32,7 @@ describe('Time Signature Changes', () => {
         denominator: 4,
         beatsPerMeasure: 2,
         beatUnit: 4,
-        groupingMode: 'auto'
+        groupingMode: 'space-based'
       });
     });
 
@@ -55,7 +55,7 @@ describe('Time Signature Changes', () => {
         denominator: 4,
         beatsPerMeasure: 2,
         beatUnit: 4,
-        groupingMode: 'auto'
+        groupingMode: 'space-based'
       });
     });
 
@@ -195,7 +195,7 @@ describe('Time Signature Changes', () => {
         denominator: 4,
         beatsPerMeasure: 2,
         beatUnit: 4,
-        groupingMode: 'auto'
+        groupingMode: 'space-based'
       });
     });
 
@@ -229,7 +229,7 @@ describe('Time Signature Changes', () => {
         denominator: 8,
         beatsPerMeasure: 6,
         beatUnit: 8,
-        groupingMode: 'auto'
+        groupingMode: 'space-based'
       });
     });
 
@@ -250,3 +250,4 @@ describe('Time Signature Changes', () => {
     });
   });
 });
+

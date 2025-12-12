@@ -9,7 +9,7 @@ describe('SVGRenderer responsive SVG', () => {
         denominator: 4,
         beatsPerMeasure: 4,
         beatUnit: 4,
-        groupingMode: 'auto',
+        groupingMode: 'space-based',
       },
       measures: [
         {
