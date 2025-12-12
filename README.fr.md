@@ -205,7 +205,7 @@ Ajoutez un préfixe `-` avant toute valeur de note pour créer un silence :
 
 ````markdown
   ````chordgrid
-  C[4 -4 88_16-161616]
+  C[4 -4 88_ 16-161616]
   ```
 ````
 <img width="328" height="96" alt="image" src="https://github.com/user-attachments/assets/98ce95eb-97ed-47bd-9086-e5b1f063adc8" />
@@ -233,10 +233,10 @@ est différent de
 - `_` **après** une note = la note commence une liaison (envoie/émet)
 - `_` **avant** une note = la note reçoit une liaison (reçoit/termine)
 - Exemples :
-  - `[88_4]` = liaison entre la dernière croche et la noire
+  - `[88_ 4]` = liaison entre la dernière croche et la noire
   - `[2 4_88_]` = liaison de la noire vers deux croches
   - `C[2 4_88_] | [_8]` = liaison traversant la barre de mesure (dernière croche de la mesure 1 liée à la première croche de la mesure 2)
-  - `{8_8_8}3` = les trois notes du triolet liées ensemble
+  - `{8_ 8_ 8}3` = les trois notes du triolet liées ensemble
   - `4_{8 8 8}3` = noire liée à la première note du triolet
   - `{8 8 8_}3 4` = dernière note du triolet liée à la noire suivante
   - `| 4_ | {_8 8 8}3 |` = liaison inter-mesures vers un triolet
@@ -314,7 +314,7 @@ Premier exemple : volta 1-3 couvre une mesure, volta 4 couvre une mesure
 Deuxième exemple : volta 1-3 couvre deux mesures avant `:||`, volta 4 s'étend jusqu'à Am en utilisant le marqueur `|.`
   ````markdown
   ```chordgrid
-  4/4 ||: C[4 88_4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+  4/4 ||: C[4 88_ 4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
   ```
   ````
   <img width="773" height="211" alt="image" src="https://github.com/user-attachments/assets/51136327-2286-4381-84e4-08bb64d40e10" />
@@ -326,7 +326,7 @@ Deuxième exemple : volta 1-3 couvre deux mesures avant `:||`, volta 4 s'étend 
 | `8 8` | Deux croches séparées (l'espace coupe les ligatures) |
 | `4.` | Noire pointée ( = noire + croche ) |
 | `16.32` | Direction de la crochette s'adapte (chemin analyseur) |
-| `4_88_ \| [_8]` | Liaison traversant la barre de mesure |
+| `4_ 88_ \| [_8]` | Liaison traversant la barre de mesure |
 | `C[8]G[8]` | Ligature inter-segments si pas d'espace (analyseur) |
 | `C[8] G[8]` | L'espace bloque la ligature |
 | `%` | Répète le rythme de la mesure précédente |
@@ -336,7 +336,7 @@ Deuxième exemple : volta 1-3 couvre deux mesures avant `:||`, volta 4 s'étend 
 | `{888}3` | Triolet de croches (entièrement ligaturé) |
 | `{8 8 8}3` | Triolet de croches (crochets séparés) |
 | `{161616 161616}6` | Sextolet avec ligature multi-niveaux (2×3) |
-| `{8_8_8}3` | Triolet avec toutes les notes liées ensemble |
+| `{8_ 8_ 8}3` | Triolet avec toutes les notes liées ensemble mais ligature brisée (présence d'espaces) |
 | `4_{8 8 8}3` | Noire liée à la première note du triolet |
 | `{8 8 8_}3 4` | Dernière note du triolet liée à la noire |
 | `\| 4_ \| {_8 8 8}3 \|` | Liaison inter-mesures vers un triolet |
