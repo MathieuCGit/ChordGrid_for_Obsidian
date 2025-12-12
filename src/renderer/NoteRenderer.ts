@@ -244,6 +244,17 @@ export class NoteRenderer {
             // All ghost notes (except whole notes) get stems
             if (nv.value >= 2) {
                 stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+                
+                // Crochets pour ghost notes isolées (non ligaturées) >= 8
+                if (drawFlagsForIsolated && nv.value >= 8) {
+                    const level = nv.value >= 64 ? 4 :
+                                 nv.value >= 32 ? 3 :
+                                 nv.value >= 16 ? 2 :
+                                 nv.value >= 8 ? 1 : 0;
+                    if (level > 0 && stemInfo) {
+                        this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+                    }
+                }
             }
         }
         // Ronde (valeur 1) : diamond creux sans hampe

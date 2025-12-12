@@ -2149,6 +2149,12 @@ var NoteRenderer = class {
       this.drawCrossNoteHead(svg, x, staffLineY);
       if (nv.value >= 2) {
         stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+        if (drawFlagsForIsolated && nv.value >= 8) {
+          const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+          if (level > 0 && stemInfo) {
+            this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+          }
+        }
       }
     } else if (nv.value === 1) {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
