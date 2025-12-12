@@ -221,69 +221,18 @@ export class MeasureRenderer {
             const segmentX = currentX + LAYOUT.BASE_LEFT_PADDING; // inner left padding
             const beatsWidth = segmentWidth - innerPaddingPerSegment;
 
-            // For uniform spacing: always divide equally between beats in a segment
-            // This ensures consistent spacing especially for auto-beamed patterns
-            const beatCount = segment.beats.length;
-            
-            // Check if all beats have identical structure (same number of notes, same values)
-            const allBeatsIdentical = false; // Disabled for now - needs more work on chord alignment
-            /*const allBeatsIdentical = beatCount > 1 && segment.beats.every((beat, idx) => {
-                if (idx === 0) return true;
-                const firstBeat = segment.beats[0];
-                return beat.notes.length === firstBeat.notes.length &&
-                       beat.notes.every((note, noteIdx) => 
-                           note.value === firstBeat.notes[noteIdx].value &&
-                           note.isRest === firstBeat.notes[noteIdx].isRest
-                       );
-            });*/
+            // Prefix-sum to place each beat proportionally
+            let beatCursorX = segmentX;
+            segment.beats.forEach((beat: Beat, beatIndex: number) => {
+                const beatWidth = (reqPerBeat[beatIndex] / reqSum) * beatsWidth;
+                const beatX = beatCursorX;
+                const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
-            // If all beats are identical, calculate note positions globally for uniform spacing
-            if (allBeatsIdentical) {
-                const totalNotes = segment.beats.reduce((sum, beat) => sum + beat.notes.length, 0);
-                const segmentStartX = segmentX + 10; // left margin
-                const segmentEndX = segmentX + beatsWidth - 10; // right margin
-                const availableSpan = segmentEndX - segmentStartX;
-                const totalGaps = totalNotes - 1;
-                const uniformGap = totalGaps > 0 ? availableSpan / totalGaps : 0;
+                // NOTE: Chord rendering is now handled by ChordRenderer after all measures are drawn
+                // This ensures proper alignment with stem metadata
                 
-                // Calculate all note positions across the entire segment
-                const globalNotePositions: number[] = [];
-                for (let i = 0; i < totalNotes; i++) {
-                    globalNotePositions.push(segmentStartX + (i * uniformGap));
-                }
-                
-                // Now render each beat with its assigned positions
-                let noteIndexOffset = 0;
-                let beatCursorX = segmentX;
-                segment.beats.forEach((beat: Beat, beatIndex: number) => {
-                    const beatWidth = beatsWidth / beatCount;
-                    const beatX = beatCursorX;
-                    const beatNoteCount = beat.notes.length;
-                    const beatNotePositions = globalNotePositions.slice(noteIndexOffset, noteIndexOffset + beatNoteCount);
-                    
-                    // Render beat with pre-calculated global positions
-                    const firstNoteX = this.noteRenderer.drawBeatWithPositions(
-                        svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, 
-                        beatIndex, notePositions, segmentNoteCursor, this.beamedAtLevel1, beatNotePositions
-                    );
-                    
-                    noteIndexOffset += beatNoteCount;
-                    beatCursorX += beatWidth;
-                });
-            } else {
-                // Standard mode: each beat calculates its own spacing
-                let beatCursorX = segmentX;
-                segment.beats.forEach((beat: Beat, beatIndex: number) => {
-                    const beatWidth = beatsWidth / beatCount;
-                    const beatX = beatCursorX;
-                    const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
-
-                    // NOTE: Chord rendering is now handled by ChordRenderer after all measures are drawn
-                    // This ensures proper alignment with stem metadata
-                    
-                    beatCursorX += beatWidth;
-                });
-            }
+                beatCursorX += beatWidth;
+            });
 
             currentX += segmentWidth;
         }

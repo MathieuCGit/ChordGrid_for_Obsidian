@@ -285,125 +285,6 @@ export class NoteRenderer {
     }
 
     /**
-     * Dessine un temps (beat) avec des positions pré-calculées globalement.
-     * Utilisé pour un espacement uniforme à travers plusieurs beats.
-     */
-    public drawBeatWithPositions(
-        svg: SVGElement,
-        beat: Beat,
-        beatX: number,
-        staffLineY: number,
-        beatWidth: number,
-        measureIndex: number,
-        chordIndex: number,
-        beatIndex: number,
-        notePositions: NotePosition[],
-        segmentNoteCursor: number[],
-        beamedAtLevel1: Set<string> | undefined,
-        preCalculatedPositions: number[]
-    ): number | null {
-        const noteCount = beat.notes.length;
-        if (noteCount === 0) return null;
-        
-        let firstNoteX: number | null = null;
-        
-        // Rendu de chaque note avec sa position pré-calculée
-        beat.notes.forEach((nv, noteIndex) => {
-            const noteX = preCalculatedPositions[noteIndex];
-            if (firstNoteX === null) firstNoteX = noteX;
-            
-            // Silences
-            if (nv.isRest) {
-                this.restRenderer.drawRest(svg, nv, noteX, staffLineY, this.stemsDirection);
-                
-                notePositions.push({
-                    x: noteX,
-                    y: staffLineY,
-                    measureIndex,
-                    chordIndex,
-                    beatIndex,
-                    noteIndex,
-                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-                    value: nv.value,
-                    countingNumber: nv.countingNumber,
-                    countingLabel: nv.countingLabel,
-                    countingSize: nv.countingSize
-                });
-                return;
-            }
-            
-            // Notes normales - dessiner inline
-            let stemInfo: { x: number; topY: number; bottomY: number } | undefined;
-            
-            if (nv.isGhost) {
-                this.drawCrossNoteHead(svg, noteX, staffLineY);
-                if (nv.value >= 2) {
-                    stemInfo = this.drawStemWithDirection(svg, noteX, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
-                }
-            } else if (nv.value === 1) {
-                this.drawDiamondNoteHead(svg, noteX, staffLineY, true);
-            } else if (nv.value === 2) {
-                this.drawDiamondNoteHead(svg, noteX, staffLineY, true);
-                stemInfo = this.drawStemWithDirection(svg, noteX, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
-            } else {
-                this.drawSlash(svg, noteX, staffLineY);
-                stemInfo = this.drawStemWithDirection(svg, noteX, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
-            }
-            
-            if (nv.dotted) {
-                this.drawDot(svg, noteX, staffLineY, nv);
-            }
-            
-            const stemData = stemInfo ? { stemTopY: stemInfo.topY, stemBottomY: stemInfo.bottomY } : {};
-            
-            let headLeftX = noteX - 5;
-            let headRightX = noteX + 5;
-            if (nv.value === 1 || nv.value === 2) {
-                const diamondSize = 6;
-                headLeftX = noteX - diamondSize;
-                headRightX = noteX + diamondSize;
-            } else if (nv.isGhost) {
-                const crossSize = NOTATION.GHOST_CROSS_SIZE;
-                headLeftX = noteX - crossSize;
-                headRightX = noteX + crossSize;
-            } else {
-                const slashHalf = NOTATION.SLASH_LENGTH / 2;
-                headLeftX = noteX - slashHalf;
-                headRightX = noteX + slashHalf;
-            }
-            
-            const hasStem = nv.value >= 2;
-            const stemTopY = hasStem ? (stemData.stemTopY ?? staffLineY + 5) : undefined;
-            const stemBottomY = hasStem ? (stemData.stemBottomY ?? staffLineY + 30) : undefined;
-            
-            notePositions.push({
-                x: noteX,
-                y: staffLineY,
-                headLeftX,
-                headRightX,
-                measureIndex,
-                chordIndex,
-                beatIndex,
-                noteIndex,
-                segmentNoteIndex: segmentNoteCursor[chordIndex]++,
-                tieStart: !!nv.tieStart,
-                tieEnd: !!nv.tieEnd,
-                tieToVoid: !!nv.tieToVoid,
-                tieFromVoid: !!nv.tieFromVoid,
-                globalTimeIndex: measureIndex * 1_000_000 + chordIndex * 10_000 + beatIndex * 100 + noteIndex,
-                stemTopY,
-                stemBottomY,
-                value: nv.value,
-                countingNumber: nv.countingNumber,
-                countingLabel: nv.countingLabel,
-                countingSize: nv.countingSize
-            });
-        });
-        
-        return firstNoteX;
-    }
-
-    /**
      * Dessine un temps (beat) complet avec toutes ses notes.
      * 
      * @param svg - Élément SVG parent
@@ -435,33 +316,38 @@ export class NoteRenderer {
         const noteCount = beat.notes.length;
         if (noteCount === 0) return null;
 
-        // Standard inner margins for all beats
         const innerLeft = 10;
         const innerRight = 10;
         const startX = beatX + innerLeft;
-        const endLimit = beatX + beatWidth - innerRight;
-        const availableWidth = endLimit - startX;
+        const endX = beatX + beatWidth - innerRight;
+        const availableWidth = endX - startX;
 
         // Positionnement des notes avec espacement tuplet-aware
         const notePositionsX: number[] = [];
         let firstNoteX: number | null = null;
 
-        // Calcul des espacements : répartir équitablement l'espace disponible
+        // Calcul des espacements désirés
         const gapCount = noteCount - 1;
+        const desiredGaps: number[] = [];
         
-        if (noteCount === 1) {
-            // Note unique : centrer (sauf pour pause de ronde qui a un traitement spécial)
-            notePositionsX.push(startX);
-        } else if (gapCount > 0) {
-            // Répartir équitablement l'espace disponible entre toutes les notes
-            // Pour un espacement vraiment uniforme, on calcule la position basée sur l'index
-            const totalSpan = availableWidth;
-            const step = totalSpan / gapCount;
-            for (let i = 0; i < noteCount; i++) {
-                notePositionsX.push(startX + (i * step));
-            }
-        } else {
-            notePositionsX.push(startX);
+        for (let i = 0; i < gapCount; i++) {
+            const currentNote = beat.notes[i];
+            const nextNote = beat.notes[i + 1];
+            const currentIsRest = currentNote.isRest;
+            const nextIsRest = nextNote.isRest;
+            const minGap = 20;
+            let gap = currentIsRest || nextIsRest ? minGap + 4 : minGap;
+            desiredGaps.push(gap);
+        }
+
+        const totalDesiredGap = desiredGaps.reduce((a, b) => a + b, 0);
+        const scale = gapCount > 0 ? Math.min(1, availableWidth / totalDesiredGap) : 1;
+        const finalGaps = desiredGaps.map(g => g * scale);
+
+        let cursorX = startX;
+        for (let i = 0; i < noteCount; i++) {
+            notePositionsX.push(cursorX);
+            if (i < gapCount) cursorX += finalGaps[i];
         }
 
         // Rendu de chaque note
