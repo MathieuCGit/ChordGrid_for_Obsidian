@@ -31,6 +31,7 @@ export class Note implements NoteElement {
   value: NoteValue;
   dotted: boolean;
   isRest: boolean;
+  isGhost: boolean;
   tieStart: boolean;
   tieEnd: boolean;
   tieToVoid: boolean;
@@ -48,6 +49,7 @@ export class Note implements NoteElement {
     this.value = (data.value ?? 4) as NoteValue;
     this.dotted = Boolean(data.dotted);
     this.isRest = Boolean(data.isRest);
+    this.isGhost = Boolean(data.isGhost);
     this.tieStart = Boolean(data.tieStart);
     this.tieEnd = Boolean(data.tieEnd);
     this.tieToVoid = Boolean(data.tieToVoid);

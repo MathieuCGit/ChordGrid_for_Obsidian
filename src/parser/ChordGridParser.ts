@@ -1626,11 +1626,9 @@ class BeamAndTieAnalyzer {
         i++;
         continue;
       }
-      // Handle rests (-)
+      // Handle rests (-) - let parseNote handle the '-' prefix
       if (rhythmStr[i] === '-') {
-        i++;
         const note = this.parseNote(rhythmStr, i);
-        note.isRest = true;
         currentBeat.push(note);
         i += (note.length ?? 0);
         continue;
@@ -1690,7 +1688,14 @@ class BeamAndTieAnalyzer {
           len += 1;
         }
 
-        // Check for finger symbol or pick direction suffix (after value and optional dot)
+        // Check for ghost note 'x' (after value and optional dot, but NOT for rests)
+        let isGhost = false;
+        if (!isRest && offset + len < rhythmStr.length && rhythmStr[offset + len] === 'x') {
+          isGhost = true;
+          len += 1;
+        }
+
+        // Check for finger symbol or pick direction suffix (after value, dot, and ghost marker)
         let fingerSymbol: string | undefined;
         let pickDirection: 'd' | 'u' | undefined;
         
@@ -1714,6 +1719,7 @@ class BeamAndTieAnalyzer {
         return {
           value: parseInt(v) as NoteValue,
           dotted,
+          isGhost,
           fingerSymbol,
           pickDirection,
           tieStart: false,
@@ -1733,6 +1739,7 @@ class BeamAndTieAnalyzer {
     return {
       value: 4 as NoteValue,
       dotted: false,
+      isGhost: false,
       tieStart: false,
       tieEnd: false,
       tieToVoid: false,

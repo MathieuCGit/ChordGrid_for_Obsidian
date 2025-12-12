@@ -1371,9 +1371,7 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "-") {
-        i++;
         const note2 = this.parseNote(rhythmStr, i);
-        note2.isRest = true;
         currentBeat.push(note2);
         i += (_e = note2.length) != null ? _e : 0;
         continue;
@@ -1420,6 +1418,11 @@ var BeamAndTieAnalyzer = class {
           dotted = true;
           len += 1;
         }
+        let isGhost = false;
+        if (!isRest && offset + len < rhythmStr.length && rhythmStr[offset + len] === "x") {
+          isGhost = true;
+          len += 1;
+        }
         let fingerSymbol;
         let pickDirection;
         const afterValue = rhythmStr.substring(offset + len);
@@ -1437,6 +1440,7 @@ var BeamAndTieAnalyzer = class {
         return {
           value: parseInt(v),
           dotted,
+          isGhost,
           fingerSymbol,
           pickDirection,
           tieStart: false,
@@ -1452,6 +1456,7 @@ var BeamAndTieAnalyzer = class {
     return {
       value: 4,
       dotted: false,
+      isGhost: false,
       tieStart: false,
       tieEnd: false,
       tieToVoid: false,
@@ -1641,6 +1646,16 @@ var NOTATION = {
   FLAG_CURVE_END_OFFSET: 8,
   /** Flag curve control Y offset (px) */
   FLAG_CURVE_Y_OFFSET: 5,
+  /** Flag stroke width (px) */
+  FLAG_STROKE_WIDTH: 2,
+  /** Dot horizontal offset from note center (px) */
+  DOT_X_OFFSET: 10,
+  /** Dot vertical offset from staff line (px) */
+  DOT_Y_OFFSET: 4,
+  /** Dot radius (px) */
+  DOT_RADIUS: 1.5,
+  /** Ghost note cross size (smaller than diamond) (px) */
+  GHOST_CROSS_SIZE: 5,
   /** Flag curve total Y distance (px) */
   FLAG_CURVE_Y_DISTANCE: 12,
   /** Dot offset from note center (px) */
@@ -2008,6 +2023,28 @@ var NoteRenderer = class {
     svg.appendChild(diamond);
   }
   /**
+   * Draws a cross-shaped note head for ghost notes.
+   */
+  drawCrossNoteHead(svg, x, y) {
+    const size = NOTATION.GHOST_CROSS_SIZE;
+    const line1 = document.createElementNS(SVG_NS, "line");
+    line1.setAttribute("x1", (x - size).toString());
+    line1.setAttribute("y1", (y - size).toString());
+    line1.setAttribute("x2", (x + size).toString());
+    line1.setAttribute("y2", (y + size).toString());
+    line1.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    line1.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THIN));
+    svg.appendChild(line1);
+    const line2 = document.createElementNS(SVG_NS, "line");
+    line2.setAttribute("x1", (x + size).toString());
+    line2.setAttribute("y1", (y - size).toString());
+    line2.setAttribute("x2", (x - size).toString());
+    line2.setAttribute("y2", (y + size).toString());
+    line2.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    line2.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THIN));
+    svg.appendChild(line2);
+  }
+  /**
    * Draws a slash bar (note head for values >= 4).
    */
   drawSlash(svg, x, y) {
@@ -2074,15 +2111,15 @@ var NoteRenderer = class {
    */
   drawDot(svg, x, y, nv) {
     const dot = document.createElementNS(SVG_NS, "circle");
-    dot.setAttribute("cx", (x + 10).toString());
-    dot.setAttribute("cy", (y - 4).toString());
-    dot.setAttribute("r", "1.5");
+    dot.setAttribute("cx", (x + NOTATION.DOT_X_OFFSET).toString());
+    dot.setAttribute("cy", (y - NOTATION.DOT_Y_OFFSET).toString());
+    dot.setAttribute("r", NOTATION.DOT_RADIUS.toString());
     dot.setAttribute("fill", "#000");
     dot.setAttribute("data-cg-dot", "1");
     svg.appendChild(dot);
     if (this.placeAndSizeManager) {
-      const cx = x + 10;
-      const cy = y - 4;
+      const cx = x + NOTATION.DOT_X_OFFSET;
+      const cy = y - NOTATION.DOT_Y_OFFSET;
       this.placeAndSizeManager.registerElement("dot", {
         x: cx - 2,
         y: cy - 2,
@@ -2108,14 +2145,19 @@ var NoteRenderer = class {
       return {};
     }
     let stemInfo;
-    if (nv.value === 1) {
+    if (nv.isGhost) {
+      this.drawCrossNoteHead(svg, x, staffLineY);
+      if (nv.value >= 2) {
+        stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+      }
+    } else if (nv.value === 1) {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
     } else if (nv.value === 2) {
       this.drawDiamondNoteHead(svg, x, staffLineY, true);
-      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
     } else {
       this.drawSlash(svg, x, staffLineY);
-      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
       if (drawFlagsForIsolated) {
         const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
         if (level > 0 && stemInfo) {

@@ -248,6 +248,21 @@ export const NOTATION = {
     /** Flag curve control Y offset (px) */
     FLAG_CURVE_Y_OFFSET: 5,
     
+    /** Flag stroke width (px) */
+    FLAG_STROKE_WIDTH: 2,
+    
+    /** Dot horizontal offset from note center (px) */
+    DOT_X_OFFSET: 10,
+    
+    /** Dot vertical offset from staff line (px) */
+    DOT_Y_OFFSET: 4,
+    
+    /** Dot radius (px) */
+    DOT_RADIUS: 1.5,
+    
+    /** Ghost note cross size (smaller than diamond) (px) */
+    GHOST_CROSS_SIZE: 5,
+    
     /** Flag curve total Y distance (px) */
     FLAG_CURVE_Y_DISTANCE: 12,
     

@@ -81,6 +81,7 @@ export interface NoteElement {
   value: NoteValue;
   dotted: boolean;
   isRest: boolean;
+  isGhost?: boolean;
   tieStart: boolean;
   tieEnd: boolean;
   tieToVoid: boolean;

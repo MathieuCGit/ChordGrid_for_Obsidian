@@ -77,6 +77,33 @@ export class NoteRenderer {
     }
 
     /**
+     * Draws a cross-shaped note head for ghost notes.
+     */
+    private drawCrossNoteHead(svg: SVGElement, x: number, y: number): void {
+        const size = NOTATION.GHOST_CROSS_SIZE;
+        
+        // First diagonal line: top-left to bottom-right (\)
+        const line1 = document.createElementNS(SVG_NS, 'line');
+        line1.setAttribute('x1', (x - size).toString());
+        line1.setAttribute('y1', (y - size).toString());
+        line1.setAttribute('x2', (x + size).toString());
+        line1.setAttribute('y2', (y + size).toString());
+        line1.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        line1.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THIN));
+        svg.appendChild(line1);
+        
+        // Second diagonal line: top-right to bottom-left (/)
+        const line2 = document.createElementNS(SVG_NS, 'line');
+        line2.setAttribute('x1', (x + size).toString());
+        line2.setAttribute('y1', (y - size).toString());
+        line2.setAttribute('x2', (x - size).toString());
+        line2.setAttribute('y2', (y + size).toString());
+        line2.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        line2.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THIN));
+        svg.appendChild(line2);
+    }
+
+    /**
      * Draws a slash bar (note head for values >= 4).
      */
     private drawSlash(svg: SVGElement, x: number, y: number): void {
@@ -166,16 +193,16 @@ export class NoteRenderer {
      */
     private drawDot(svg: SVGElement, x: number, y: number, nv: NoteElement): void {
         const dot = document.createElementNS(SVG_NS, 'circle');
-        dot.setAttribute('cx', (x + 10).toString());
-        dot.setAttribute('cy', (y - 4).toString());
-        dot.setAttribute('r', '1.5');
+        dot.setAttribute('cx', (x + NOTATION.DOT_X_OFFSET).toString());
+        dot.setAttribute('cy', (y - NOTATION.DOT_Y_OFFSET).toString());
+        dot.setAttribute('r', NOTATION.DOT_RADIUS.toString());
         dot.setAttribute('fill', '#000');
         dot.setAttribute('data-cg-dot', '1');
         svg.appendChild(dot);
 
         if (this.placeAndSizeManager) {
-            const cx = x + 10;
-            const cy = y - 4;
+            const cx = x + NOTATION.DOT_X_OFFSET;
+            const cy = y - NOTATION.DOT_Y_OFFSET;
             this.placeAndSizeManager.registerElement('dot', {
                 x: cx - 2,
                 y: cy - 2,
@@ -211,19 +238,27 @@ export class NoteRenderer {
 
         let stemInfo: { x: number; topY: number; bottomY: number } | undefined;
 
+        // Ghost notes: cross-shaped note head for all values
+        if (nv.isGhost) {
+            this.drawCrossNoteHead(svg, x, staffLineY);
+            // All ghost notes (except whole notes) get stems
+            if (nv.value >= 2) {
+                stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+            }
+        }
         // Ronde (valeur 1) : diamond creux sans hampe
-        if (nv.value === 1) {
+        else if (nv.value === 1) {
             this.drawDiamondNoteHead(svg, x, staffLineY, true);
         }
         // Blanche (valeur 2) : diamond creux avec hampe
         else if (nv.value === 2) {
             this.drawDiamondNoteHead(svg, x, staffLineY, true);
-            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
         }
         // Notes ligaturables (>= 8) : slash + hampe (+ flags si isolée)
         else {
             this.drawSlash(svg, x, staffLineY);
-            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, 30, this.stemsDirection);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
 
             // Crochets pour notes isolées (non ligaturées)
             if (drawFlagsForIsolated) {
