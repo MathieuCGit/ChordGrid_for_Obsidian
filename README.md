@@ -326,7 +326,8 @@ You can use the x just after a note value to get a X note head instead of the cl
   4/4 | Em[4 8x]G[8_4 4x] | D[4 8x]C[8_4 4x] 
   ```
   ````
-<img width="1189" height="222" alt="image" src="https://github.com/user-attachments/assets/fecec35d-7be9-4b0c-8eec-4ad0143c8f7c" />
+<img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/d63e9a1d-5e7b-4336-b671-f819b1a9945f" />
+
 
 
 
