@@ -5666,7 +5666,17 @@ var SVGRenderer = class {
       });
     });
     const lines = renderLines.length;
-    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN;
+    let maxRepeatCountWidth = 0;
+    renderLines.forEach((line) => {
+      const lastMeasure = line.measures[line.measures.length - 1];
+      if (lastMeasure && lastMeasure.repeatCount !== void 0) {
+        const count = lastMeasure.repeatCount;
+        const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH;
+        const totalRepeatCountWidth = LAYOUT.BASE_LEFT_PADDING + textWidth;
+        maxRepeatCountWidth = Math.max(maxRepeatCountWidth, totalRepeatCountWidth);
+      }
+    });
+    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN + maxRepeatCountWidth;
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
     const isStemDown = options.stemsDirection === "down";
     let additionalBottomSpace = 0;

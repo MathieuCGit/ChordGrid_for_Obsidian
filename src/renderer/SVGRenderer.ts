@@ -456,8 +456,22 @@ export class SVGRenderer {
     });
 
     const lines = renderLines.length;
+    
+    // Check if any line has a repeat count on its last measure (needs extra space)
+    let maxRepeatCountWidth = 0;
+    renderLines.forEach(line => {
+        const lastMeasure = line.measures[line.measures.length - 1];
+        if (lastMeasure && (lastMeasure as any).repeatCount !== undefined) {
+            const count = (lastMeasure as any).repeatCount;
+            // Calculate width of "xN" text: BASE_LEFT_PADDING (10px) + text width
+            const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH; // 30px for single digit, 40px for double
+            const totalRepeatCountWidth = LAYOUT.BASE_LEFT_PADDING + textWidth;
+            maxRepeatCountWidth = Math.max(maxRepeatCountWidth, totalRepeatCountWidth);
+        }
+    });
+    
     // Total width (including initial padding): take the widest line after compression
-    const width = Math.max(...renderLines.map(l => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN;
+    const width = Math.max(...renderLines.map(l => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN + maxRepeatCountWidth;
     // Actual height: maximum of (startY + height) of lines + bottom margin
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
     
