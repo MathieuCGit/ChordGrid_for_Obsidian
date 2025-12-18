@@ -355,7 +355,7 @@ You can use the x just after a note value to get a X note head instead of the cl
 | `\|.1-3` | Start volta bracket for endings 1, 2, 3 |
 | `\|.` | Explicitly mark end of volta bracket |
 | `\|.1,2,3` | Alternative comma syntax for volta |
-| `8x` | This 8th note will hace a X note head instead of standard slash |
+| `8x` | This 8th note will have a X note head instead of standard slash |
 
 ## 🛠️ Development
 
