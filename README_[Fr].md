@@ -165,7 +165,7 @@ measures-per-line:5 finger:fr show%
 Besoin de plus de puissance ? ChordGrid supporte la notation avancée :
 
 - **🔢 Comptage pédagogique** - Ajoutez la directive `count` pour les chiffres d'apprentissage du rythme
-- **🎯 Motifs médiator/doigts** - Notation détaillée des coups (directives `pick`/`finger`)
+- **🎯 Motifs médiator/doigts** - Notation détaillée des coups (directives `pick`/`finger` ou `finger:fr`)
 - **🎭 Triolets** - Triolets `{8 8 8}3:2`, quintolets `{16 16 16 16 16}5:4`
 - **🔄 Crochets de volta** - Première/deuxième fois `1.|2.`
 - **📐 Mises en page personnalisées** - Contrôlez les mesures par ligne avec `measures-per-line:N`
@@ -319,6 +319,19 @@ Deuxième exemple : volta 1-3 couvre deux mesures avant `:||`, volta 4 s'étend 
   ````
   <img width="773" height="211" alt="image" src="https://github.com/user-attachments/assets/51136327-2286-4381-84e4-08bb64d40e10" />
 
+### Strike, notation percussive
+Vous pouvez utiliser le x juste après une valeur de note pour obtenir une tête de note en X au lieu de la notation slash classique.
+
+  ````markdown
+  ```chordgrid
+  4/4 | Em[4 8x]G[8_4 4x] | D[4 8x]C[8_4 4x] 
+  ```
+  ````
+<img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/d63e9a1d-5e7b-4336-b671-f819b1a9945f" />
+
+
+
+
 #### Exemples de Syntaxe Avancée
 | Motif | Effet |
 |---------|-------|
@@ -343,6 +356,7 @@ Deuxième exemple : volta 1-3 couvre deux mesures avant `:||`, volta 4 s'étend 
 | `\|.1-3` | Commence un crochet de volta pour les fins 1, 2, 3 |
 | `\|.` | Marque explicitement la fin d'un crochet de volta |
 | `\|.1,2,3` | Syntaxe alternative avec virgules pour volta |
+| `8x` | Cette croche aura une tête de note en X au lieu d'un slash standard |
 
 ## 🛠️ Développement
 

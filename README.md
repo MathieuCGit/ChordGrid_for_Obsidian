@@ -6,7 +6,7 @@
 
 > **Transform simple text notation into beautiful, professional chord charts with rhythmic notation—right inside your Obsidian notes.**
 
-[🇫🇷 Version française](./README.fr.md) | [📖 Full Documentation](./documentation/) | [🐛 Report Bug](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/issues)
+[🇫🇷 Version française](./README_[Fr].md) | [📖 Full Documentation](./documentation/) | [🐛 Report Bug](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/issues)
 
 **For this entry**
 ````markdown

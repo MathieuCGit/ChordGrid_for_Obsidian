@@ -1,5 +1,5 @@
 {
-  "id": "chord-grid",
+  "id": "chordgrid",
   "name": "Chord Grid With Rhythmic Notation",
   "author": "Mathieu CONAN",
   "description": "Displays chord grids with rhythmic notation from a simple syntax.",
