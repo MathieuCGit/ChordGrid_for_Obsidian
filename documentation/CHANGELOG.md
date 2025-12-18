@@ -7,14 +7,125 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2025-12-18
+
 ### Added
 - **Repeat count notation**
   - `:||x3` syntax to indicate number of times a repeat section should be played
-  - Count displays as small text (10px) to the right of the end repeat barline
+  - Count displays as small text (22px) to the right of the end repeat barline
   - Works with both full rhythm and `show%` display modes
   - Position: 5px from top, 10px right of barline (consistent with musical notation standards)
+  - Support for single-digit (x3-x9) and double-digit (x10+) counts with proper SVG width calculation
+- **Ghost notes notation**
+  - Cross-shaped note heads (×) for muted/ghost notes in percussion and rhythm notation
+  - Syntax: prefix note value with `x` (e.g., `x8`, `x16`)
+  - Properly supports beams, ties, and tuplets
+  - Isolated ghost notes (eighth and smaller) automatically display flags
+  - Full test coverage with 8 comprehensive tests
+- **Transposition system** (`transpose` directive)
+  - Automatic chord transposition with `transpose:+N` or `transpose:-N` syntax
+  - Optional accidental preference: `transpose:+2,#` or `transpose:-3,b`
+  - Smart transposition algorithm preserving chord quality and extensions
+  - Processes all chord segments including those with `/` separators
+  - Compatible with repeat measures (`%`) and chord-only mode
+- **Fingerstyle notation** (`finger` directive)
+  - English notation: `t`/`td` (thumb down), `tu` (thumb up), `h`/`hd` (hand down), `hu` (hand up)
+  - French notation: `p`/`pd` (pouce down), `pu` (pouce up), `m`/`md` (main down), `mu` (main up)
+  - Arrow indicators (↓↑) for direction
+  - Per-note override: `8t`, `16pu`, `32m`
+  - Automatic pattern detection and generation
+  - Layer-based positioning with collision avoidance
+- **Pick-stroke notation** (`pick` directive)
+  - Automatic alternating downstrokes (↓) and upstrokes (↑)
+  - Global subdivision detection (8th or 16th notes)
+  - SVG path-based rendering for crisp symbols
+  - Per-note override: `8d`, `16u`
+  - Collision avoidance system with ties and other elements
+  - Timeline-based algorithm ensuring musical accuracy
+- **Counting system** (`count` directive)
+  - Pedagogical beat counting with hybrid approach
+  - Sequential numbering: 1, 2, 3, 4, &, etc.
+  - Three text sizes: tall (beats), medium (subdivisions), small (rests)
+  - Automatic detection of regular vs irregular meters
+  - User-defined beats respected (space-based grouping)
+  - Collision-aware positioning above/below staff based on stem direction
+- **Measure numbering** (`measure-num` directive)
+  - Optional measure numbering at line starts or regular intervals
+  - Syntax: `measure-num` (default), `measure-num:5` (start at 5), `measure-num:1-4` (every 4 measures)
+  - Small, unobtrusive font (14px) positioned above measures
+  - Compatible with all notation modes
+- **Grouping system refactoring** (v3.0 philosophy)
+  - **Space-based mode** (NEW DEFAULT): user spaces control all beam breaks
+  - **Auto-beam mode**: algorithmic breaking based on meter (binary/ternary)
+  - **Binary mode**: force binary grouping (groups of 2 eighths)
+  - **Ternary mode**: force ternary grouping (groups of 3 eighths)
+  - Deprecation warnings for old `auto`/`noauto` directives with automatic conversion
+- **Volta brackets enhancements**
+  - Multi-line volta support spanning across rendering lines
+  - `|.` syntax for explicit volta end markers
+  - Improved collision detection with barlines and other elements
+  - VoltaManager architectural refactoring (accumulate-execute pattern)
+  - Support for ranges (`|.1-3`) and lists (`|.1,2,3`)
+  - Closed vs open bracket rendering (┌─1,2,3────┐ vs ┌─4─────)
+- **Empty measure support**
+  - `| |` syntax renders empty measures without content
+  - Works with or without `measures-per-line` directive
+  - Special visual treatment (half width, no staff line)
+  - Compatible with voltas and barlines
+- **Chord-only mode improvements**
+  - `/` separator creates visual slash between chords
+  - Proper spacing and alignment
+  - Works with repeat measures (`%`)
+  - Stacked parentheses for chord variations
+- **Architectural improvements**
+  - VoltaManager for multi-line volta coordination
+  - PlaceAndSizeManager (renamed from CollisionManager) for intelligent element placement
+  - Line-scoped rendering architecture for multi-line grids
+  - TimeSignatureRenderer with custom SVG digit paths
+  - Constants centralization in `constants.ts` (628 lines)
+  - Comprehensive English documentation and code comments
+
+### Changed
+- **Repeat measure rendering**
+  - `%` and `[%]` now properly display rhythm or repeat symbol based on `show%` directive
+  - Chord names positioned at measure start (left-aligned) when repeat symbol shown
+  - Improved visual consistency across all repeat scenarios
+- **SVG rendering optimization**
+  - Removed fixed height attribute to prevent Obsidian margin issues
+  - Optimized margins: top=0px (compact), side=30px, bottom=25px
+  - Dynamic width calculation accounts for repeat counts and other right-side elements
+  - Enhanced responsive behavior across different container sizes
+- **Time signature positioning**
+  - Global time signature properly aligned at (x: ~40px, y: 100px)
+  - Inline time signatures vertically centered on staff
+  - Dynamic width calculation prevents overlap with first measure
+  - Custom SVG digit rendering for consistent appearance
+- **Beam rendering improvements**
+  - Thicker eighth-note beams (from 3px to 4px) for better visibility
+  - Increased beam spacing (from 6px to 7px)
+  - Longer beamlets (from 8px to 10px)
+  - Standard beam stroke width maintained at 2px
+- **Chord positioning refinements**
+  - Aligned with note head left edge instead of stem center
+  - Dynamic collision avoidance with stems and other elements
+  - Proper sizing hierarchy based on context
+  - Stacked parentheses support for variations
+- **Parser enhancements**
+  - Multi-line directive support (directives can span multiple lines)
+  - Improved regex patterns for fingerstyle and pick symbols
+  - Enhanced volta parsing with range and list support
+  - Better handling of empty content and spaces
+- **Test suite expansion**
+  - 450+ tests covering all features (was 284)
+  - New test files: `ghost_notes.spec.ts`, `repeat_count_overflow.spec.ts`, `fingerstyle_*.spec.ts`, `pick_strokes_*.spec.ts`, `counting_*.spec.ts`, `measure_numbering.spec.ts`
+  - Comprehensive coverage of edge cases and regressions
+  - Visual test files for manual validation
 
 ### Fixed
+- **Repeat count SVG overflow**
+  - Fixed `x8`, `x10` etc. extending beyond SVG bounds
+  - SVG width now properly accounts for repeat count width (10px + 30-40px text)
+  - Handles both single and double-digit counts correctly
 - **Note overflow with repeat barlines and compressed measures**
   - Fixed notes being clipped when using `measures-per-line` directive with repeat barlines (`||:`)
   - `extraLeftPadding` (used for repeat barlines) now properly subtracted from `availableForBeatCells`
@@ -28,8 +139,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Thick line positioned on inside of repeat section (classical convention)
   - Final double barline uses thin (1.5px) + thick (5px) for stronger visual ending
   - Both lines spaced 6px apart following standard music engraving conventions
+  - Repeat dots properly centered on staff lines
+- **Volta bracket rendering issues**
+  - Fixed collision with repeat barlines by adding measureIndex metadata
+  - Multi-line volta brackets now span correctly across rendering lines
+  - Volta post-processing moved to parse() for proper multi-line support
+  - Barlines with undefined measureIndex filtered before passing to VoltaManager
+- **Empty measure rendering**
+  - Fixed empty measures not rendering despite correct parsing
+  - Removed phantom measures after time signature changes
+  - Staff line properly omitted in empty measures
+- **Tie rendering improvements**
+  - Fixed intra-measure tie rendering bug at segment boundaries
+  - Special anchor handling for diamond-shaped note heads
+  - Tie anchors adjusted to sit closer to note heads
+  - Horizontal positions corrected based on stem direction
+  - Collision avoidance with pick-strokes and dots
+- **Chord positioning fixes**
+  - Chords properly aligned in measures with repeat symbol (%)
+  - Correct positioning with volta brackets and tuplet collision
+  - Fixed chord/rhythm separation in mixed modes
+- **Tuplet handling improvements**
+  - Fixed tuplet beaming with internal rests
+  - Corrected tuplet ratio display and calculation
+  - Improved tuplet bracket rendering and positioning
+- **Pick-stroke alignment**
+  - Horizontal alignment with uniform offset
+  - Continuous rhythmic timeline (rests count in subdivision grid)
+  - Proper collision handling with ties and other elements
+- **Miscellaneous fixes**
+  - Excessive right margin reduced from 60px to 20px
+  - Collision detection between chords and stems
+  - Stem stroke width restored to 2px
+  - Double barline spacing restored to 6px (was incorrectly changed)
+  - Code block syntax corrected from `chord-grid` to `chordgrid`
+  - Rhythm validation in fingerstyle tests (4/4 time signature)
 
-## [2.2.0] - 2025-11-20
+### Deprecated
+- `auto` directive → use `auto-beam` instead (automatic conversion with warning)
+- `noauto` directive → space-based is now default (ignored with warning)
+
+### Documentation
+- Complete README overhaul with visual examples and step-by-step tutorial
+- French README synchronized with English version
+- ARCHITECTURE.md updated with latest code structure
+- New documentation files:
+  - GROUPING_CONVENTIONS.md - rhythmic grouping reference
+  - FINGERSTYLE_IMPLEMENTATION.md - fingerstyle system details
+  - Multiple time signatures test files and visual references
+- All documentation reorganized in `documentation/` folder
+- Mermaid diagrams updated for GitHub compatibility
 
 ### Added
 - **VoltaManager for multi-line volta brackets** (architectural refactoring)
