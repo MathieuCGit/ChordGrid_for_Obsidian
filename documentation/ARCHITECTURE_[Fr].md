@@ -1,0 +1,592 @@
+# Architecture du Plugin Chord Grid
+
+## Vue d'ensemble
+
+Ce plugin Obsidian (version 2.2.0) permet de rendre des grilles d'accords avec notation rythmique en SVG. Il est composé de quatre modules principaux : **Parsing**, **Analyse**, **Modèles**, et **Rendu**. La version 2.2.0 introduit le **VoltaManager** pour gérer les crochets de volta multi-lignes, le **support des mesures vides**, et des améliorations de la notation de répétition, en plus du système complet de gestion des collisions via **PlaceAndSizeManager** de la v2.1.0.
+
+## Structure du projet
+
+```
+ChordGrid_for_Obsidian/
+├── main.ts                          # Point d'entrée du plugin Obsidian
+├── manifest.json                    # Manifeste du plugin
+├── package.json                     # Dépendances & scripts
+├── esbuild.config.mjs               # Configuration de build
+├── jest.config.js                   # Configuration des tests
+├── styles.css                       # Styles du plugin
+├── README.md                        # Documentation utilisateur (anglais)
+├── README.fr.md                     # Documentation utilisateur (français)
+├── LICENSE                          # Licence MIT
+├── documentation/                   # Documentation technique
+│   ├── README.md                    # Index de la documentation
+│   ├── ARCHITECTURE.md              # Architecture (anglais)
+│   ├── ARCHITECTURE_[Fr].md         # Ce fichier (français)
+│   ├── CHANGELOG.md                 # Historique des versions
+│   ├── CONTRIBUTING.md              # Guide de contribution
+│   ├── DEBUG_IMPLEMENTATION*.md     # Guides système de debug
+│   ├── DEBUG_LOGGER*.md             # Documentation du logger
+│   ├── TUPLET_RATIOS*.md            # Système de ratios tuplets
+│   ├── MIXED_TUPLETS.md             # Tuplets mixtes (baseLen)
+│   ├── GROUPING_CONVENTIONS.md      # Groupement binary/ternary
+│   └── release_notes_v2.1.0.md      # Notes de version
+├── src/
+│   ├── analyzer/                    # Module d'analyse musicale (ligatures, comptage)
+│   │   ├── analyzer-types.ts        # Types d'analyse
+│   │   ├── CountingAnalyzer.ts      # Système de comptage pédagogique (hybride)
+│   │   └── MusicAnalyzer.ts         # Analyseur principal
+│   ├── models/                      # Modèles de données
+│   │   ├── Beat.ts                  # Modèle Beat
+│   │   ├── Measure.ts               # Modèle Measure
+│   │   ├── Note.ts                  # Modèle Note
+│   │   └── TimeSignature.ts         # Modèle TimeSignature
+│   ├── parser/                      # Module de parsing
+│   │   ├── ChordGridParser.ts       # Parser principal
+│   │   └── type.ts                  # Définitions de types
+│   ├── renderer/                    # Module de rendu SVG
+│   │   ├── BeamRenderer.ts          # Rendu des ligatures
+│   │   ├── ChordRenderer.ts         # Rendu des symboles d'accords
+│   │   ├── constants.ts             # Constantes SVG
+│   │   ├── CountingRenderer.ts      # Rendu des numéros de comptage pédagogiques
+│   │   ├── MeasureRenderer.ts       # Rendu de mesures
+│   │   ├── NoteRenderer.ts          # Rendu de notes
+│   │   ├── PlaceAndSizeManager.ts   # Gestion placement & collisions
+│   │   ├── RestRenderer.ts          # Rendu de silences
+│   │   ├── StrumPatternRenderer.ts  # Rendu des patterns de jeu (médiator/doigts)
+│   │   ├── SVGRenderer.ts           # Renderer principal
+│   │   └── TimeSignatureRenderer.ts # Rendu signatures rythmiques
+│   └── utils/
+│       ├── DebugLogger.ts           # Logs de débogage
+│       ├── TieManager.ts            # Gestion liaisons cross-mesure
+│       └── VoltaManager.ts          # Gestion crochets volta multi-lignes
+└── test/                            # Tests unitaires (46 suites, 315 tests)
+    ├── *.spec.ts                    # Fichiers de test Jest (46 suites)
+    ├── analyzer.spec.ts             # Tests analyseur
+    ├── beam_*.spec.ts               # Tests ligatures
+    ├── chord_*.spec.ts              # Tests rendu d'accords
+    ├── counting_*.spec.ts           # Tests système de comptage
+    ├── tie_*.spec.ts                # Tests liaisons
+    ├── tuplet_*.spec.ts             # Tests tuplets
+    ├── repeat_*.spec.ts             # Tests notation répétition
+    ├── volta_*.spec.ts              # Tests crochets volta
+    ├── debug/                       # Scripts de débogage (pas de tests)
+    ├── manual/                      # Fichiers de tests manuels (markdown)
+    └── ...                          # Tests parser, renderer
+```
+
+## Flux de données
+
+```
+Entrée texte (notation chordgrid)
+         ↓
+   ChordGridParser (parsing syntaxique, inclut tuplets)
+         ↓
+   MusicAnalyzer (sémantique musicale, groupes de ligatures)
+         ↓
+  PlaceAndSizeManager (enregistrement des éléments : accords, notes, hampes, tuplets, liaisons, points)
+         ↓
+  Renderer (SVGRenderer + Measure/Note/Rest) (positionnement avec évitement de collision)
+         ↓
+  PlaceAndSizeManager (résolution et ajustements : courbes de liaison, numéros de tuplets)
+         ↓
+   Élément SVG (sortie finale)
+```
+
+### Diagramme Mermaid
+
+```mermaid
+flowchart LR
+    A[Notation chordgrid texte] --> B[Parser ChordGridParser]
+    B -->|Mesures + Segments + Rythme + Tuplets| C[Analyzer MusicAnalyzer]
+    C -->|BeamGroups + NoteRefs| D[PlaceAndSizeManager Element Registration]
+    D --> E[Renderer Orchestrator SVGRenderer]
+    E --> F[MeasureRenderer]
+    E --> G[NoteRenderer]
+    E --> H[RestRenderer]
+    E --> I[TieManager]
+    E --> K[VoltaManager]
+    C --> J[AnalyzerBeamOverlay]
+    J --> E
+    I --> E
+    D --> L[Collision Resolution Adjustments]
+    L --> E
+    E --> Z[SVG Output]
+
+    classDef parser fill:#2b6cb0,stroke:#1a4568,stroke-width:1,color:#fff;
+    classDef analyzer fill:#805ad5,stroke:#553c9a,color:#fff;
+    classDef collision fill:#dd6b20,stroke:#9c4221,color:#fff;
+    classDef renderer fill:#38a169,stroke:#276749,color:#fff;
+    classDef util fill:#718096,stroke:#4a5568,color:#fff;
+    class B parser;
+    class C,J analyzer;
+    class D,L collision;
+    class E,F,G,H,Z renderer;
+    class I,K util;
+```
+
+## Module Parser
+
+### ChordGridParser
+
+**Responsabilités :**
+- Parse la notation textuelle en structures de données
+- Valide la durée des mesures par rapport à la signature temporelle
+- Analyse les ligatures et liaisons
+- Gère les sauts de ligne et le regroupement des mesures
+
+**Syntaxe supportée :**
+- Signatures temporelles : `4/4`, `3/4`, `6/8`, `C`, `C|`
+- Barres : `|` (simple), `||` (double), `||:` (reprise début), `:||` (reprise fin)
+- Accords : notation standard (Am, C7, Gmaj7, F#m, Bb7, etc.)
+- Notes : 1, 2, 4, 8, 16, 32, 64
+- Notes pointées : `4.`, `8.`, etc.
+- Silences : `-4`, `-8`, etc.
+- Liaisons : `_` (ex: `4_88_` ou `[_8]`)
+- Ligatures : notes groupées sans espace (ex: `88` = 2 croches liées)
+
+**Algorithme de parsing :**
+1. Extraction de la signature temporelle (première ligne)
+2. Tokenisation par barres de mesure
+3. Parsing de chaque mesure :
+   - Extraction des accords et rythmes
+   - Création des beats et notes
+   - Analyse des ligatures (BeamAndTieAnalyzer)
+   - Détection des liaisons
+4. Validation des durées
+5. Regroupement en lignes de rendu
+
+### BeamAndTieAnalyzer
+
+**Responsabilités :**
+- Analyser les groupes rythmiques
+- Déterminer les ligatures entre notes
+- Gérer les liaisons (ties) entre notes, mesures et lignes
+
+**Règles de ligature :**
+- Notes >= 8 (croches) peuvent être liées
+- Silences brisent les ligatures
+- Espace dans la notation sépare les groupes
+- Minimum 2 notes pour former un groupe
+
+**Règles de liaison :**
+- `_` marque une liaison
+- Liaisons peuvent traverser mesures et lignes
+- `tieToVoid` : liaison vers note virtuelle (fin ligne)
+- `tieFromVoid` : liaison depuis note virtuelle (début ligne)
+
+## Module Analyzer
+
+### MusicAnalyzer
+
+**Responsabilités :**
+- Calculer les groupes de ligatures par mesure, pouvant traverser plusieurs segments d'accords
+- Support des ligatures multi-niveaux (croches/doubles/triples/quadruples)
+- Respecter les silences et espaces comme ruptures de ligature
+- Produire des références stables vers les notes via `NoteReference`
+
+**Règles de ligature :**
+- Valeurs ≥ 8 (croches et plus courtes) éligibles pour ligature
+- Les silences cassent les ligatures ; les espaces entre segments aussi
+- Les notes pointées influencent la direction des barres partielles
+- Notes courtes isolées reçoivent des barres appropriées
+
+**Liaisons :**
+- L'analyseur n'invente pas de liaisons ; il utilise les marqueurs du parser et TieManager pour résolution cross-ligne
+
+### CountingAnalyzer
+
+**Responsabilités (v2.2.0) :**
+- Assigner des labels de comptage pédagogiques aux notes pour l'apprentissage du rythme
+- Support du système hybride : comptage mathématique (métriques régulières) + comptage défini par l'utilisateur (métriques irrégulières)
+- Gérer les signatures temporelles irrégulières (5/8, 7/8, 11/8) et groupements rythmiques complexes
+- Calculer les positions de subdivision à l'intérieur des unités métriques (pas seulement des beats)
+
+**Système de comptage :**
+- **Approche hiérarchique** : Numéros de beat (1, 2, 3, 4) + subdivisions ('&' pour les croches, numérique pour les doubles)
+- **Détection de mode hybride** : Sélection automatique entre comptage mathématique et défini par l'utilisateur
+- **Support métriques irrégulières** : Comptage basé sur les unités métriques pour groupements non conventionnels
+- **Marqueurs de taille** : 't' (tall) pour débuts de beats, 'm' (medium) pour subdivisions, 's' (small) pour silences/liaisons
+
+**Le comptage recommence à 1** pour chaque mesure (pas de comptage continu entre mesures).
+
+## Module Modèles
+
+### Hiérarchie des structures
+
+```
+ChordGrid
+  ├── TimeSignature
+  └── Measure[]
+       ├── ChordSegment[]
+       │    ├── chord (string)
+       │    └── Beat[]
+       │         └── Note[]
+       └── barline (BarlineType)
+```
+
+### Note
+- **Propriétés rythmiques** : value, dotted, isRest
+- **Propriétés de liaison** : tieStart, tieEnd, tieToVoid, tieFromVoid
+- **Méthode clé** : `durationInQuarterNotes()` - calcul de durée
+
+### Beat
+- Contient un tableau de notes/silences
+- **Méthodes clés** : 
+  - `totalQuarterNotes()` - somme des durées des notes
+
+### Measure
+- Contient les beats et métadonnées
+- Support de changements d'accords multiples via `chordSegments`
+- **Méthodes clés** :
+  - `totalQuarterNotes()` - durée totale de la mesure
+
+### TimeSignature
+- Parsing et validation de signatures temporelles
+- Calculs de durée et tempo
+- Détection de mesures composées
+
+## Module Renderer
+
+### Architecture de rendu
+
+```
+SVGRenderer (orchestration)
+    ↓
+PlaceAndSizeManager (gestion des collisions)
+    ↓
+MeasureRenderer (par mesure)
+    ↓
+NoteRenderer / RestRenderer (par note)
+```
+
+### SVGRenderer
+
+**Responsabilités :**
+- Calculer la taille globale du SVG avec espacement dynamique
+- Positionner les mesures sur la grille (4 par ligne, adaptatif)
+- Gérer les sauts de ligne (automatiques et manuels)
+- Initialiser PlaceAndSizeManager et TieManager
+- Calculer largeur dynamique de la signature rythmique
+- Dessiner les liaisons entre mesures avec évitement de collision
+- Appliquer ajustements de collision (courbes de liaison, numéros de tuplets)
+
+**Paramètres de layout :**
+- `measuresPerLine` : 4 (défaut)
+- `baseMeasureWidth` : 240px (minimum, ajusté dynamiquement selon densité rythmique)
+- `measureHeight` : 120px
+- Espacement entre lignes : 20px
+- Padding gauche dynamique : calculé selon largeur signature rythmique
+- Facteur espacement signature : 0.53 (v2.1.0, optimisé)
+- Marge signature : 4px (v2.1.0, optimisé)
+
+### PlaceAndSizeManager
+
+**Responsabilités :**
+- Enregistrer tous les éléments visuels avec leurs bounding boxes
+- Détecter les collisions potentielles entre éléments
+- Résoudre conflits spatiaux via repositionnement intelligent
+- Suggérer positions alternatives pour éléments mobiles
+- Gérer priorités (éléments fixes vs mobiles)
+
+**Types d'éléments gérés :**
+- `chord` : symboles d'accords
+- `time-signature` : indications de mesure
+- `note` : têtes de notes
+- `stem` : hampes
+- `beam` : barres de ligature
+- `tie` : liaisons
+- `tuplet-bracket` : crochets de tuplets
+- `tuplet-number` : numéros/ratios de tuplets
+- `rest` : silences
+- `barline` : barres de mesure
+- `staff-line` : lignes de portée
+- `dot` : points de notes pointées (v2.1.0)
+
+**Algorithmes de résolution :**
+- `hasCollision()` : détection AABB (Axis-Aligned Bounding Box) avec marges configurables
+- `findFreePosition()` : recherche en spirale pour position libre
+  - Directions : vertical, horizontal, both
+  - Tentatives max : 20 par défaut
+  - Step : `minSpacing + 2`
+- `suggestVerticalOffset()` : ajustement vertical spécifique par paire de types
+- Système de priorités : 0 = fixe (ne bouge pas), 10 = mobile (peut être déplacé)
+
+**Cas d'usage spécifiques (v2.1.0) :**
+- Signature rythmique vs première mesure : padding gauche ajusté automatiquement
+- Numéros de tuplets vs accords : décalage vertical via `findFreePosition`
+- Points de notes pointées vs courbes de liaison : courbe relevée (controlY ajusté)
+
+### MeasureRenderer
+
+**Responsabilités :**
+- Dessiner barres de mesure (simple, double, reprises)
+- Dessiner ligne de portée
+- Positionner les accords avec évitement de collision
+- Répartir l'espace entre beats
+- Gérer séparations visuelles entre segments
+- Enregistrer tous éléments visuels dans PlaceAndSizeManager (v2.1.0)
+
+**Éléments enregistrés dans PlaceAndSizeManager :**
+- Symboles d'accords avec bbox calculé selon longueur texte
+- Têtes de notes (noteheads)
+- Hampes (stems) avec direction (up/down)
+- Barres de ligature (beams) multi-notes
+- Crochets et numéros de tuplets
+- Silences de toutes durées
+- Points de notes pointées (4x4px, priorité 9, v2.1.0)
+
+**Positionnement des accords :**
+- Position initiale : (measureX + noteX, staffY - 30)
+- Si collision détectée : `PlaceAndSizeManager.findFreePosition('vertical')` appliqué
+- Position finale ajustée pour éviter overlap
+
+**Algorithme de layout :**
+1. Calculer espace disponible (en soustrayant `extraLeftPadding` pour barlines de reprise)
+2. Allouer espace proportionnellement aux beats
+3. Insérer séparateurs pour changements d'accords
+4. Rendre chaque segment avec NoteRenderer
+5. Enregistrer éléments dans PlaceAndSizeManager au fur et à mesure
+
+**Gestion de l'espace pour barlines de reprise (v2.2.1) :**
+- `extraLeftPadding` est calculé pour barlines `||:` (8px: 3px + 6px + 1.5px - 2.5px)
+- Cet espace est soustrait de `availableForBeatCells` pour éviter débordement des notes
+- Garantit que les notes restent dans les limites de la mesure même avec layouts compressés (`measures-per-line`)
+
+### NoteRenderer
+
+**Responsabilités :**
+- Dessiner têtes de notes (slash notation)
+- Dessiner hampes (stems)
+- Dessiner crochets individuels (flags)
+- Dessiner ligatures multi-niveaux (beams)
+- Gérer notes pointées
+
+**Niveaux de ligature :**
+- Croche (8) : 1 niveau
+- Double-croche (16) : 2 niveaux
+- Triple-croche (32) : 3 niveaux
+- Quadruple-croche (64) : 4 niveaux
+
+### RestRenderer
+
+**Responsabilités :**
+- Dessiner tous types de silences
+- Gérer silences pointés
+- Enregistrer bounding boxes dans PlaceAndSizeManager (v2.1.0)
+
+**Types de silences :**
+- Pause (1) : rectangle suspendu
+- Demi-pause (2) : rectangle posé
+- Soupir (4) : forme Z stylisée
+- Demi-soupir (8) : crochet simple
+- Quart de soupir (16) : double crochet
+- Etc.
+
+**Enregistrement collision (v2.1.0) :**
+- Chaque silence enregistré avec bbox approprié
+- Permet évitement par autres éléments (accords, tuplets, liaisons)
+
+### CountingRenderer
+
+**Responsabilités (v2.2.0) :**
+- Rendre les numéros de comptage pédagogiques sur les notes pour l'apprentissage du rythme
+- Positionner les numéros sous/au-dessus des têtes de notes selon la direction des hampes
+- Appliquer le style basé sur la taille (tall/medium/small) selon la sortie de CountingAnalyzer
+- Coordonner avec PlaceAndSizeManager pour la détection de collision
+
+**Propriétés visuelles :**
+- **Tall (t)** : 14px gras, noir - pour débuts de beats (1, 2, 3, 4)
+- **Medium (m)** : 12px normal, noir - pour subdivisions (&, 2, 3, 4)
+- **Small (s)** : 11px normal, gris (#777) - pour silences et notes liées
+
+**Positionnement :**
+- **Hampes vers le haut** : numéros placés SOUS la tête de note (marge 5px)
+- **Hampes vers le bas** : numéros placés AU-DESSUS de la tête de note (marge 5px)
+- **Horizontal** : centré sur la tête de note (text-anchor: middle)
+
+**Gestion des collisions :**
+- Enregistre les bounding boxes dans PlaceAndSizeManager
+- Futur : coordination avec les patterns de jeu pour espacement optimal
+
+### StrumPatternRenderer
+
+**Responsabilités :**
+- Rendre les symboles de coups de médiator (↓ ↑) et patterns de doigts (p, i, m, a)
+- Positionner les patterns sous/au-dessus des notes selon direction hampes et mode comptage
+- Support des séquences de patterns basées sur timeline
+- Gérer espacement et collision avec numéros de comptage
+
+**Types de patterns :**
+- **Coups de médiator** : coup vers le bas (↓), coup vers le haut (↑)
+- **Patterns de doigts** : pouce (p), index (i), majeur (m), annulaire (a)
+
+**Positionnement :**
+- **Avec comptage** : patterns placés plus loin de la tête de note (après comptage)
+- **Sans comptage** : patterns placés directement sous/au-dessus de la tête de note
+- Ajustement automatique de l'espacement selon les fonctionnalités actives
+
+### TieManager
+
+**Responsabilités :**
+- Gérer liaisons traversant limites de rendu
+- Stocker liaisons "en attente" (pending)
+- Résoudre liaisons cross-ligne
+- Coordonner avec PlaceAndSizeManager pour évitement (v2.1.0)
+
+**Workflow :**
+1. Note avec `tieToVoid` → `addPendingTie()`
+2. Rendu ligne suivante
+3. Note avec `tieFromVoid` → `resolvePendingFor()`
+4. Dessiner courbe de liaison entre les positions
+5. Ajuster controlY si collision détectée avec points de notes pointées (v2.1.0)
+
+**Détection et évitement de collision (v2.1.0) :**
+- Avant dessin, vérifier collision entre bbox de liaison et points de notes pointées
+- Si collision détectée : relever courbe (augmenter controlY)
+- Algorithme : `controlY_new = baseY - max(6, baseAmplitude * 0.6)`
+- Enregistrer bbox de liaison dans PlaceAndSizeManager après ajustement
+
+## Validation et erreurs
+
+### ValidationError
+
+Structure d'erreur générée lors de la validation des mesures :
+- `measureIndex` : position de la mesure (0-based)
+- `expectedQuarterNotes` : durée attendue selon signature temporelle
+- `foundQuarterNotes` : durée réelle trouvée
+- `message` : description de l'erreur
+
+### Calcul de durée attendue
+
+```typescript
+expectedQuarterNotes = numerator * (4 / denominator)
+```
+
+Exemples :
+- 4/4 → 4 * (4/4) = 4 quarter-notes
+- 3/4 → 3 * (4/4) = 3 quarter-notes
+- 6/8 → 6 * (4/8) = 3 quarter-notes
+- 12/8 → 12 * (4/8) = 6 quarter-notes
+
+## Gestion des espaces
+
+Les espaces dans la notation source ont une signification :
+
+### Dans les groupes rythmiques
+```
+[88 4 4]    // 2 beats : [88] et [4 4]
+[8888]      // 1 beat : [8888]
+```
+
+### Entre accords
+```
+Am[88 4] G[4 88]    // Pas de séparation visuelle
+Am[88 4] G[4 88]   // Séparation visuelle (espace avant G)
+```
+
+## Patterns de conception
+
+### Factory Pattern
+Les modèles (Note, Beat, Measure) acceptent des données partielles et initialisent avec des valeurs par défaut.
+
+### Builder Pattern
+Le parser construit progressivement la structure ChordGrid en accumulant les mesures.
+
+### Strategy Pattern
+Différents renderers (NoteRenderer, RestRenderer) pour différents types d'éléments.
+
+### Observer Pattern
+Le TieManager observe les notes avec liaisons et résout les références cross-mesure.
+
+## Extension future
+
+### Points d'extension possibles :
+1. **Nouveaux types de notation** : ajouter des handlers dans ChordGridParser
+2. **Styles de rendu alternatifs** : créer des renderers alternatifs implémentant l'interface commune
+3. **Export** : ajouter des méthodes dans les renderers pour export PNG/PDF
+4. **Audio** : intégrer un moteur audio pour lecture des grilles
+5. **Édition interactive** : ajouter des handlers d'événements sur les éléments SVG
+
+### Ajout d'un nouveau type de note :
+
+1. Ajouter la valeur dans `NoteValue` type (type.ts)
+2. Implémenter le rendu dans `NoteRenderer` ou `RestRenderer`
+3. Mettre à jour `getBeamCount()` si nécessaire
+4. Ajouter tests dans `beam_parse.spec.ts`
+
+### Ajout d'un nouveau type de barre :
+
+1. Ajouter l'entrée dans `BarlineType` enum (type.ts)
+2. Mettre à jour la regex de tokenisation dans `ChordGridParser`
+3. Implémenter le rendu dans `MeasureRenderer.drawBar()`
+
+## Tests
+
+Les tests sont organisés par fonctionnalité avec une structure de répertoire propre (v2.2.0) :
+
+### Structure des tests :
+- **46 suites de tests** dans `test/*.spec.ts` (315 tests au total)
+- **test/debug/** : Scripts de débogage et helpers de développement (10 fichiers)
+- **test/manual/** : Fichiers de tests manuels/visuels au format markdown (14 fichiers)
+
+### Fichiers de tests clés :
+- `parse.spec.ts` : Tests de parsing général
+- `beam_parse.spec.ts` : Tests de groupement de ligatures
+- `counting_*.spec.ts` : Tests du système de comptage (hybride, nouveau système, structure de beats)
+- `tie_*.spec.ts` : Tests de rendu et collision des liaisons
+- `tuplet_*.spec.ts` : Tests de parsing et rendu des tuplets
+- `volta_*.spec.ts` : Tests des crochets de volta
+- `repeat_*.spec.ts` : Tests de la notation de répétition
+- `chord_*.spec.ts` : Tests de rendu et collision des accords
+
+### Lancer les tests :
+```bash
+npm test                    # Lancer toutes les suites de tests
+npm test -- <filename>      # Lancer un fichier de test spécifique
+npm test -- --no-coverage   # Lancer sans rapport de couverture
+```
+
+### Principes d'organisation des tests (v2.2.0) :
+- **Tests automatisés** : Tous les fichiers `.spec.ts` dans le répertoire racine test
+- **Scripts de débogage** : Déplacés dans `test/debug/` (non exécutés par Jest)
+- **Tests manuels** : Fichiers markdown dans `test/manual/` pour vérification visuelle
+- **Tests obsolètes** : Supprimés (ancien système de comptage, tests d'intégration cassés)
+
+## Performance
+
+### Optimisations actuelles :
+- Calcul de durée en cache dans les modèles
+- Création d'éléments SVG natives (pas de bibliothèque)
+- Regroupement de mesures pour réduire les calculs de layout
+
+### Métriques cibles :
+- Parse < 10ms pour grille de 16 mesures
+- Rendu < 50ms pour grille de 16 mesures
+- Mémoire < 5MB pour grille complète en mémoire
+
+## Dépendances
+
+- **Obsidian API** : intégration avec Obsidian
+- **TypeScript** : typage statique
+- **ESBuild** : compilation rapide
+- Aucune dépendance externe pour le rendu (SVG natif)
+
+## Contribution
+
+Pour contribuer au projet :
+1. Consulter cette documentation
+2. Lire les commentaires JSDoc dans le code
+3. Ajouter des tests pour nouvelles fonctionnalités
+4. Maintenir la cohérence de style (voir conventions ci-dessous)
+
+### Conventions de code :
+- Classes en PascalCase
+- Méthodes/propriétés en camelCase
+- Constantes en UPPER_SNAKE_CASE
+- Interfaces préfixées avec `I` si nécessaire
+- Documentation JSDoc pour toutes les API publiques
+
+---
+
+**Dernière mise à jour** : 11 novembre 2025  
+**Version** : 1.0.0  
+**Auteur** : MathieuCGit

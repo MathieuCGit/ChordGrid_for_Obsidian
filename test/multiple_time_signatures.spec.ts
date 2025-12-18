@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file multiple_time_signatures.spec.ts
  * @description Tests unitaires pour valider les ligatures, liaisons et tuplets
  * avec différentes signatures temporelles.
@@ -274,7 +274,7 @@ describe('Multiple Time Signatures - Validation', () => {
     test('should handle cross-segment beaming in 3/4', () => {
       const result = parser.parse('3/4 | C[8]G[8 4 4] |');
       expect(result.errors).toHaveLength(0);
-      // Les notes doivent être parsées correctement
+      // Notes should be parsed correctly
       const measure = result.grid.measures[0];
       expect(measure.beats.length).toBeGreaterThan(0);
     });
@@ -288,7 +288,7 @@ describe('Multiple Time Signatures - Validation', () => {
     test('should break beaming with spaces', () => {
       const result = parser.parse('3/4 | C[88] G[88 4] |');
       expect(result.errors).toHaveLength(0);
-      // L'espace doit être détecté comme leading space
+      // Space should be detected as leading space
     });
   });
 
@@ -403,3 +403,4 @@ describe('Multiple Time Signatures - Structural Tests', () => {
     expect(result.grid.measures).toHaveLength(4);
   });
 });
+

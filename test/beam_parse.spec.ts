@@ -34,7 +34,9 @@ describe('ChordGridParser - beam detection', () => {
   });
 
   it('should keep beam groups within the same chord segment', () => {
-    // Version >=2.0.1 : Vérifie la structure des segments parsés
+    // Version >=2.0.1: Verifies the parsed segment structure
+    // This test ensures that when multiple chord segments appear in a single measure,
+    // each segment maintains its own set of notes without mixing between chords
     const result = parser.parse('4/4\nAm[8 8]G[8 8] |');
     const measure = result.grid.measures[0];
     

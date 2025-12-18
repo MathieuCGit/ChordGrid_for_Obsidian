@@ -35,15 +35,15 @@ var DebugLogger;
 var init_DebugLogger = __esm({
   "src/utils/DebugLogger.ts"() {
     DebugLogger = class {
-      // Limite pour éviter trop de logs
+      // Limit to avoid too many logs
       /**
-       * Active ou désactive le logging.
+       * Enables or disables logging.
        */
       static setEnabled(enabled) {
         this.enabled = enabled;
       }
       /**
-       * Initialise le conteneur de logs pour un bloc de code donné.
+       * Initializes the log container for a given code block.
        */
       static init(parentElement) {
         this.logs = [];
@@ -67,7 +67,7 @@ var init_DebugLogger = __esm({
         return this.logContainer;
       }
       /**
-       * Enregistre un message de log.
+       * Records a log message.
        */
       static log(message, data) {
         if (!this.enabled) return;
@@ -81,7 +81,7 @@ var init_DebugLogger = __esm({
         this.render();
       }
       /**
-       * Enregistre un message d'erreur.
+       * Records an error message.
        */
       static error(message, error) {
         if (!this.enabled) return;
@@ -92,7 +92,7 @@ var init_DebugLogger = __esm({
         this.render();
       }
       /**
-       * Enregistre un message d'avertissement.
+       * Records a warning message.
        */
       static warn(message, data) {
         if (!this.enabled) return;
@@ -103,7 +103,7 @@ var init_DebugLogger = __esm({
         this.render();
       }
       /**
-       * Met à jour l'affichage des logs.
+       * Updates the log display.
        */
       static render() {
         if (!this.logContainer) return;
@@ -136,31 +136,355 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 
+// src/utils/Transposer.ts
+var Transposer = class {
+  /**
+   * Transpose a single chord by semitones
+   * @param chord - The chord to transpose (e.g., "Cmaj7", "F#m", "Bb/D")
+   * @param semitones - Number of semitones to transpose (positive = up, negative = down)
+   * @param preference - Force 'sharp' or 'flat' accidentals
+   * @returns Transposed chord
+   */
+  static transposeChord(chord, semitones, preference) {
+    if (!chord || chord.trim() === "") return "";
+    const rootMatch = chord.match(/^([A-G][#b]?)/);
+    if (!rootMatch) return chord;
+    const root = rootMatch[1];
+    const suffix = chord.substring(root.length);
+    let bassSuffix = "";
+    const slashMatch = suffix.match(/^(.*)\/([A-G][#b]?)$/);
+    if (slashMatch) {
+      const quality = slashMatch[1];
+      const bassNote = slashMatch[2];
+      const transposedBass = this.transposeNote(bassNote, semitones, preference);
+      bassSuffix = `/${transposedBass}`;
+      return this.transposeNote(root, semitones, preference) + quality + bassSuffix;
+    }
+    const transposedRoot = this.transposeNote(root, semitones, preference);
+    return transposedRoot + suffix;
+  }
+  /**
+   * Transpose multiple chords with automatic key analysis
+   * @param chords - Array of chords to transpose
+   * @param semitones - Number of semitones to transpose
+   * @param forceAccidental - Force '#' or 'b' for all chords
+   * @returns Array of transposed chords
+   */
+  static transposeChords(chords, semitones, forceAccidental) {
+    if (chords.length === 0) return [];
+    let preference;
+    if (forceAccidental) {
+      preference = forceAccidental === "#" ? "sharp" : "flat";
+    } else {
+      preference = this.analyzeTargetKey(chords, semitones);
+    }
+    return chords.map((chord) => this.transposeChord(chord, semitones, preference));
+  }
+  /**
+   * Transpose a single note (root only, no chord quality)
+   * @private
+   */
+  static transposeNote(note, semitones, preference) {
+    const sharpIndex = this.SHARPS.indexOf(note.replace("b", this.getEnharmonicSharp(note)));
+    const flatIndex = this.FLATS.indexOf(note);
+    let startIndex;
+    if (sharpIndex !== -1) {
+      startIndex = sharpIndex;
+    } else if (flatIndex !== -1) {
+      startIndex = flatIndex;
+    } else {
+      return note;
+    }
+    let targetIndex = (startIndex + semitones) % 12;
+    if (targetIndex < 0) targetIndex += 12;
+    if (preference === "sharp") {
+      return this.SHARPS[targetIndex];
+    } else if (preference === "flat") {
+      return this.FLATS[targetIndex];
+    }
+    const sharpNote = this.SHARPS[targetIndex];
+    const flatNote = this.FLATS[targetIndex];
+    if (sharpNote === flatNote) return sharpNote;
+    return sharpNote;
+  }
+  /**
+   * Get enharmonic sharp equivalent of a flat note
+   * @private
+   */
+  static getEnharmonicSharp(flatNote) {
+    const enharmonics = {
+      "Db": "C#",
+      "Eb": "D#",
+      "Gb": "F#",
+      "Ab": "G#",
+      "Bb": "A#"
+    };
+    return enharmonics[flatNote] || flatNote;
+  }
+  /**
+   * Analyze the target key to determine sharp/flat preference
+   * @private
+   */
+  static analyzeTargetKey(chords, semitones) {
+    if (chords.length === 0) return "sharp";
+    const firstChord = chords[0];
+    const rootMatch = firstChord.match(/^([A-G][#b]?)/);
+    if (!rootMatch) return "sharp";
+    const originalRoot = rootMatch[1];
+    const isMinor = firstChord.match(/^[A-G][#b]?m(?!aj)/);
+    const targetRoot = this.transposeNote(originalRoot, semitones, void 0);
+    let targetKey = targetRoot;
+    if (isMinor) {
+      const minorKey = targetRoot + "m";
+      targetKey = this.RELATIVE_MAJORS[minorKey] || targetRoot;
+    }
+    if (this.SHARP_KEYS.has(targetKey)) {
+      return "sharp";
+    } else if (this.FLAT_KEYS.has(targetKey)) {
+      return "flat";
+    }
+    const sharpCount = chords.filter((c) => c.includes("#")).length;
+    const flatCount = chords.filter((c) => c.includes("b")).length;
+    return flatCount > sharpCount ? "flat" : "sharp";
+  }
+};
+// Chromatic scales
+__publicField(Transposer, "SHARPS", ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
+__publicField(Transposer, "FLATS", ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]);
+// Circle of fifths - major keys preferring sharps
+__publicField(Transposer, "SHARP_KEYS", /* @__PURE__ */ new Set(["C", "G", "D", "A", "E", "B", "F#", "C#"]));
+// Circle of fifths - major keys preferring flats  
+__publicField(Transposer, "FLAT_KEYS", /* @__PURE__ */ new Set(["F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"]));
+// Minor keys and their relative majors
+__publicField(Transposer, "RELATIVE_MAJORS", {
+  "Am": "C",
+  "Em": "G",
+  "Bm": "D",
+  "F#m": "A",
+  "C#m": "E",
+  "G#m": "B",
+  "D#m": "F#",
+  "Dm": "F",
+  "Gm": "Bb",
+  "Cm": "Eb",
+  "Fm": "Ab",
+  "Bbm": "Db",
+  "Ebm": "Gb"
+});
+
 // src/parser/ChordGridParser.ts
 var _ChordGridParser = class _ChordGridParser {
   /**
-   * Parse une grille d'accords en notation textuelle.
+   * Get the default tuplet ratio for a given count.
+   * Returns the ratio or undefined if no default exists.
+   */
+  getTupletRatio(tupletCount) {
+    return this.constructor.DEFAULT_TUPLET_RATIOS[tupletCount];
+  }
+  /**
+   * Parse volta numbers from different syntaxes.
+   * Supports:
+   * - Single: "1" -> [1]
+   * - Range: "1-3" -> [1, 2, 3]
+   * - List: "1,2,3" -> [1, 2, 3]
    * 
-   * @param input - Chaîne contenant la grille d'accords en notation textuelle
-   * @returns Objet ParseResult contenant :
-   *   - grid : la structure ChordGrid parsée
-   *   - errors : tableau d'erreurs de validation (mesures mal formées)
-   *   - measures : tableau de toutes les mesures
+   * @param voltaText - Text after the dot (e.g., "1", "1-3", "1,2,3")
+   * @returns Array of volta numbers
+   */
+  parseVoltaNumbers(voltaText) {
+    const rangeMatch = /^(\d+)-(\d+)$/.exec(voltaText);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      const numbers = [];
+      for (let i = start; i <= end; i++) {
+        numbers.push(i);
+      }
+      return numbers;
+    }
+    if (voltaText.includes(",")) {
+      return voltaText.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+    }
+    const num = parseInt(voltaText, 10);
+    return isNaN(num) ? [] : [num];
+  }
+  /**
+   * Parse a chord grid in textual notation.
+   * 
+   * @param input - String containing the chord grid in textual notation
+   * @returns ParseResult object containing:
+   *   - grid: the parsed ChordGrid structure
+   *   - errors: array of validation errors (malformed measures)
+   *   - measures: array of all measures
    */
   parse(input) {
+    var _a;
     const lines = input.trim().split("\n");
-    let firstLine = lines[0];
-    const timeSignature = this.parseTimeSignature(firstLine);
-    firstLine = firstLine.replace(/^\s*\d+\/\d+(?:\s+(?:binary|ternary|noauto))?\s*\|?\s*/, "");
-    lines[0] = firstLine;
+    let stemsDirection = "up";
+    let displayRepeatSymbol = false;
+    let pickMode = void 0;
+    let fingerMode = void 0;
+    let measuresPerLine = void 0;
+    let measureNumbering = void 0;
+    let transposeSettings = void 0;
+    let countingMode = void 0;
+    let groupingModeDirective = void 0;
+    let lineIndex = 0;
+    while (lineIndex < lines.length) {
+      let line = lines[lineIndex].trim();
+      if (line === "") {
+        lineIndex++;
+        continue;
+      }
+      let hasAnyDirective = false;
+      if (/(stems?-down|stem-down)/i.test(line)) {
+        stemsDirection = "down";
+        line = line.replace(/(stems?-down|stem-down)\s*/i, "");
+        hasAnyDirective = true;
+      } else if (/(stems?-up|stem-up)/i.test(line)) {
+        stemsDirection = "up";
+        line = line.replace(/(stems?-up|stem-up)\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/show%/i.test(line)) {
+        displayRepeatSymbol = true;
+        line = line.replace(/show%\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/(picks?-auto|picks?|pick)(?!\w)/i.test(line)) {
+        pickMode = true;
+        line = line.replace(/(picks?-auto|picks?|pick)(?!\w)\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const fingerMatch = /(fingers?)(:\s*(en|fr))?/i.exec(line);
+      if (fingerMatch) {
+        const lang = (_a = fingerMatch[3]) == null ? void 0 : _a.toLowerCase();
+        fingerMode = lang === "fr" ? "fr" : "en";
+        line = line.replace(/(fingers?)(:\s*(en|fr))?\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(line);
+      if (measuresPerLineMatch) {
+        const count = parseInt(measuresPerLineMatch[1], 10);
+        if (count > 0) {
+          measuresPerLine = count;
+        }
+        line = line.replace(/measures-per-line:\s*\d+\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,\-](\d+))?)?/i.exec(line);
+      if (measureNumMatch) {
+        const startNum = measureNumMatch[1] ? parseInt(measureNumMatch[1], 10) : 1;
+        const intervalOrFreq = measureNumMatch[2] ? parseInt(measureNumMatch[2], 10) : 0;
+        measureNumbering = {
+          startNumber: startNum,
+          interval: intervalOrFreq,
+          // 0 = line starts only, >0 = every N measures
+          enabled: true
+        };
+        line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const transposeMatch = /transpose:\s*([+-]\d+)(?:\s*,\s*([#b]))?/i.exec(line);
+      if (transposeMatch) {
+        const semitones = parseInt(transposeMatch[1], 10);
+        const accidental = transposeMatch[2];
+        transposeSettings = {
+          semitones,
+          accidental
+        };
+        line = line.replace(/transpose:\s*[+-]\d+(?:\s*,\s*[#b])?\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/\b(count|counting)\b/i.test(line)) {
+        countingMode = true;
+        line = line.replace(/\b(count|counting)\b\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.test(line)) {
+        const modeMatch = /^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.exec(line);
+        if (modeMatch) {
+          const rawMode = modeMatch[1].toLowerCase();
+          if (rawMode === "auto") {
+            console.warn('[ChordGrid] Directive "auto" is deprecated. Use "auto-beam" instead. Converting automatically.');
+            groupingModeDirective = "auto-beam";
+          } else if (rawMode === "noauto") {
+            console.warn('[ChordGrid] Directive "noauto" is deprecated and ignored (space-based is now the default behavior).');
+            groupingModeDirective = void 0;
+          } else if (rawMode === "auto-beams") {
+            groupingModeDirective = "auto-beam";
+          } else {
+            groupingModeDirective = rawMode;
+          }
+          line = line.replace(/^\s*(auto-beams?|binary|ternary|auto|noauto)\b\s*/i, "");
+          hasAnyDirective = true;
+        }
+      }
+      line = line.trim();
+      if (line !== "") {
+        if (/^\d+\/\d+/.test(line)) {
+          lines[lineIndex] = line;
+          break;
+        }
+        if (/\|/.test(line)) {
+          lines[lineIndex] = line;
+          break;
+        }
+        if (hasAnyDirective) {
+          lineIndex++;
+          continue;
+        }
+        break;
+      }
+      lineIndex++;
+    }
+    lines.splice(0, lineIndex);
+    let timeSignatureLine = lines[0] || "";
+    const timeSignature = this.parseTimeSignature(timeSignatureLine);
+    if (groupingModeDirective && timeSignature.groupingMode === "space-based") {
+      timeSignature.groupingMode = groupingModeDirective;
+    }
+    timeSignatureLine = timeSignatureLine.replace(/^\s*\d+\/\d+(?:\s+(?:auto-beams?|binary|ternary|auto|noauto))?\s*/, "");
+    lines[0] = timeSignatureLine;
     const allMeasures = [];
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const line = lines[lineIndex];
-      const measures = this.parseLine(line, lineIndex === 0);
-      if (measures.length > 0 && lineIndex < lines.length - 1) {
+    let lastExplicitMeasure = null;
+    for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
+      const line = lines[lineIndex2];
+      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature);
+      const measures = result.measures;
+      lastExplicitMeasure = result.lastExplicitMeasure;
+      if (measures.length > 0 && lineIndex2 < lines.length - 1) {
         measures[measures.length - 1].isLineBreak = true;
       }
       allMeasures.push(...measures);
+    }
+    for (let i = 0; i < allMeasures.length; i++) {
+      const measure = allMeasures[i];
+      if (measure.voltaStart) {
+        const voltaInfo = measure.voltaStart;
+        let endIndex = i;
+        let foundExplicitEnd = false;
+        for (let j = i + 1; j < allMeasures.length; j++) {
+          const nextMeasure = allMeasures[j];
+          if (nextMeasure.voltaEndMarker) {
+            endIndex = j;
+            foundExplicitEnd = true;
+            delete nextMeasure.voltaEndMarker;
+            break;
+          }
+          if (!voltaInfo.isClosed) {
+            continue;
+          }
+          if (nextMeasure.voltaStart || nextMeasure.isRepeatStart) {
+            break;
+          }
+          endIndex = j;
+          if (nextMeasure.isRepeatEnd) {
+            break;
+          }
+        }
+        allMeasures[endIndex].voltaEnd = voltaInfo;
+      }
     }
     const renderedLines = this.groupIntoLines(allMeasures, 4);
     const grid = {
@@ -169,9 +493,16 @@ var _ChordGridParser = class _ChordGridParser {
       lines: renderedLines
     };
     const errors = [];
-    const expectedQuarterNotes = timeSignature.numerator * (4 / timeSignature.denominator);
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
+      if (measure.__isChordOnlyMode) {
+        continue;
+      }
+      if (measure.__isEmpty) {
+        continue;
+      }
+      const effectiveTimeSignature = measure.timeSignature || timeSignature;
+      const expectedQuarterNotes = effectiveTimeSignature.numerator * (4 / effectiveTimeSignature.denominator);
       let foundQuarterNotes = 0;
       const countedTuplets = /* @__PURE__ */ new Set();
       for (const beat of measure.beats) {
@@ -223,18 +554,53 @@ var _ChordGridParser = class _ChordGridParser {
           }
         }
       }
-      const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
-      if (diff > 1e-6) {
-        errors.push({
-          measureIndex: mi,
-          measureSource: measure.source,
-          expectedQuarterNotes,
-          foundQuarterNotes,
-          message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes, found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
-        });
+      const hasRhythm = measure.beats.some((beat) => beat.notes && beat.notes.length > 0);
+      if (hasRhythm) {
+        const diff = Math.abs(foundQuarterNotes - expectedQuarterNotes);
+        if (diff > 1e-6) {
+          errors.push({
+            measureIndex: mi,
+            measureSource: measure.source,
+            expectedQuarterNotes,
+            foundQuarterNotes,
+            message: `Measure ${mi + 1}: expected ${expectedQuarterNotes} quarter-notes (${effectiveTimeSignature.numerator}/${effectiveTimeSignature.denominator}), found ${foundQuarterNotes.toFixed(3)} (diff ${diff.toFixed(3)})`
+          });
+        }
       }
     }
-    return { grid, errors, measures: allMeasures };
+    if (transposeSettings) {
+      this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
+    }
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode };
+  }
+  applyTransposition(measures, semitones, forceAccidental) {
+    const allChords = [];
+    const chordToSegments = /* @__PURE__ */ new Map();
+    for (const measure of measures) {
+      if (measure.chordSegments) {
+        for (const segment of measure.chordSegments) {
+          if (segment.chord && segment.chord.trim() !== "") {
+            if (segment.chord === "%" || segment.chord === "[%]") continue;
+            if (!chordToSegments.has(segment.chord)) {
+              allChords.push(segment.chord);
+              chordToSegments.set(segment.chord, []);
+            }
+            chordToSegments.get(segment.chord).push(segment);
+          }
+        }
+      }
+    }
+    if (allChords.length > 0) {
+      const transposedChords = Transposer.transposeChords(allChords, semitones, forceAccidental);
+      for (let i = 0; i < allChords.length; i++) {
+        const segments = chordToSegments.get(allChords[i]);
+        if (segments) {
+          for (const segment of segments) {
+            segment.chord = transposedChords[i];
+          }
+        }
+      }
+    }
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -279,7 +645,7 @@ var _ChordGridParser = class _ChordGridParser {
       });
       return {
         segments,
-        timeSignature: result.grid.timeSignature,
+        timeSignature: m.timeSignature || result.grid.timeSignature,
         barline: m.barline,
         isLineBreak: m.isLineBreak,
         source: m.source
@@ -287,13 +653,13 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine) {
+  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
     const measures = [];
     const tokens = [];
-    const re = /(\|\|:|:?\|\||\|)/g;
+    const re = /(\|\|:(?:\.[\d,-]+)?|:\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|\|(?:x\d+)?(?:\.[\d,-]+)?|\|(?:\.[\d,-]*)?)/g;
     let lastIndex = 0;
     let m;
     const parts = [];
@@ -311,7 +677,20 @@ var _ChordGridParser = class _ChordGridParser {
       if (p.sep === null) {
         currentText += p.text || "";
       } else {
-        tokens.push({ bar: p.sep, content: currentText });
+        let barline = p.sep;
+        let repeatCount;
+        let volta;
+        const repeatMatch = /^(:?\|\|)x(\d+)/.exec(barline);
+        if (repeatMatch) {
+          barline = barline.replace(/x\d+/, "");
+          repeatCount = parseInt(repeatMatch[2], 10);
+        }
+        const voltaMatch = /^(.+?)\.(\d+(?:-\d+)?(?:,\d+)*)?$/.exec(barline);
+        if (voltaMatch && voltaMatch[0].includes(".")) {
+          barline = voltaMatch[1];
+          volta = voltaMatch[2] || "END";
+        }
+        tokens.push({ bar: barline, content: currentText, repeatCount, volta });
         currentText = "";
       }
     }
@@ -321,16 +700,143 @@ var _ChordGridParser = class _ChordGridParser {
     const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
+    let lastExplicitMeasure = lastExplicitMeasureFromPreviousLine || null;
+    let pendingStartBarline = null;
+    let pendingVolta = void 0;
+    let pendingVoltaIsAfterRepeatEnd = false;
+    let pendingVoltaEndMarker = false;
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
-      if (t.content.trim().length === 0) {
+      const bar = t.bar;
+      if (t.content.trim().length === 0 && t.bar === "||:") {
+        pendingStartBarline = "||:";
+        if (t.volta) {
+          pendingVolta = t.volta;
+        }
         continue;
       }
-      const text = t.content;
-      const bar = t.bar;
+      if (t.content.trim().length === 0) {
+        if (t.volta) {
+          pendingVolta = t.volta;
+        }
+        const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
+        const isNotFirstToken = ti > 0;
+        if (isIntentionalEmpty || measuresPerLine !== void 0 && isNotFirstToken) {
+          const emptyMeasure = {
+            beats: [],
+            chord: "",
+            chordSegments: [],
+            barline: bar,
+            isLineBreak: false,
+            source: "(empty)"
+          };
+          emptyMeasure.__isEmpty = true;
+          if (pendingStartBarline === "||:") {
+            emptyMeasure.isRepeatStart = true;
+            pendingStartBarline = null;
+          }
+          if (pendingVolta) {
+            const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+            const voltaText = pendingVolta;
+            const isClosed = !pendingVoltaIsAfterRepeatEnd;
+            emptyMeasure.voltaStart = {
+              numbers: voltaNumbers,
+              text: voltaText,
+              isClosed
+            };
+            pendingVolta = void 0;
+            pendingVoltaIsAfterRepeatEnd = false;
+          }
+          if (pendingVoltaEndMarker) {
+            emptyMeasure.voltaEnd = true;
+            pendingVoltaEndMarker = false;
+          }
+          if (bar === ":||" && t.repeatCount) {
+            emptyMeasure.repeatEndCount = t.repeatCount;
+          }
+          measures.push(emptyMeasure);
+        }
+        continue;
+      }
+      let text = t.content;
+      let measureTimeSignature;
+      const timeSignaturePattern = /^(\s*)(\d+\/\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?\s+/;
+      const tsMatch = timeSignaturePattern.exec(text);
+      if (tsMatch) {
+        const tsText = tsMatch[2] + (tsMatch[3] ? " " + tsMatch[3] : "");
+        measureTimeSignature = this.parseTimeSignature(tsText);
+        if (measureTimeSignature.groupingMode === "space-based" && globalTimeSignature && globalTimeSignature.groupingMode !== "space-based") {
+          measureTimeSignature.groupingMode = globalTimeSignature.groupingMode;
+        }
+        text = tsMatch[1] + text.slice(tsMatch[0].length);
+      }
+      if (text.trim() === "%") {
+        if (!lastExplicitMeasure) {
+          console.warn("Cannot use '%' repeat notation on first measure");
+          continue;
+        }
+        const clonedMeasure = this.cloneMeasure(lastExplicitMeasure, bar, t.repeatCount);
+        clonedMeasure.source = "%";
+        if (pendingStartBarline === "||:") {
+          clonedMeasure.isRepeatStart = true;
+          pendingStartBarline = null;
+        }
+        if (pendingVolta) {
+          const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+          const voltaText = pendingVolta;
+          const isClosed = !pendingVoltaIsAfterRepeatEnd;
+          clonedMeasure.voltaStart = {
+            numbers: voltaNumbers,
+            text: voltaText,
+            isClosed
+          };
+          pendingVolta = void 0;
+          pendingVoltaIsAfterRepeatEnd = false;
+        }
+        measures.push(clonedMeasure);
+        if (t.volta) {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+        }
+        lastExplicitMeasure = clonedMeasure;
+        continue;
+      }
+      const repeatMatch = /^\s*([^\[\]\s]+)\s*\[%\]\s*$/.exec(text);
+      if (repeatMatch) {
+        if (!lastExplicitMeasure) {
+          console.warn("Cannot use '[%]' repeat notation on first measure");
+          continue;
+        }
+        const newChord = repeatMatch[1].trim();
+        const clonedMeasure = this.cloneMeasureWithNewChord(lastExplicitMeasure, newChord, bar);
+        if (pendingStartBarline === "||:") {
+          clonedMeasure.isRepeatStart = true;
+          pendingStartBarline = null;
+        }
+        if (pendingVolta) {
+          const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+          const voltaText = pendingVolta;
+          const isClosed = !pendingVoltaIsAfterRepeatEnd;
+          clonedMeasure.voltaStart = {
+            numbers: voltaNumbers,
+            text: voltaText,
+            isClosed
+          };
+          pendingVolta = void 0;
+          pendingVoltaIsAfterRepeatEnd = false;
+        }
+        measures.push(clonedMeasure);
+        if (t.volta) {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+        }
+        lastExplicitMeasure = clonedMeasure;
+        continue;
+      }
       const beats = [];
       let firstChord = "";
       let anySource = "";
+      let isChordOnlyMode = false;
       let m2;
       const isFirstMeasureOfLine = tokens.slice(0, ti).every((prev) => prev.content.trim().length === 0);
       const isLastMeasureOfLine = tokens.slice(ti + 1).every((next) => next.content.trim().length === 0);
@@ -338,6 +844,18 @@ var _ChordGridParser = class _ChordGridParser {
       const FORCED_BEAM_PLACEHOLDER = "";
       const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
       if (processedText.includes("[")) {
+        const allSegments = [];
+        let tempMatch;
+        const tempRe = new RegExp(segmentRe.source, segmentRe.flags);
+        while ((tempMatch = tempRe.exec(processedText)) !== null) {
+          const leadingSpaceCapture = tempMatch[1] || "";
+          const chord = (tempMatch[2] || "").trim();
+          let rhythm = (tempMatch[3] || "").trim();
+          rhythm = rhythm.replace(new RegExp(FORCED_BEAM_PLACEHOLDER, "g"), "[_]");
+          allSegments.push({ leadingSpace: leadingSpaceCapture, chord, rhythm, source: tempMatch[0] });
+        }
+        const lastSegmentWithRhythmIndex = allSegments.reduce((lastIdx, seg, idx) => seg.rhythm.length > 0 ? idx : lastIdx, -1);
+        let segmentIndex = 0;
         while ((m2 = segmentRe.exec(processedText)) !== null) {
           const leadingSpaceCapture = m2[1] || "";
           const chord = (m2[2] || "").trim();
@@ -348,21 +866,53 @@ var _ChordGridParser = class _ChordGridParser {
           anySource += (anySource ? " " : "") + sourceText;
           if (rhythm.length > 0) {
             const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace);
+            const isLastSegment = segmentIndex === lastSegmentWithRhythmIndex;
+            const effectiveTS = measureTimeSignature || globalTimeSignature;
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS);
             chordSegments.push({
               chord,
-              // utiliser l'accord actuel
+              // use the current chord
               beats: parsedBeats,
               leadingSpace: hasSignificantSpace
             });
             beats.push(...parsedBeats);
           }
+          segmentIndex++;
         }
       } else {
-        const rhythm = text.trim();
+        const trimmedText = text.trim();
         anySource = text;
-        if (rhythm.length > 0) {
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false);
+        const rootPattern = "[A-G][#b\u266F\u266D]?";
+        const qualityPattern = "(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|\xF8|o|\\+|\\-)?";
+        const extensionPattern = "[0-9]+";
+        const alterationPattern = "(?:\\([#b\u266F\u266D]?[0-9]+\\)|[#b\u266F\u266D][0-9]+)";
+        const susPattern = "(?:\\((?:sus[24]?|add[#b\u266F\u266D]?[0-9]+)\\)|sus[24]?|add[#b\u266F\u266D]?[0-9]+)";
+        const singleChordPattern = `${rootPattern}${qualityPattern}(?:${extensionPattern}|${alterationPattern}|${susPattern})*(?:/${rootPattern})?`;
+        const chordPattern = new RegExp(`^${singleChordPattern}(?:\\s+\\/\\s+${singleChordPattern})*$`);
+        const isChordOnly = chordPattern.test(trimmedText);
+        if (isChordOnly && trimmedText.length > 0) {
+          const chords = [];
+          const slashWithSpaceParts = trimmedText.split(/\s+\/\s+/);
+          for (const part of slashWithSpaceParts) {
+            if (part.trim().length > 0) {
+              chords.push(part.trim());
+            }
+          }
+          if (!firstChord && chords.length > 0) firstChord = chords[0];
+          chords.forEach((chord, idx) => {
+            chordSegments.push({
+              chord,
+              beats: [],
+              // No rhythm in chord-only mode
+              leadingSpace: idx > 0
+              // All chords after first have logical spacing
+            });
+          });
+          isChordOnlyMode = true;
+        } else if (trimmedText.length > 0) {
+          const rhythm = trimmedText;
+          const effectiveTS = measureTimeSignature || globalTimeSignature;
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS);
           chordSegments.push({
             chord: "",
             beats: parsedBeats,
@@ -371,43 +921,98 @@ var _ChordGridParser = class _ChordGridParser {
           beats.push(...parsedBeats);
         }
       }
-      console.log("Parsed chords:", chordSegments.map((s) => s.chord));
-      console.log("First chord for measure:", firstChord);
-      console.log("Beats count:", beats.length);
-      measures.push({
+      const newMeasure = {
         beats,
         chord: firstChord,
-        // garder pour compatibilité
+        // keep for compatibility
         chordSegments,
-        // nouvelle propriété pour tous les accords
+        // new property for all chords
         barline: bar,
         isLineBreak: false,
-        source: anySource || text
-      });
+        source: anySource || text,
+        timeSignature: measureTimeSignature
+        // Add time signature if detected
+      };
+      if (isChordOnlyMode) {
+        newMeasure.__isChordOnlyMode = true;
+      }
+      if (pendingStartBarline === "||:") {
+        newMeasure.isRepeatStart = true;
+        pendingStartBarline = null;
+      } else if (bar === "||:") {
+        newMeasure.isRepeatStart = true;
+      }
+      if (bar === ":||") {
+        newMeasure.isRepeatEnd = true;
+      }
+      if (t.repeatCount !== void 0) {
+        newMeasure.repeatCount = t.repeatCount;
+      }
+      if (pendingVolta) {
+        const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
+        const voltaText = pendingVolta;
+        const isClosed = !pendingVoltaIsAfterRepeatEnd;
+        const voltaInfo = {
+          numbers: voltaNumbers,
+          text: voltaText,
+          isClosed
+        };
+        newMeasure.voltaStart = voltaInfo;
+        pendingVolta = void 0;
+        pendingVoltaIsAfterRepeatEnd = false;
+      }
+      if (pendingVoltaEndMarker) {
+        newMeasure.voltaEndMarker = true;
+        pendingVoltaEndMarker = false;
+      }
+      measures.push(newMeasure);
+      if (t.volta) {
+        if (t.volta === "END") {
+          pendingVoltaEndMarker = true;
+        } else {
+          pendingVolta = t.volta;
+          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+        }
+      }
+      lastExplicitMeasure = newMeasure;
     }
-    return measures;
+    return { measures, lastExplicitMeasure };
   }
   /**
-   * Parse la signature temporelle depuis la première ligne.
+   * Parse the time signature from the first line.
    * 
-   * @param line - Première ligne contenant la signature temporelle (ex: "4/4 ||: C[4 4 4 4]")
-   * @returns Objet TimeSignature avec numérateur et dénominateur
-   * @default { numerator: 4, denominator: 4 } si aucune signature n'est trouvée
+   * @param line - First line containing the time signature (e.g., "4/4 ||: C[4 4 4 4]")
+   * @returns TimeSignature object with numerator and denominator
+   * @default { numerator: 4, denominator: 4 } if no signature is found
    */
   /**
-   * Parse la signature temporelle et le mode de groupement optionnel.
+   * Parse the time signature and optional grouping mode.
    * 
-   * Syntaxe : "4/4" ou "4/4 binary" ou "6/8 ternary"
+   * Syntax: "4/4" or "4/4 binary" or "6/8 ternary" or "4/4 auto-beam"
    * 
-   * @param line - Première ligne contenant la signature temporelle
-   * @returns Objet TimeSignature avec numerator, denominator et groupingMode
+   * @param line - First line containing the time signature
+   * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   parseTimeSignature(line) {
-    const m = /^\s*(\d+)\/(\d+)(?:\s+(binary|ternary|noauto))?/.exec(line);
+    const m = /^\s*(\d+)\/(\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?/.exec(line);
     if (m) {
       const numerator = parseInt(m[1], 10);
       const denominator = parseInt(m[2], 10);
-      const groupingMode = m[3] || "auto";
+      let groupingMode = "space-based";
+      if (m[3]) {
+        const rawMode = m[3].toLowerCase();
+        if (rawMode === "auto") {
+          console.warn('[ChordGrid] Mode "auto" is deprecated. Use "auto-beam" instead.');
+          groupingMode = "auto-beam";
+        } else if (rawMode === "noauto") {
+          console.warn('[ChordGrid] Mode "noauto" is deprecated (space-based is now default).');
+          groupingMode = "space-based";
+        } else if (rawMode === "auto-beams") {
+          groupingMode = "auto-beam";
+        } else {
+          groupingMode = rawMode;
+        }
+      }
       return {
         numerator,
         denominator,
@@ -421,15 +1026,121 @@ var _ChordGridParser = class _ChordGridParser {
       denominator: 4,
       beatsPerMeasure: 4,
       beatUnit: 4,
-      groupingMode: "auto"
+      groupingMode: "space-based"
+      // NEW default
     };
   }
   /**
-   * Regroupe les mesures en lignes pour le rendu.
+   * Clone a measure completely (used for '%' notation).
+   * Removes tie flags at measure boundaries to prevent cross-measure ties.
    * 
-   * @param measures - Tableau de toutes les mesures
-   * @param perLine - Nombre de mesures par ligne (généralement 4)
-   * @returns Tableau de lignes, chaque ligne contenant un tableau de mesures
+   * @param source - The measure to clone
+   * @param barline - The barline type for the new measure
+   * @returns A deep clone of the measure with cleared boundary ties
+   */
+  cloneMeasure(source, barline, repeatCount) {
+    const clonedBeats = source.beats.map((beat) => ({
+      ...beat,
+      notes: beat.notes.map((note) => ({ ...note })),
+      beamGroups: beat.beamGroups ? beat.beamGroups.map((bg) => ({ ...bg })) : []
+    }));
+    const clonedSegments = source.chordSegments.map((segment) => ({
+      chord: segment.chord,
+      leadingSpace: segment.leadingSpace,
+      beats: segment.beats.map((beat) => ({
+        ...beat,
+        notes: beat.notes.map((note) => ({ ...note })),
+        beamGroups: beat.beamGroups ? beat.beamGroups.map((bg) => ({ ...bg })) : []
+      }))
+    }));
+    this.clearMeasureBoundaryTies(clonedBeats, clonedSegments);
+    const cloned = {
+      beats: clonedBeats,
+      chord: source.chord,
+      chordSegments: clonedSegments,
+      barline,
+      isLineBreak: false,
+      source: source.source,
+      isRepeat: true,
+      timeSignature: source.timeSignature
+      // Copy time signature if present
+    };
+    if (source.__isChordOnlyMode) {
+      cloned.__isChordOnlyMode = true;
+    }
+    if (barline === "||:") {
+      cloned.isRepeatStart = true;
+    } else if (barline === ":||") {
+      cloned.isRepeatEnd = true;
+    }
+    if (repeatCount !== void 0) {
+      cloned.repeatCount = repeatCount;
+    }
+    return cloned;
+  }
+  /**
+   * Clone a measure with a new chord (used for 'G[%]' notation).
+   * Keeps the rhythm but replaces the chord.
+   * 
+   * @param source - The measure to clone
+   * @param newChord - The new chord to apply
+   * @param barline - The barline type for the new measure
+   * @returns A deep clone of the measure with new chord and cleared boundary ties
+   */
+  cloneMeasureWithNewChord(source, newChord, barline) {
+    const cloned = this.cloneMeasure(source, barline);
+    cloned.chord = newChord;
+    cloned.chordSegments = cloned.chordSegments.map((segment) => ({
+      ...segment,
+      chord: newChord
+    }));
+    cloned.source = `${newChord}[%]`;
+    return cloned;
+  }
+  /**
+   * Clear tie flags at the start and end of a measure to prevent
+   * ties from crossing measure boundaries in repeated measures.
+   * 
+   * @param beats - The beats array to modify
+   * @param segments - The chord segments array to modify
+   */
+  clearMeasureBoundaryTies(beats, segments) {
+    if (beats.length === 0) return;
+    const lastBeat = beats[beats.length - 1];
+    if (lastBeat.notes.length > 0) {
+      const lastNote = lastBeat.notes[lastBeat.notes.length - 1];
+      lastNote.tieStart = false;
+      lastNote.tieToVoid = false;
+    }
+    const firstBeat = beats[0];
+    if (firstBeat.notes.length > 0) {
+      const firstNote = firstBeat.notes[0];
+      firstNote.tieEnd = false;
+      firstNote.tieFromVoid = false;
+    }
+    if (segments.length > 0) {
+      const firstSegment = segments[0];
+      if (firstSegment.beats.length > 0 && firstSegment.beats[0].notes.length > 0) {
+        firstSegment.beats[0].notes[0].tieEnd = false;
+        firstSegment.beats[0].notes[0].tieFromVoid = false;
+      }
+      const lastSegment = segments[segments.length - 1];
+      if (lastSegment.beats.length > 0) {
+        const lastBeat2 = lastSegment.beats[lastSegment.beats.length - 1];
+        if (lastBeat2.notes.length > 0) {
+          const lastNote = lastBeat2.notes[lastBeat2.notes.length - 1];
+          lastNote.tieStart = false;
+          lastNote.tieToVoid = false;
+        }
+      }
+    }
+  }
+  /**
+   * Group measures into lines for rendering.
+   * 
+   * @param measures - Array of all measures
+   * @param perLine - Number of measures per line (typically 4)
+   * @returns Array of lines, each line containing an array of measures
    */
   groupIntoLines(measures, perLine) {
     const lines = [];
@@ -440,60 +1151,60 @@ var _ChordGridParser = class _ChordGridParser {
   }
 };
 /**
- * Table des ratios par défaut pour les tuplets courants.
+ * Default ratio table for common tuplets.
  * 
- * Convention musicale (compatible MuseScore) :
- * N:M signifie "N unités de baseLen dans le temps de M unités de même valeur"
+ * Musical convention (compatible with MuseScore):
+ * N:M means "N units of baseLen in the time of M units of same value"
  * 
- * baseLen = la plus petite valeur rythmique du tuplet (unité de référence)
+ * baseLen = smallest rhythmic value in the tuplet (reference unit)
  * 
- * Exemples :
- * - {8 8 8}3:2 → 3 croches dans le temps de 2 croches (baseLen = 1/8)
- * - {816-16 1616 8 8}5:4 → contenu équivalent à 5 croches dans le temps de 4 croches (baseLen = 1/16)
- * - {16 16 16}3:2 → 3 doubles-croches dans le temps de 2 doubles-croches (baseLen = 1/16)
+ * Examples:
+ * - {8 8 8}3:2 → 3 eighths in the time of 2 eighths (baseLen = 1/8)
+ * - {816-16 1616 8 8}5:4 → content equivalent to 5 eighths in the time of 4 eighths (baseLen = 1/16)
+ * - {16 16 16}3:2 → 3 sixteenths in the time of 2 sixteenths (baseLen = 1/16)
  * 
- * Le ratio appliqué est : durée_réelle = durée_cumulative × (M/N)
- * où durée_cumulative est exprimée en unités de baseLen
+ * Applied ratio: actual_duration = cumulative_duration × (M/N)
+ * where cumulative_duration is expressed in baseLen units
  * 
- * Cette table peut être étendue selon les besoins musicaux.
- * Pour imposer un ratio spécifique, utiliser la syntaxe {...}N:M
+ * This table can be extended according to musical needs.
+ * To enforce a specific ratio, use syntax {...}N:M
  */
 __publicField(_ChordGridParser, "DEFAULT_TUPLET_RATIOS", {
-  // Tuplets en temps simple (les plus courants)
+  // Tuplets in simple time (most common)
   3: { numerator: 3, denominator: 2 },
-  // Triplet : 3 notes dans le temps de 2
+  // Triplet: 3 notes in the time of 2
   5: { numerator: 5, denominator: 4 },
-  // Quintuplet : 5 notes dans le temps de 4
+  // Quintuplet: 5 notes in the time of 4
   6: { numerator: 6, denominator: 4 },
-  // Sextuplet : 6 notes dans le temps de 4
+  // Sextuplet: 6 notes in the time of 4
   7: { numerator: 7, denominator: 4 },
-  // Septuplet : 7 notes dans le temps de 4
+  // Septuplet: 7 notes in the time of 4
   9: { numerator: 9, denominator: 8 },
-  // Nonuplet : 9 notes dans le temps de 8
+  // Nonuplet: 9 notes in the time of 8
   10: { numerator: 10, denominator: 8 },
-  // Décuplet : 10 notes dans le temps de 8
+  // Decuplet: 10 notes in the time of 8
   11: { numerator: 11, denominator: 8 },
-  // 11-uplet : 11 notes dans le temps de 8
+  // 11-tuplet: 11 notes in the time of 8
   12: { numerator: 12, denominator: 8 },
-  // 12-uplet : 12 notes dans le temps de 8
+  // 12-tuplet: 12 notes in the time of 8
   13: { numerator: 13, denominator: 8 },
-  // 13-uplet : 13 notes dans le temps de 8
+  // 13-tuplet: 13 notes in the time of 8
   15: { numerator: 15, denominator: 8 },
-  // 15-uplet : 15 notes dans le temps de 8
-  // Tuplets en temps composé (moins courants, mais nécessaires)
+  // 15-tuplet: 15 notes in the time of 8
+  // Tuplets in compound time (less common but necessary)
   2: { numerator: 2, denominator: 3 },
-  // Duplet : 2 notes dans le temps de 3
+  // Duplet: 2 notes in the time of 3
   4: { numerator: 4, denominator: 3 },
-  // Quadruplet : 4 notes dans le temps de 3
+  // Quadruplet: 4 notes in the time of 3
   8: { numerator: 8, denominator: 6 }
-  // Octuplet : 8 notes dans le temps de 6
+  // Octuplet: 8 notes in the time of 6
 });
 var ChordGridParser = _ChordGridParser;
 var BeamAndTieAnalyzer = class {
   constructor() {
     __publicField(this, "tieContext");
-    // Garder le contexte du dernier groupe de notes pour détecter
-    // si deux segments doivent être liés ou séparés
+    // Keep context of the last note group to detect
+    // whether two segments should be beamed or separated
     __publicField(this, "rhythmContext");
     this.tieContext = {
       lastNote: null,
@@ -507,8 +1218,8 @@ var BeamAndTieAnalyzer = class {
       lastBeamableNotes: []
     };
   }
-  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false) {
-    var _a, _b, _c, _d, _e, _f;
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature) {
+    var _a, _b, _c, _d, _e, _f, _g;
     const beats = [];
     let currentBeat = [];
     let lastBeatLastNoteRef = null;
@@ -525,6 +1236,7 @@ var BeamAndTieAnalyzer = class {
             j++;
           }
           let explicitRatio;
+          let hasExplicitRatio = false;
           if (j < rhythmStr.length && rhythmStr[j] === ":") {
             j++;
             let ratioStr = "";
@@ -538,10 +1250,26 @@ var BeamAndTieAnalyzer = class {
                 numerator: parseInt(numStr, 10),
                 denominator: denominatorValue
               };
+              hasExplicitRatio = true;
             }
           }
           const tupletCount = parseInt(numStr, 10);
           if (tupletCount > 0) {
+            let finalRatio;
+            if (explicitRatio) {
+              finalRatio = explicitRatio;
+            } else {
+              const defaultRatio = ChordGridParser.DEFAULT_TUPLET_RATIOS[tupletCount];
+              if (defaultRatio) {
+                finalRatio = defaultRatio;
+              } else {
+                const normalCount = Math.pow(2, Math.floor(Math.log2(tupletCount)));
+                finalRatio = {
+                  numerator: tupletCount,
+                  denominator: normalCount
+                };
+              }
+            }
             const inner = rhythmStr.slice(i + 1, closeIdx);
             const subGroups = inner.split(" ");
             let tupletNoteIndex = 0;
@@ -583,7 +1311,9 @@ var BeamAndTieAnalyzer = class {
                   count: tupletCount,
                   groupId: `T${i}_${closeIdx}`,
                   position: tupletNoteIndex === 0 ? "start" : tupletNoteIndex === tupletCount - 1 ? "end" : "middle",
-                  ...explicitRatio && { ratio: explicitRatio }
+                  ratio: finalRatio,
+                  explicitRatio: hasExplicitRatio
+                  // true only if user wrote }3:2, false for }3
                 };
                 if (g > 0 && isFirstNoteOfThisSubGroup) {
                   note2.hasLeadingSpace = true;
@@ -609,11 +1339,18 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "_") {
-        if (i === rhythmStr.length - 1 && isLastMeasureOfLine) {
-          this.markTieToVoid(currentBeat);
+        if (i === rhythmStr.length - 1) {
+          if (isLastSegment && isLastMeasureOfLine) {
+            this.markTieToVoid(currentBeat);
+          } else {
+            this.markTieStart(currentBeat);
+          }
         } else if (i === 0 && isFirstMeasureOfLine) {
-          pendingTieFromVoid = true;
-          this.tieContext.pendingTieToVoid = false;
+          if ((_d = this.tieContext.lastNote) == null ? void 0 : _d.tieStart) {
+          } else {
+            pendingTieFromVoid = true;
+            this.tieContext.pendingTieToVoid = false;
+          }
         } else if (currentBeat.length === 0 && lastBeatLastNoteRef) {
           lastBeatLastNoteRef.tieStart = true;
           this.tieContext.lastNote = lastBeatLastNoteRef;
@@ -634,11 +1371,9 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "-") {
-        i++;
         const note2 = this.parseNote(rhythmStr, i);
-        note2.isRest = true;
         currentBeat.push(note2);
-        i += (_d = note2.length) != null ? _d : 0;
+        i += (_e = note2.length) != null ? _e : 0;
         continue;
       }
       const note = this.parseNote(rhythmStr, i);
@@ -646,12 +1381,12 @@ var BeamAndTieAnalyzer = class {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
       }
-      if ((_e = this.tieContext.lastNote) == null ? void 0 : _e.tieStart) {
+      if ((_f = this.tieContext.lastNote) == null ? void 0 : _f.tieStart) {
         note.tieEnd = true;
         this.tieContext.lastNote = null;
       }
       currentBeat.push(note);
-      i += (_f = note.length) != null ? _f : 0;
+      i += (_g = note.length) != null ? _g : 0;
     }
     if (currentBeat.length > 0) {
       beats.push(this.createBeat(currentBeat));
@@ -683,10 +1418,31 @@ var BeamAndTieAnalyzer = class {
           dotted = true;
           len += 1;
         }
+        let isGhost = false;
+        if (!isRest && offset + len < rhythmStr.length && rhythmStr[offset + len] === "x") {
+          isGhost = true;
+          len += 1;
+        }
+        let fingerSymbol;
+        let pickDirection;
+        const afterValue = rhythmStr.substring(offset + len);
+        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
+        if (symbolMatch) {
+          const sym = symbolMatch[1];
+          if (sym === "d" || sym === "u") {
+            pickDirection = sym;
+          } else {
+            fingerSymbol = sym;
+          }
+          len += symbolMatch[0].length;
+        }
         const totalLen = offset - startIndex + len;
         return {
           value: parseInt(v),
           dotted,
+          isGhost,
+          fingerSymbol,
+          pickDirection,
           tieStart: false,
           tieEnd: false,
           tieToVoid: false,
@@ -700,6 +1456,7 @@ var BeamAndTieAnalyzer = class {
     return {
       value: 4,
       dotted: false,
+      isGhost: false,
       tieStart: false,
       tieEnd: false,
       tieToVoid: false,
@@ -752,104 +1509,428 @@ var BeamAndTieAnalyzer = class {
 
 // src/renderer/constants.ts
 var SVG_NS = "http://www.w3.org/2000/svg";
+var LAYOUT = {
+  /** Base left padding inside measures (px) */
+  BASE_LEFT_PADDING: 10,
+  /** Right padding inside measures (px) */
+  BASE_RIGHT_PADDING: 10,
+  /** Inner padding per chord segment (px) */
+  INNER_PADDING_PER_SEGMENT: 20,
+  /** Gap width when source had a space between segments (px) */
+  SEPARATOR_WIDTH: 12,
+  /** Extra left padding for repeat-start barlines (px) */
+  EXTRA_LEFT_PADDING_REPEAT: 15,
+  /** Vertical spacing between lines (px) */
+  LINE_VERTICAL_SPACING: 20,
+  /** Top margin before first line (px) */
+  TOP_MARGIN: 0,
+  // Minimal top margin for compact rendering
+  /** Bottom margin after last line (px) */
+  BOTTOM_MARGIN: 25,
+  // Increased for better spacing at bottom
+  /** Side margin for SVG container (px) */
+  SIDE_MARGIN: 30,
+  // Increased for better right spacing
+  /** Measure height for layout calculation (px) */
+  MEASURE_HEIGHT: 120,
+  /** Base measure width (px) */
+  BASE_MEASURE_WIDTH: 240,
+  /** Extra breathing room at end of multi-note segments (px) */
+  SEGMENT_END_PADDING: 8,
+  /** Repeat symbol height (px) @plannedFor v3.0 */
+  REPEAT_SYMBOL_HEIGHT: 30,
+  /** Repeat count font size (px) @plannedFor v3.0 */
+  REPEAT_COUNT_FONT_SIZE: 22,
+  /** Repeat count width (approximate, px) @plannedFor v3.0 */
+  REPEAT_COUNT_WIDTH: 30,
+  /** Chord vertical offset (px) @plannedFor v3.0 */
+  CHORD_VERTICAL_OFFSET: 30,
+  /** Spacing between double barlines (px) @plannedFor v3.0 */
+  DOUBLE_BAR_SPACING: 6,
+  /** Measures per line (default layout) @plannedFor v3.0 */
+  DEFAULT_MEASURES_PER_LINE: 4,
+  /** Time signature margin after metric (px) @plannedFor v3.0 */
+  TIME_SIG_MARGIN: 4,
+  /** Default line start padding (px) @plannedFor v3.0 */
+  DEFAULT_LINE_START_PADDING: 40,
+  /** Final margin at bottom of SVG (px) @plannedFor v3.0 */
+  BOTTOM_SVG_MARGIN: 30,
+  // Increased for better spacing at bottom
+  /** Additional width for SVG right margin (px) @plannedFor v3.0 */
+  RIGHT_SVG_MARGIN: 20,
+  // Increased for better right spacing
+  /** Top margin for chord symbols (px) @plannedFor v3.0 */
+  TOP_MARGIN_FOR_CHORDS: 0,
+  // Zero top margin for compact rendering
+  /** Y offset for measures in line (px) @plannedFor v3.0 */
+  MEASURE_Y_OFFSET: 40,
+  /** Side margin for availableWidth calculation (px) @plannedFor v3.0 */
+  AVAILABLE_WIDTH_SIDE_MARGIN: 60,
+  /** Spacing between barline and volta text (px) @plannedFor v3.0 */
+  VOLTA_TEXT_OFFSET: 5,
+  /** Horizontal margin around volta text for collision detection (px) @plannedFor v3.0 */
+  VOLTA_TEXT_MARGIN: 5,
+  /** Extra left padding for volta text bbox to ensure clearance from barlines (px) @plannedFor v3.0 */
+  VOLTA_TEXT_LEFT_PADDING: 3
+};
+var TYPOGRAPHY = {
+  /** Default font size for chord symbols (px) */
+  CHORD_FONT_SIZE: 24,
+  /** Font size for chord-only mode (larger) (px) */
+  CHORD_ONLY_FONT_SIZE: 28,
+  /** Estimated character width to font size ratio */
+  CHAR_WIDTH_RATIO: 0.53,
+  /** Font size for time signature numerator (px) */
+  TIME_SIG_NUMERATOR_SIZE: 24,
+  /** Font size for time signature denominator (px) */
+  TIME_SIG_DENOMINATOR_SIZE: 20,
+  /** Width for single-digit measure count (px) */
+  MEASURE_COUNT_WIDTH_SINGLE: 30,
+  /** Width for double-digit measure count (px) */
+  MEASURE_COUNT_WIDTH_DOUBLE: 40,
+  /** Superstructure font size ratio (relative to main) */
+  SUPERSTRUCTURE_SIZE_RATIO: 0.75,
+  /** Bass note font size ratio (relative to main) */
+  BASS_NOTE_SIZE_RATIO: 0.83,
+  /** Parentheses font size ratio (relative to main) */
+  PARENTHESES_SIZE_RATIO: 0.65,
+  /** Default font family for text elements */
+  DEFAULT_FONT_FAMILY: "Arial, sans-serif",
+  /** Default font weight for bold text */
+  DEFAULT_FONT_WEIGHT_BOLD: "bold"
+};
+var VISUAL = {
+  /** Default stroke color */
+  COLOR_BLACK: "#000",
+  /** Standard line stroke width (px) */
+  STROKE_WIDTH_THIN: 1,
+  /** Medium line stroke width (px) @plannedFor v3.0 */
+  STROKE_WIDTH_MEDIUM: 1.5,
+  /** Thick line stroke width (barlines) (px) */
+  STROKE_WIDTH_THICK: 3,
+  /** Final barline stroke width (px) @plannedFor v3.0 */
+  STROKE_WIDTH_FINAL: 5,
+  /** Extra thick stroke width (note slashes) (px) */
+  STROKE_WIDTH_EXTRA_THICK: 3,
+  /** Beam stroke width (px) */
+  BEAM_STROKE_WIDTH: 3,
+  /** Stem stroke width (px) @plannedFor v3.0 */
+  STEM_STROKE_WIDTH: 1.5,
+  /** Dot radius for dotted notes (px) */
+  DOT_RADIUS: 2,
+  /** Barline width for special barlines (px) */
+  BARLINE_WIDTH_SPECIAL: 10,
+  /** Separator color (chord-only mode) @plannedFor v3.0 */
+  COLOR_SEPARATOR: "#999",
+  /** Repeat symbol color @plannedFor v3.0 */
+  COLOR_REPEAT_SYMBOL: "#444"
+};
+var NOTATION = {
+  /** Staff line Y offset from measure top (px) */
+  STAFF_LINE_Y_OFFSET: 80,
+  /** Note head diamond size (radius) (px) */
+  DIAMOND_SIZE: 6,
+  /** Slash note head length (px) */
+  SLASH_LENGTH: 10,
+  /** Standard stem height (px) */
+  STEM_HEIGHT: 30,
+  /** Beam gap between levels (8th, 16th, etc.) (px) */
+  BEAM_GAP: 7,
+  /** Beamlet length for partial beams (px) */
+  BEAMLET_LENGTH: 9,
+  /** Flag spacing between multiple flags on a stem (px) */
+  FLAG_SPACING: 10,
+  /** Flag curve control distance (px) */
+  FLAG_CURVE_DISTANCE: 10,
+  /** Flag curve end offset (px) */
+  FLAG_CURVE_END_OFFSET: 8,
+  /** Flag curve control Y offset (px) */
+  FLAG_CURVE_Y_OFFSET: 5,
+  /** Flag stroke width (px) */
+  FLAG_STROKE_WIDTH: 2,
+  /** Dot horizontal offset from note center (px) */
+  DOT_X_OFFSET: 10,
+  /** Dot vertical offset from staff line (px) */
+  DOT_Y_OFFSET: 4,
+  /** Dot radius (px) */
+  DOT_RADIUS: 1.5,
+  /** Ghost note cross size (smaller than diamond) (px) */
+  GHOST_CROSS_SIZE: 5,
+  /** Flag curve total Y distance (px) */
+  FLAG_CURVE_Y_DISTANCE: 12,
+  /** Dot offset from note center (px) */
+  DOT_OFFSET: 10,
+  /** Dot collision box half-size (px) */
+  DOT_COLLISION_HALF: 2,
+  /** Dot horizontal offset from note head (px) */
+  DOT_OFFSET_X: 6,
+  /** Dot vertical offset for dotted notes (px) */
+  DOT_OFFSET_Y: 4,
+  /** Repeat dots spacing above/below staff line (px) */
+  REPEAT_DOT_SPACING: 12,
+  /** Repeat dots horizontal offset from barline (px) @plannedFor v3.0 */
+  REPEAT_DOT_OFFSET: 12,
+  /** Repeat dots radius (px) @plannedFor v3.0 */
+  REPEAT_DOT_RADIUS: 3,
+  /** Hook height for volta brackets (px) @plannedFor v3.0 */
+  HOOK_HEIGHT: 10,
+  /** Rest symbol reference height (quarter note) (px) */
+  REST_HEIGHT_QUARTER: 30,
+  /** Eighth rest target height (px) */
+  REST_HEIGHT_EIGHTH: 24,
+  /** Sixteenth rest target height (px) */
+  REST_HEIGHT_SIXTEENTH: 24,
+  /** Thirty-second rest target height (px) */
+  REST_HEIGHT_THIRTY_SECOND: 28,
+  /** Sixty-fourth rest target height (px) */
+  REST_HEIGHT_SIXTY_FOURTH: 32,
+  /** Upbow symbol width (px) */
+  UPBOW_WIDTH: 24.2,
+  /** Upbow target display height (px) */
+  UPBOW_HEIGHT: 16,
+  /** Tie curve amplitude base (px) */
+  TIE_BASE_AMPLITUDE: 40,
+  /** Tie curve minimum amplitude (px) */
+  TIE_MIN_AMPLITUDE: 8,
+  /** Tie curve extra amplitude for cross-line ties (px) */
+  TIE_CROSS_LINE_EXTRA_AMP: 10,
+  /** Percent symbol target height (px) */
+  PERCENT_SYMBOL_HEIGHT: 30,
+  /** Fingerstyle pattern letter font size (p, m) (px) */
+  PATTERN_LETTER_FONT_SIZE: 14,
+  /** Fingerstyle pattern arrow font size (↑, ↓) (px) */
+  PATTERN_ARROW_FONT_SIZE: 20,
+  /** Distance from note head to pattern symbol (px) */
+  PATTERN_MARGIN: 7,
+  /** Note head half height for pattern positioning (px) */
+  PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
+  /** Counting number font size for tall (beat starts) (px) */
+  COUNTING_FONT_SIZE_TALL: 14,
+  /** Counting number font size for medium (subdivisions) (px) */
+  COUNTING_FONT_SIZE_MEDIUM: 12,
+  /** Counting number font size for small (rests) (px) */
+  COUNTING_FONT_SIZE_SMALL: 11,
+  /** Distance from note head to counting number (px) */
+  COUNTING_MARGIN: 10,
+  /** Font weight for tall counting numbers */
+  COUNTING_FONT_WEIGHT_TALL: "normal",
+  /** Font weight for medium/small counting numbers */
+  COUNTING_FONT_WEIGHT_NORMAL: "normal",
+  /** Color for rest counting numbers (gray) */
+  COUNTING_COLOR_REST: "#777",
+  /** Color for normal counting numbers (black) */
+  COUNTING_COLOR_NORMAL: "#000",
+  /** Measure number font size (px) @plannedFor v2.3 */
+  MEASURE_NUMBER_FONT_SIZE: 14,
+  /** Measure number X offset from left barline (px) @plannedFor v2.3 */
+  MEASURE_NUMBER_X_OFFSET: -2,
+  /** Measure number Y offset from top of measure (px) @plannedFor v2.3 */
+  MEASURE_NUMBER_Y_OFFSET: 10,
+  /** Measure number text color @plannedFor v2.3 */
+  MEASURE_NUMBER_COLOR: "#666"
+};
+var POSITIONING = {
+  /** Default vertical offset for chords above staff (px) */
+  CHORD_VERTICAL_OFFSET: 30,
+  /** Chord vertical offset when measuring from baseline (px) */
+  CHORD_VERTICAL_OFFSET_ALT: 40,
+  /** Clearance between chord and stems (px) */
+  STEM_CLEARANCE: 12,
+  /** Chord-only mode vertical center (no staff) (px) */
+  CHORD_ONLY_Y_CENTER: 60,
+  /** Space above staff for chord symbols (px) */
+  TOP_MARGIN_FOR_CHORDS: 50,
+  /** Time signature baseline Y position (px) */
+  TIME_SIG_BASELINE_Y: 40,
+  /** Dynamic line start padding (default/fallback) (px) */
+  DYNAMIC_LINE_START_PADDING: 40,
+  /** Measure count X offset from barline (px) */
+  MEASURE_COUNT_X_OFFSET: 10,
+  /** Hook/coda Y position above staff (px) */
+  HOOK_Y_OFFSET: 10,
+  /** Hook text Y offset (include text height) (px) */
+  HOOK_TEXT_Y_OFFSET: 20,
+  /** Slash diagonal start Y for chord-only (px) */
+  SLASH_START_Y: 30,
+  /** Slash diagonal end Y for chord-only (px) */
+  SLASH_END_Y: 90,
+  /** Slash horizontal width for chord-only (px) */
+  SLASH_WIDTH: 10,
+  /** Chord-only 2-chord first X ratio */
+  CHORD_ONLY_2_FIRST_X: 0.35,
+  /** Chord-only 2-chord second X ratio */
+  CHORD_ONLY_2_SECOND_X: 0.65,
+  /** Chord-only 2-chord first Y position (px) */
+  CHORD_ONLY_2_FIRST_Y: 25,
+  /** Chord-only 2-chord second Y position (px) */
+  CHORD_ONLY_2_SECOND_Y: 95,
+  /** Spacing between stacked parentheses in chords (px) */
+  CHORD_PARENTHESES_SPACING: 12
+};
+var NOTE_SPACING = {
+  /** Spacing for 64th notes (px) */
+  SIXTY_FOURTH: 16,
+  /** Spacing for 32nd notes (px) */
+  THIRTY_SECOND: 20,
+  /** Spacing for 16th notes (px) */
+  SIXTEENTH: 26,
+  /** Spacing for 8th notes (px) */
+  EIGHTH: 24,
+  /** Spacing for quarter notes and longer (px) */
+  QUARTER_AND_LONGER: 20,
+  /** Extra spacing for rest symbols (px) @plannedFor v3.0 */
+  REST_EXTRA_SPACING: 4
+};
+var SEGMENT_WIDTH = {
+  /** Base width for single note (px) */
+  SINGLE_NOTE_BASE: 28,
+  /** Extra padding for single note (px) */
+  SINGLE_NOTE_PADDING: 10,
+  /** Left padding for multi-note segments (px) */
+  MULTI_NOTE_LEFT_PADDING: 10,
+  /** Right padding for multi-note segments (px) */
+  MULTI_NOTE_RIGHT_PADDING: 10,
+  /** Rest bbox width for whole/half rests (px) */
+  REST_WIDTH_LONG: 10,
+  /** Rest bbox width for quarter rests (px) */
+  REST_WIDTH_QUARTER: 8,
+  /** Rest bbox width for eighth/shorter rests (px) */
+  REST_WIDTH_SHORT: 10,
+  /** Rest bbox width for sixty-fourth rests (px) */
+  REST_WIDTH_SIXTY_FOURTH: 12,
+  /** Note head half width maximum (px) */
+  HEAD_HALF_MAX: 6,
+  /** Extra spacing margin at the end of multi-note segments (px) */
+  MULTI_NOTE_END_MARGIN: 8,
+  /** Minimum spacing ratio for readability (70% = too tight) */
+  MIN_SPACING_RATIO: 0.7,
+  /** Maximum spacing ratio for readability (150% = too spread) */
+  MAX_SPACING_RATIO: 1.5
+};
+var FINGER_PATTERNS = {
+  // 4/4 time signature
+  "4/4": {
+    // Pattern: t-tu-h-tu (pd-pu-md-pu)
+    // Duration varies with subdivision:
+    // - step=8: covers 2 beats → 8pd 8pu 8md 8pu
+    // - step=16: covers 1 beat → 16pd 16pu 16md 16pu (repeated 4 times)
+    // - step=32: covers 1/2 beat → 32pd 32pu 32md 32pu (repeated 8 times)
+    pattern: ["t", "tu", "h", "tu"]
+  },
+  // 3/4 time signature
+  "3/4": {
+    pattern: ["t", "tu", "h", "tu"]
+  },
+  // 6/8 time signature (compound meter: 2 groups of 3 eighths)
+  "6/8": {
+    pattern: ["t", "tu", "h", "tu", "h", "tu"]
+  },
+  // 2/4 time signature
+  "2/4": {
+    pattern: ["t", "tu", "h", "tu"]
+  },
+  // Common time (C) = 4/4
+  "C": {
+    pattern: ["t", "tu", "h", "tu"]
+  }
+};
 
 // src/renderer/RestRenderer.ts
 var RestRenderer = class {
-  // Hauteur de référence d'une quarter note (slash + stem)
-  constructor(collisionManager) {
-    this.collisionManager = collisionManager;
-    // Rendering style constants
-    __publicField(this, "dotRadius", 1.8);
-    __publicField(this, "NOTE_HEIGHT", 30);
+  constructor(PlaceAndSizeManager2) {
+    this.PlaceAndSizeManager = PlaceAndSizeManager2;
   }
   /**
-   * Dessine un silence selon sa valeur rythmique.
+   * Draws a rest according to its rhythmic value.
    * 
-   * @param svg - Élément SVG parent
-   * @param note - Note marquée comme silence (isRest=true)
-   * @param x - Position X du silence
-   * @param y - Position Y de référence (ligne de portée)
+   * @param svg - Parent SVG element
+   * @param note - Note marked as rest (isRest=true)
+   * @param x - X position of the rest
+   * @param y - Reference Y position (staff line)
+   * @param stemsDirection - Stem direction ('up' or 'down'), affects vertical positioning
    */
-  drawRest(svg, note, x, y) {
+  drawRest(svg, note, x, y, stemsDirection = "up") {
     if (note.value === 1) {
       this.drawWholeRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y, 10, 4, note);
+      this.registerRestBBox(x, y, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 2) {
       this.drawHalfRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 4, 10, 4, note);
+      this.registerRestBBox(x, y - 4, SEGMENT_WIDTH.REST_WIDTH_LONG, 4, note);
     } else if (note.value === 4) {
-      this.drawQuarterRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 24, 8, 24, note);
+      this.drawQuarterRest(svg, x, y, note.dotted, stemsDirection);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_EIGHTH, SEGMENT_WIDTH.REST_WIDTH_QUARTER, NOTATION.REST_HEIGHT_EIGHTH, note);
     } else if (note.value === 8) {
-      this.drawEighthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 18, 8, 18, note);
+      this.drawEighthRest(svg, x, y, note.dotted, stemsDirection);
+      this.registerRestBBox(x, y - 18, SEGMENT_WIDTH.REST_WIDTH_QUARTER, 18, note);
     } else if (note.value === 16) {
-      this.drawSixteenthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 24, 10, 24, note);
+      this.drawSixteenthRest(svg, x, y, note.dotted, stemsDirection);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTEENTH, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_SIXTEENTH, note);
     } else if (note.value === 32) {
-      this.drawThirtySecondRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 28, 10, 28, note);
+      this.drawThirtySecondRest(svg, x, y, note.dotted, stemsDirection);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_THIRTY_SECOND, SEGMENT_WIDTH.REST_WIDTH_SHORT, NOTATION.REST_HEIGHT_THIRTY_SECOND, note);
     } else if (note.value === 64) {
       this.drawSixtyFourthRest(svg, x, y, note.dotted);
-      this.registerRestBBox(x, y - 32, 12, 32, note);
+      this.registerRestBBox(x, y - NOTATION.REST_HEIGHT_SIXTY_FOURTH, SEGMENT_WIDTH.REST_WIDTH_SIXTY_FOURTH, NOTATION.REST_HEIGHT_SIXTY_FOURTH, note);
     }
   }
   registerRestBBox(x, y, width, height, note) {
-    if (!this.collisionManager) return;
+    if (!this.PlaceAndSizeManager) return;
     const bbox = { x: x - width / 2, y, width, height };
-    this.collisionManager.registerElement("rest", bbox, 6, { value: note.value, dotted: note.dotted });
+    this.PlaceAndSizeManager.registerElement("rest", bbox, 6, {
+      value: note.value,
+      dotted: note.dotted,
+      exactX: x,
+      exactY: y + height / 2
+    });
   }
   drawWholeRest(svg, x, y, dotted) {
-    const width = 10;
-    const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("x", String(x - width / 2));
+    rect.setAttribute("x", String(x - SEGMENT_WIDTH.REST_WIDTH_LONG / 2));
     rect.setAttribute("y", String(y));
-    rect.setAttribute("width", String(width));
-    rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", "black");
+    rect.setAttribute("width", String(SEGMENT_WIDTH.REST_WIDTH_LONG));
+    rect.setAttribute("height", "4");
+    rect.setAttribute("fill", VISUAL.COLOR_BLACK);
     svg.appendChild(rect);
     if (dotted) {
-      this.drawDot(svg, x + width + 2, y);
+      this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y);
     }
   }
   drawHalfRest(svg, x, y, dotted) {
-    const width = 10;
-    const height = 4;
     const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("x", String(x - width / 2));
-    rect.setAttribute("y", String(y - height));
-    rect.setAttribute("width", String(width));
-    rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", "black");
+    rect.setAttribute("x", String(x - SEGMENT_WIDTH.REST_WIDTH_LONG / 2));
+    rect.setAttribute("y", String(y - 4));
+    rect.setAttribute("width", String(SEGMENT_WIDTH.REST_WIDTH_LONG));
+    rect.setAttribute("height", "4");
+    rect.setAttribute("fill", VISUAL.COLOR_BLACK);
     svg.appendChild(rect);
     if (dotted) {
-      this.drawDot(svg, x + width + 2, y - 2);
+      this.drawDot(svg, x + SEGMENT_WIDTH.REST_WIDTH_LONG + 2, y - 2);
     }
   }
-  drawQuarterRest(svg, x, y, dotted) {
-    const TARGET_HEIGHT = 24;
+  drawQuarterRest(svg, x, y, dotted, stemsDirection = "up") {
     const SYMBOL_HEIGHT = 12;
-    const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
+    const SCALE = NOTATION.REST_HEIGHT_EIGHTH / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 512;
     const SYMBOL_CENTER_Y = 75;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 512.254,71.019 c -0.137,0.058 -0.219,0.258 -0.156,0.398 0.019,0.02 0.218,0.258 0.418,0.52 0.457,0.515 0.535,0.637 0.636,0.875 0.399,0.816 0.18,1.855 -0.519,2.512 -0.059,0.078 -0.317,0.296 -0.559,0.476 -0.695,0.598 -1.015,0.938 -1.133,1.238 -0.043,0.079 -0.043,0.157 -0.043,0.278 -0.019,0.277 0,0.301 0.821,1.254 1.113,1.336 1.91,2.273 1.972,2.332 l 0.059,0.058 -0.078,-0.039 c -1.098,-0.457 -2.332,-0.676 -2.75,-0.476 -0.141,0.058 -0.223,0.14 -0.281,0.277 -0.161,0.34 -0.118,0.84 0.121,1.574 0.218,0.66 0.656,1.535 1.093,2.192 0.18,0.281 0.52,0.718 0.559,0.738 0.059,0.059 0.141,0.039 0.199,0 0.059,-0.078 0.059,-0.141 -0.058,-0.277 -0.418,-0.598 -0.617,-1.836 -0.379,-2.493 0.097,-0.296 0.219,-0.457 0.437,-0.558 0.578,-0.258 1.856,0.062 2.391,0.597 0.039,0.04 0.121,0.122 0.16,0.141 0.141,0.059 0.34,-0.019 0.399,-0.16 0.082,-0.141 0.039,-0.238 -0.141,-0.457 -0.336,-0.399 -1.352,-1.594 -1.492,-1.774 -0.36,-0.418 -0.52,-0.816 -0.559,-1.316 -0.019,-0.637 0.238,-1.312 0.719,-1.754 0.058,-0.078 0.316,-0.297 0.555,-0.476 0.738,-0.618 1.039,-0.957 1.156,-1.278 0.082,-0.258 0.043,-0.496 -0.137,-0.715 -0.062,-0.058 -0.758,-0.918 -1.574,-1.894 -1.117,-1.313 -1.516,-1.793 -1.574,-1.813 -0.082,-0.019 -0.18,-0.019 -0.262,0.02 z");
-    path.setAttribute("fill", "#000000");
+    path.setAttribute("fill", VISUAL.COLOR_BLACK);
     group.appendChild(path);
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 12, y - 4);
   }
-  drawEighthRest(svg, x, y, dotted) {
+  drawEighthRest(svg, x, y, dotted, stemsDirection = "up") {
     const TARGET_HEIGHT = 18;
     const SYMBOL_HEIGHT = 9;
     const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 531;
     const SYMBOL_CENTER_Y = 78;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 531.098,74.847 c -0.52,0.098 -0.918,0.457 -1.098,0.953 -0.039,0.16 -0.039,0.199 -0.039,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.094,0.836 0.5,0.141 1.336,0.02 2.293,-0.297 l 0.238,-0.082 -1.176,3.25 -1.156,3.246 c 0,0 0.039,0.02 0.102,0.063 0.117,0.078 0.316,0.137 0.457,0.137 0.238,0 0.539,-0.137 0.578,-0.258 0,-0.039 0.558,-1.934 1.234,-4.184 l 1.195,-4.125 -0.039,-0.058 c -0.097,-0.121 -0.296,-0.16 -0.418,-0.063 -0.039,0.039 -0.101,0.121 -0.14,0.18 -0.18,0.301 -0.637,0.836 -0.875,1.035 -0.219,0.18 -0.34,0.199 -0.539,0.121 -0.18,-0.098 -0.239,-0.199 -0.36,-0.738 -0.117,-0.535 -0.257,-0.778 -0.558,-0.977 -0.278,-0.179 -0.637,-0.238 -0.953,-0.156 z");
     path.setAttribute("fill", "#000000");
@@ -857,14 +1938,15 @@ var RestRenderer = class {
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
-  drawSixteenthRest(svg, x, y, dotted) {
+  drawSixteenthRest(svg, x, y, dotted, stemsDirection = "up") {
     const TARGET_HEIGHT = 24;
     const SYMBOL_HEIGHT = 14.5;
     const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 544;
     const SYMBOL_CENTER_Y = 81;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 544.191,74.847 c -0.519,0.098 -0.918,0.457 -1.093,0.953 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.301 0.019,0.461 0.16,0.699 0.199,0.399 0.617,0.719 1.098,0.836 0.496,0.141 1.292,0.039 2.25,-0.277 0.14,-0.059 0.257,-0.102 0.257,-0.082 0,0.023 -0.894,2.93 -0.933,3.031 -0.102,0.258 -0.442,0.735 -0.739,1.035 -0.277,0.278 -0.418,0.34 -0.636,0.239 -0.18,-0.098 -0.239,-0.2 -0.36,-0.739 -0.101,-0.398 -0.179,-0.617 -0.339,-0.773 -0.418,-0.461 -1.137,-0.52 -1.692,-0.16 -0.262,0.179 -0.461,0.457 -0.578,0.758 -0.043,0.156 -0.043,0.199 -0.043,0.417 0,0.297 0.023,0.458 0.16,0.696 0.199,0.398 0.617,0.719 1.098,0.836 0.219,0.062 0.777,0.062 1.156,0 0.316,-0.059 0.695,-0.157 1.074,-0.278 0.16,-0.058 0.301,-0.097 0.301,-0.078 0,0 -1.953,6.356 -1.992,6.453 0,0.02 0.156,0.141 0.316,0.18 0.16,0.063 0.321,0.063 0.481,0 0.156,-0.039 0.316,-0.137 0.316,-0.199 0.02,-0.02 0.817,-3.027 1.793,-6.676 l 1.774,-6.633 -0.039,-0.058 c -0.079,-0.121 -0.239,-0.141 -0.379,-0.082 -0.079,0.039 -0.079,0.039 -0.317,0.398 -0.199,0.32 -0.48,0.656 -0.64,0.816 -0.219,0.18 -0.336,0.219 -0.536,0.141 -0.179,-0.098 -0.242,-0.199 -0.359,-0.738 -0.121,-0.535 -0.262,-0.778 -0.559,-0.977 -0.277,-0.179 -0.636,-0.238 -0.957,-0.156 z");
     path.setAttribute("fill", "#000000");
@@ -872,14 +1954,15 @@ var RestRenderer = class {
     svg.appendChild(group);
     if (dotted) this.drawDot(svg, x + 10, y - 2);
   }
-  drawThirtySecondRest(svg, x, y, dotted) {
+  drawThirtySecondRest(svg, x, y, dotted, stemsDirection = "up") {
     const TARGET_HEIGHT = 28;
     const SYMBOL_HEIGHT = 21;
     const SCALE = TARGET_HEIGHT / SYMBOL_HEIGHT;
     const SYMBOL_CENTER_X = 554;
     const SYMBOL_CENTER_Y = 76;
+    const Y_OFFSET = stemsDirection === "up" ? 12 : -8;
     const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("transform", `translate(${x},${y}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
+    group.setAttribute("transform", `translate(${x},${y - Y_OFFSET}) scale(${SCALE}) translate(${-SYMBOL_CENTER_X},${-SYMBOL_CENTER_Y})`);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "m 553.789,69.863 c -0.516,0.101 -0.918,0.461 -1.094,0.957 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.218 0,0.3 0.043,0.418 0.137,0.441 0.418,0.777 0.856,0.976 0.297,0.16 0.437,0.18 0.855,0.18 0.52,0 0.957,-0.078 1.657,-0.297 0.179,-0.063 0.316,-0.102 0.316,-0.102 0.019,0 -0.16,0.7 -0.399,1.536 -0.296,1.175 -0.417,1.554 -0.457,1.671 -0.16,0.301 -0.5,0.758 -0.718,0.957 -0.2,0.18 -0.317,0.219 -0.516,0.141 -0.18,-0.098 -0.242,-0.199 -0.359,-0.738 -0.102,-0.399 -0.18,-0.617 -0.34,-0.778 -0.418,-0.457 -1.137,-0.515 -1.692,-0.156 -0.261,0.176 -0.46,0.457 -0.578,0.754 -0.043,0.16 -0.043,0.199 -0.043,0.418 0,0.301 0.024,0.461 0.161,0.699 0.199,0.399 0.617,0.719 1.097,0.836 0.219,0.063 0.778,0.063 1.156,0 0.317,-0.058 0.696,-0.16 1.075,-0.277 0.179,-0.059 0.32,-0.102 0.32,-0.102 0,0.02 -0.797,3.051 -0.84,3.11 -0.156,0.34 -0.476,0.758 -0.715,0.996 -0.258,0.258 -0.398,0.301 -0.617,0.219 -0.18,-0.098 -0.242,-0.2 -0.359,-0.739 -0.102,-0.398 -0.18,-0.617 -0.34,-0.773 -0.418,-0.461 -1.137,-0.52 -1.692,-0.16 -0.261,0.179 -0.46,0.457 -0.578,0.758 -0.043,0.156 -0.043,0.199 -0.043,0.417 0,0.219 0,0.297 0.043,0.418 0.137,0.438 0.418,0.778 0.856,0.977 0.32,0.16 0.437,0.18 0.875,0.18 0.32,0 0.422,0 0.679,-0.043 0.36,-0.059 0.739,-0.176 1.157,-0.297 l 0.258,-0.102 v 0.063 c -0.02,0.078 -1.696,6.375 -1.715,6.414 -0.02,0.082 0.34,0.238 0.558,0.238 0.219,0 0.539,-0.137 0.559,-0.238 0.019,-0.02 0.976,-4.145 2.172,-9.164 2.133,-9.086 2.133,-9.106 2.094,-9.168 -0.063,-0.078 -0.161,-0.117 -0.282,-0.117 -0.14,0.019 -0.199,0.078 -0.34,0.316 -0.277,0.481 -0.597,0.898 -0.773,1.039 -0.121,0.078 -0.223,0.078 -0.379,0.02 -0.18,-0.102 -0.242,-0.2 -0.359,-0.739 -0.121,-0.539 -0.262,-0.777 -0.559,-0.976 -0.277,-0.18 -0.637,-0.238 -0.957,-0.16 z");
     path.setAttribute("fill", "#000000");
@@ -906,218 +1989,236 @@ var RestRenderer = class {
     const circle = document.createElementNS(SVG_NS, "circle");
     circle.setAttribute("cx", String(x));
     circle.setAttribute("cy", String(y));
-    circle.setAttribute("r", String(this.dotRadius));
-    circle.setAttribute("fill", "black");
+    circle.setAttribute("r", String(VISUAL.DOT_RADIUS));
+    circle.setAttribute("fill", VISUAL.COLOR_BLACK);
     svg.appendChild(circle);
   }
 };
 
-// src/renderer/MeasureRenderer.ts
-var MeasureRenderer = class {
-  constructor(measure, x, y, width, beamedAtLevel1, collisionManager) {
-    this.measure = measure;
-    this.x = x;
-    this.y = y;
-    this.width = width;
-    this.beamedAtLevel1 = beamedAtLevel1;
-    this.collisionManager = collisionManager;
-    /**
-     * Constructeur du renderer de mesure.
-     * 
-     * @param measure - Mesure à rendre
-     * @param x - Position X de départ de la mesure dans le SVG
-     * @param y - Position Y de départ de la mesure dans le SVG
-     * @param width - Largeur allouée à la mesure
-     * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
-     * @param collisionManager - Gestionnaire de collisions pour éviter les chevauchements
-     */
+// src/renderer/NoteRenderer.ts
+var NoteRenderer = class {
+  constructor(stemsDirection = "up", placeAndSizeManager) {
     __publicField(this, "restRenderer");
-    this.restRenderer = new RestRenderer(this.collisionManager);
+    __publicField(this, "stemsDirection");
+    __publicField(this, "placeAndSizeManager");
+    this.stemsDirection = stemsDirection;
+    this.placeAndSizeManager = placeAndSizeManager;
+    this.restRenderer = new RestRenderer();
   }
   /**
-   * Dessine la mesure complète dans le SVG.
+   * Draws a diamond note head.
+   */
+  drawDiamondNoteHead(svg, x, y, hollow) {
+    const diamond = document.createElementNS(SVG_NS, "polygon");
+    const points = [
+      [x, y - NOTATION.DIAMOND_SIZE],
+      [x + NOTATION.DIAMOND_SIZE, y],
+      [x, y + NOTATION.DIAMOND_SIZE],
+      [x - NOTATION.DIAMOND_SIZE, y]
+    ];
+    diamond.setAttribute("points", points.map((p) => `${p[0]},${p[1]}`).join(" "));
+    diamond.setAttribute("fill", hollow ? "white" : "black");
+    diamond.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    diamond.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THIN));
+    svg.appendChild(diamond);
+  }
+  /**
+   * Draws a cross-shaped note head for ghost notes.
+   */
+  drawCrossNoteHead(svg, x, y) {
+    const size = NOTATION.GHOST_CROSS_SIZE;
+    const line1 = document.createElementNS(SVG_NS, "line");
+    line1.setAttribute("x1", (x - size).toString());
+    line1.setAttribute("y1", (y - size).toString());
+    line1.setAttribute("x2", (x + size).toString());
+    line1.setAttribute("y2", (y + size).toString());
+    line1.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    line1.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THIN));
+    svg.appendChild(line1);
+    const line2 = document.createElementNS(SVG_NS, "line");
+    line2.setAttribute("x1", (x + size).toString());
+    line2.setAttribute("y1", (y - size).toString());
+    line2.setAttribute("x2", (x - size).toString());
+    line2.setAttribute("y2", (y + size).toString());
+    line2.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    line2.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_THIN));
+    svg.appendChild(line2);
+  }
+  /**
+   * Draws a slash bar (note head for values >= 4).
+   */
+  drawSlash(svg, x, y) {
+    const slash = document.createElementNS(SVG_NS, "line");
+    slash.setAttribute("x1", (x + NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("y1", (y - NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("x2", (x - NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("y2", (y + NOTATION.SLASH_LENGTH / 2).toString());
+    slash.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    slash.setAttribute("stroke-width", String(VISUAL.STROKE_WIDTH_EXTRA_THICK));
+    svg.appendChild(slash);
+  }
+  /**
+   * Draws a stem oriented according to stemsDirection.
    * 
-   * Cette méthode orchestre le rendu de tous les éléments de la mesure :
-   * 1. Barres de mesure (gauche avec éventuelle reprise)
-   * 2. Ligne de portée
-   * 3. Segments d'accords avec leurs beats
-   * 4. Notes et silences avec ligatures
-   * 5. Barre de mesure de fin (avec éventuelle reprise ou double barre)
+   * @returns Stem coordinates: x, topY (highest point), bottomY (lowest point)
+   */
+  drawStemWithDirection(svg, x, y, height, direction) {
+    const stemStartX = direction === "up" ? x + NOTATION.SLASH_LENGTH / 2 : x - NOTATION.SLASH_LENGTH / 2;
+    let stemStartY, stemEndY;
+    if (direction === "up") {
+      stemStartY = y - NOTATION.SLASH_LENGTH / 2;
+      stemEndY = stemStartY - height;
+    } else {
+      stemStartY = y + NOTATION.SLASH_LENGTH / 2;
+      stemEndY = stemStartY + height;
+    }
+    const stem = document.createElementNS(SVG_NS, "line");
+    stem.setAttribute("x1", stemStartX.toString());
+    stem.setAttribute("y1", stemStartY.toString());
+    stem.setAttribute("x2", stemStartX.toString());
+    stem.setAttribute("y2", stemEndY.toString());
+    stem.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    stem.setAttribute("stroke-width", String(VISUAL.STEM_STROKE_WIDTH));
+    svg.appendChild(stem);
+    return {
+      x: stemStartX,
+      topY: Math.min(stemStartY, stemEndY),
+      bottomY: Math.max(stemStartY, stemEndY)
+    };
+  }
+  /**
+   * Dessine des crochets (flags) sur une hampe pour les notes isolées.
+   */
+  drawFlag(svg, stem, count, direction) {
+    const flagSpacing = 10;
+    for (let i = 0; i < count; i++) {
+      const flag = document.createElementNS(SVG_NS, "path");
+      if (direction === "up") {
+        const attachY = stem.topY + i * flagSpacing;
+        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
+      } else {
+        const attachY = stem.bottomY - i * flagSpacing;
+        flag.setAttribute("d", `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
+      }
+      flag.setAttribute("stroke", "#000");
+      flag.setAttribute("stroke-width", "2");
+      flag.setAttribute("fill", "none");
+      svg.appendChild(flag);
+    }
+  }
+  /**
+   * Dessine un point pour une note pointée.
+   */
+  drawDot(svg, x, y, nv) {
+    const dot = document.createElementNS(SVG_NS, "circle");
+    dot.setAttribute("cx", (x + NOTATION.DOT_X_OFFSET).toString());
+    dot.setAttribute("cy", (y - NOTATION.DOT_Y_OFFSET).toString());
+    dot.setAttribute("r", NOTATION.DOT_RADIUS.toString());
+    dot.setAttribute("fill", "#000");
+    dot.setAttribute("data-cg-dot", "1");
+    svg.appendChild(dot);
+    if (this.placeAndSizeManager) {
+      const cx = x + NOTATION.DOT_X_OFFSET;
+      const cy = y - NOTATION.DOT_Y_OFFSET;
+      this.placeAndSizeManager.registerElement("dot", {
+        x: cx - 2,
+        y: cy - 2,
+        width: 4,
+        height: 4
+      }, 9, {
+        value: nv.value,
+        dotted: true,
+        exactX: cx,
+        exactY: cy
+      });
+    }
+  }
+  /**
+   * Dessine une note unique sans ligature (pour path analyzer).
+   * Les ligatures sont gérées par BeamRenderer.
+   * 
+   * @returns Coordonnées de la hampe si elle existe
+   */
+  drawSingleNoteWithoutBeam(svg, nv, x, staffLineY, drawFlagsForIsolated = false) {
+    if (nv.isRest) {
+      this.restRenderer.drawRest(svg, nv, x, staffLineY, this.stemsDirection);
+      return {};
+    }
+    let stemInfo;
+    if (nv.isGhost) {
+      this.drawCrossNoteHead(svg, x, staffLineY);
+      if (nv.value >= 2) {
+        stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+        if (drawFlagsForIsolated && nv.value >= 8) {
+          const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+          if (level > 0 && stemInfo) {
+            this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+          }
+        }
+      }
+    } else if (nv.value === 1) {
+      this.drawDiamondNoteHead(svg, x, staffLineY, true);
+    } else if (nv.value === 2) {
+      this.drawDiamondNoteHead(svg, x, staffLineY, true);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+    } else {
+      this.drawSlash(svg, x, staffLineY);
+      stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+      if (drawFlagsForIsolated) {
+        const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
+        if (level > 0 && stemInfo) {
+          this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+        }
+      }
+    }
+    if (nv.dotted) {
+      this.drawDot(svg, x, staffLineY, nv);
+    }
+    return stemInfo ? {
+      stemTopY: stemInfo.topY,
+      stemBottomY: stemInfo.bottomY,
+      stemX: stemInfo.x
+    } : {};
+  }
+  /**
+   * Dessine un temps (beat) complet avec toutes ses notes.
    * 
    * @param svg - Élément SVG parent
-   * @param measureIndex - Index de la mesure dans la grille (pour numérotation)
-   * @param notePositions - Tableau collectant les positions de toutes les notes (pour liaisons)
-   * @param grid - Grille complète (pour contexte de signature temporelle, etc.)
+   * @param beat - Temps à dessiner
+   * @param beatX - Position X du début du temps
+   * @param staffLineY - Position Y de la ligne de portée
+   * @param beatWidth - Largeur allouée au temps
+   * @param measureIndex - Index de la mesure
+   * @param chordIndex - Index du segment d'accord
+   * @param beatIndex - Index du temps
+   * @param notePositions - Tableau pour collecter les positions des notes
+   * @param segmentNoteCursor - Compteurs de notes par segment
+   * @param beamedAtLevel1 - Set des notes en ligature niveau 1
+   * @returns Position X de la première note, ou null si aucune
    */
-  drawMeasure(svg, measureIndex, notePositions, grid) {
-    const leftBarX = this.x;
-    const rightBarX = this.x + this.width - 2;
-    if (measureIndex === 0 || this.measure.__isLineStart) {
-      this.drawBar(svg, leftBarX, this.y, 120);
-    } else if (this.measure.isRepeatStart) {
-      this.drawBarWithRepeat(svg, leftBarX, this.y, 120, true);
-    }
-    const staffLineY = this.y + 80;
-    const staffLine = document.createElementNS(SVG_NS, "line");
-    staffLine.setAttribute("x1", (this.x + 10).toString());
-    staffLine.setAttribute("y1", staffLineY.toString());
-    staffLine.setAttribute("x2", (this.x + this.width - 10).toString());
-    staffLine.setAttribute("y2", staffLineY.toString());
-    staffLine.setAttribute("stroke", "#000");
-    staffLine.setAttribute("stroke-width", "1");
-    svg.appendChild(staffLine);
-    const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
-    const segmentNoteCursor = new Array(segments.length).fill(0);
-    const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
-    const separatorWidth = 12;
-    const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + (idx > 0 && seg.leadingSpace ? 1 : 0), 0);
-    const innerPaddingPerSegment = 20;
-    const totalInnerPadding = innerPaddingPerSegment * segments.length;
-    const totalSeparatorPixels = separatorsCount * separatorWidth;
-    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels);
-    const headHalfMax = 6;
-    const valueMinSpacing = (v) => {
-      if (v >= 64) return 16;
-      if (v >= 32) return 20;
-      if (v >= 16) return 26;
-      if (v >= 8) return 24;
-      return 20;
-    };
-    const requiredBeatWidth = (beat) => {
-      var _a;
-      const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
-      if (noteCount <= 1) return 28 + 10 + headHalfMax;
-      const spacing = Math.max(
-        ...beat.notes.map((n) => {
-          const base = valueMinSpacing(n.value);
-          return n.isRest ? base + 4 : base;
-        })
-      );
-      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
-    };
-    const perSegmentRequired = segments.map((seg) => {
-      const reqs = (seg.beats || []).map((b) => requiredBeatWidth(b));
-      return reqs.reduce((a, b) => a + b, 0);
-    });
-    const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
-    let currentX = this.x;
-    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
-      const segment = segments[segmentIndex];
-      if (segmentIndex > 0 && segment.leadingSpace) {
-        currentX += separatorWidth;
-      }
-      const segBeatCount = segment.beats.length || 1;
-      const reqPerBeat = segment.beats.map((b) => requiredBeatWidth(b));
-      const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
-      const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
-      const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
-      const segmentX = currentX + 10;
-      const beatsWidth = segmentWidth - innerPaddingPerSegment;
-      let beatCursorX = segmentX;
-      segment.beats.forEach((beat, beatIndex) => {
-        const beatWidth = reqPerBeat[beatIndex] / reqSum * beatsWidth;
-        const beatX = beatCursorX;
-        const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
-        if (firstNoteX !== null && beatIndex === 0 && segment.chord) {
-          const chordX = firstNoteX;
-          const chordY = this.y + 40;
-          const fontSize = 22;
-          const chordWidth = segment.chord.length * fontSize * 0.6;
-          let finalY = chordY;
-          if (this.collisionManager) {
-            const chordBBox = {
-              x: chordX - chordWidth / 2,
-              y: chordY - fontSize,
-              width: chordWidth,
-              height: fontSize + 4
-            };
-            if (this.collisionManager.hasCollision(chordBBox)) {
-              const adjustedPos = this.collisionManager.findFreePosition(
-                chordBBox,
-                "vertical",
-                ["chord"]
-              );
-              if (adjustedPos) {
-                finalY = adjustedPos.y + fontSize;
-              }
-            }
-            this.collisionManager.registerElement("chord", {
-              x: chordX - chordWidth / 2,
-              y: finalY - fontSize,
-              width: chordWidth,
-              height: fontSize + 4
-            }, 5, { chord: segment.chord, measureIndex, segmentIndex });
-          }
-          const chordText = this.createText(segment.chord, chordX, finalY, "22px", "bold");
-          chordText.setAttribute("text-anchor", "middle");
-          chordText.setAttribute("font-family", "Arial, sans-serif");
-          svg.appendChild(chordText);
-        }
-        beatCursorX += beatWidth;
-      });
-      currentX += segmentWidth;
-    }
-    if (this.measure.isRepeatEnd) {
-      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false);
-    } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
-      this.drawBar(svg, rightBarX, this.y, 120);
-    }
-  }
-  drawRhythm(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
-    const beats = [beat];
-    const beatWidth = width;
-    let currentX = x;
-    let firstNoteX = null;
-    const first = this.drawBeat(svg, beat, currentX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor);
-    if (first !== null) firstNoteX = first;
-    return firstNoteX;
-  }
-  drawBeat(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
-    if (!beat || beat.notes.length === 0) return null;
-    const hasBeamableNotes = beat.notes.some((n) => n.value >= 8 || n.tieStart || n.tieEnd || n.tieToVoid || n.tieFromVoid);
+  drawBeat(svg, beat, beatX, staffLineY, beatWidth, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor, beamedAtLevel1) {
     const noteCount = beat.notes.length;
-    let firstNoteX = null;
+    if (noteCount === 0) return null;
     const innerLeft = 10;
     const innerRight = 10;
-    const headHalfMax = 6;
-    const startX = x + innerLeft;
-    const endLimit = x + width - innerRight - headHalfMax;
-    const tupletGroups = [];
-    const seenTupletGroups = /* @__PURE__ */ new Set();
-    beat.notes.forEach((note, i) => {
-      if (note.tuplet && !seenTupletGroups.has(note.tuplet.groupId)) {
-        seenTupletGroups.add(note.tuplet.groupId);
-        const groupNotes = beat.notes.filter((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
-        const startIdx = beat.notes.findIndex((n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId);
-        tupletGroups.push({
-          startIndex: startIdx,
-          endIndex: startIdx + groupNotes.length - 1,
-          count: note.tuplet.count,
-          groupId: note.tuplet.groupId,
-          ratio: note.tuplet.ratio
-        });
-      }
-    });
+    const startX = beatX + innerLeft;
+    const endX = beatX + beatWidth - innerRight;
+    const availableWidth = endX - startX;
     const notePositionsX = [];
-    const densestSpacing = Math.max(...beat.notes.map((n) => {
-      if (n.isRest) return 20;
-      const v = n.value;
-      if (v >= 64) return 16;
-      if (v >= 32) return 20;
-      if (v >= 16) return 26;
-      if (v >= 8) return 24;
-      return 20;
-    }));
-    const availableSpan = Math.max(0, endLimit - startX);
-    const gapCount = Math.max(0, noteCount - 1);
-    const gapFactors = [];
-    for (let g = 0; g < gapCount; g++) {
-      const inSameTuplet = tupletGroups.some((T) => g >= T.startIndex && g + 1 <= T.endIndex);
-      gapFactors.push(inSameTuplet ? 0.85 : 1);
+    let firstNoteX = null;
+    const gapCount = noteCount - 1;
+    const desiredGaps = [];
+    for (let i = 0; i < gapCount; i++) {
+      const currentNote = beat.notes[i];
+      const nextNote = beat.notes[i + 1];
+      const currentIsRest = currentNote.isRest;
+      const nextIsRest = nextNote.isRest;
+      const minGap = 20;
+      let gap = currentIsRest || nextIsRest ? minGap + 4 : minGap;
+      desiredGaps.push(gap);
     }
-    const desiredGaps = gapFactors.map((f) => densestSpacing * f);
-    const desiredTotal = desiredGaps.reduce((a, b) => a + b, 0);
-    const scale = desiredTotal > 0 ? Math.min(1, availableSpan / desiredTotal) : 1;
+    const totalDesiredGap = desiredGaps.reduce((a, b) => a + b, 0);
+    const scale = gapCount > 0 ? Math.min(1, availableWidth / totalDesiredGap) : 1;
     const finalGaps = desiredGaps.map((g) => g * scale);
     let cursorX = startX;
     for (let i = 0; i < noteCount; i++) {
@@ -1128,23 +2229,34 @@ var MeasureRenderer = class {
       var _a;
       let noteX;
       if (noteCount === 1 && nv.isRest && nv.value === 1) {
-        noteX = x + width / 2;
+        noteX = beatX + beatWidth / 2;
       } else {
         noteX = notePositionsX[noteIndex];
       }
       if (nv.isRest) {
-        this.restRenderer.drawRest(svg, nv, noteX, staffLineY);
-        segmentNoteCursor[chordIndex]++;
+        this.restRenderer.drawRest(svg, nv, noteX, staffLineY, this.stemsDirection);
+        notePositions.push({
+          x: noteX,
+          y: staffLineY,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          noteIndex,
+          segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+          value: nv.value,
+          countingNumber: nv.countingNumber,
+          countingLabel: nv.countingLabel,
+          countingSize: nv.countingSize
+        });
         if (firstNoteX === null) firstNoteX = noteX;
         return;
       }
       const localIndexInSegment = segmentNoteCursor[chordIndex];
-      const isInPrimaryBeam = !!((_a = this.beamedAtLevel1) == null ? void 0 : _a.has(`${chordIndex}:${localIndexInSegment}`));
+      const isInPrimaryBeam = (_a = beamedAtLevel1 == null ? void 0 : beamedAtLevel1.has(`${chordIndex}:${localIndexInSegment}`)) != null ? _a : false;
       const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
-      this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+      const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
       if (firstNoteX === null) firstNoteX = noteX;
-      let headLeftX;
-      let headRightX;
+      let headLeftX, headRightX;
       if (nv.value === 1 || nv.value === 2) {
         const diamondSize = 6;
         headLeftX = noteX - diamondSize;
@@ -1155,8 +2267,9 @@ var MeasureRenderer = class {
         headRightX = noteX + slashHalf;
       }
       const hasStem = nv.value >= 2;
-      const stemTopY = hasStem ? staffLineY + 5 : void 0;
-      const stemBottomY = hasStem ? staffLineY + 30 : void 0;
+      const stemTopY = stemCoords.stemTopY;
+      const stemBottomY = stemCoords.stemBottomY;
+      const stemX = stemCoords.stemX;
       notePositions.push({
         x: noteX,
         y: staffLineY,
@@ -1173,224 +2286,561 @@ var MeasureRenderer = class {
         tieFromVoid: !!nv.tieFromVoid,
         globalTimeIndex: measureIndex * 1e6 + chordIndex * 1e4 + beatIndex * 100 + noteIndex,
         stemTopY,
-        stemBottomY
+        stemBottomY,
+        value: nv.value,
+        countingNumber: nv.countingNumber,
+        countingLabel: nv.countingLabel,
+        countingSize: nv.countingSize
       });
-      if (this.collisionManager) {
+      if (this.placeAndSizeManager) {
         const noteHeadBBox = {
           x: headLeftX,
           y: staffLineY - 12,
           width: headRightX - headLeftX,
           height: 24
         };
-        this.collisionManager.registerElement("note", noteHeadBBox, 6, { value: nv.value, dotted: nv.dotted, measureIndex, chordIndex, beatIndex, noteIndex });
-        if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0) {
+        this.placeAndSizeManager.registerElement("note", noteHeadBBox, 6, {
+          value: nv.value,
+          dotted: nv.dotted,
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          noteIndex,
+          exactX: noteX,
+          exactY: staffLineY
+        });
+        if (hasStem && stemTopY !== void 0 && stemBottomY !== void 0 && stemX !== void 0) {
           const stemBBox = {
-            x: noteX - 3,
-            // approximate stem x based on drawStem logic
+            x: stemX - 1.5,
             y: stemTopY,
             width: 3,
             height: stemBottomY - stemTopY
           };
-          this.collisionManager.registerElement("stem", stemBBox, 5, { measureIndex, chordIndex, beatIndex, noteIndex });
+          this.placeAndSizeManager.registerElement("stem", stemBBox, 5, {
+            measureIndex,
+            chordIndex,
+            beatIndex,
+            noteIndex,
+            canCollide: true,
+            stem: {
+              centerX: stemX,
+              centerY: (stemTopY + stemBottomY) / 2,
+              topY: stemTopY,
+              bottomY: stemBottomY,
+              direction: this.stemsDirection
+            }
+          });
         }
       }
     });
+    const tupletGroups = this.detectTupletGroups(beat);
     tupletGroups.forEach((tupletGroup) => {
-      const tupletStartX = notePositionsX[tupletGroup.startIndex];
-      const tupletEndX = notePositionsX[tupletGroup.endIndex];
-      const bracketY = staffLineY - 15;
-      const bracket = document.createElementNS(SVG_NS, "line");
-      bracket.setAttribute("x1", String(tupletStartX));
-      bracket.setAttribute("y1", String(bracketY));
-      bracket.setAttribute("x2", String(tupletEndX));
-      bracket.setAttribute("y2", String(bracketY));
-      bracket.setAttribute("stroke", "#000");
-      bracket.setAttribute("stroke-width", "1");
-      svg.appendChild(bracket);
-      const leftBar = document.createElementNS(SVG_NS, "line");
-      leftBar.setAttribute("x1", String(tupletStartX));
-      leftBar.setAttribute("y1", String(bracketY));
-      leftBar.setAttribute("x2", String(tupletStartX));
-      leftBar.setAttribute("y2", String(bracketY + 5));
-      leftBar.setAttribute("stroke", "#000");
-      leftBar.setAttribute("stroke-width", "1");
-      svg.appendChild(leftBar);
-      const rightBar = document.createElementNS(SVG_NS, "line");
-      rightBar.setAttribute("x1", String(tupletEndX));
-      rightBar.setAttribute("y1", String(bracketY));
-      rightBar.setAttribute("x2", String(tupletEndX));
-      rightBar.setAttribute("y2", String(bracketY + 5));
-      rightBar.setAttribute("stroke", "#000");
-      rightBar.setAttribute("stroke-width", "1");
-      svg.appendChild(rightBar);
-      if (this.collisionManager) {
-        const bracketBBox = {
-          x: tupletStartX,
-          y: bracketY - 6,
-          width: tupletEndX - tupletStartX,
-          height: 12
-        };
-        this.collisionManager.registerElement("tuplet-bracket", bracketBBox, 4, { measureIndex, chordIndex, beatIndex });
-      }
-      const centerX = (tupletStartX + tupletEndX) / 2;
-      let tupletTextY = bracketY - 3;
-      const text = document.createElementNS(SVG_NS, "text");
-      text.setAttribute("x", String(centerX));
-      text.setAttribute("y", String(tupletTextY));
-      text.setAttribute("font-size", "10");
-      text.setAttribute("font-weight", "bold");
-      text.setAttribute("text-anchor", "middle");
-      if (tupletGroup.ratio) {
-        text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
-      } else {
-        text.textContent = String(tupletGroup.count);
-      }
-      if (this.collisionManager) {
-        const textWidth = (text.textContent || "").length * 6;
-        let numberBBox = {
-          x: centerX - textWidth / 2,
-          y: tupletTextY - 10,
-          width: textWidth,
-          height: 12
-        };
-        if (this.collisionManager.hasCollision(numberBBox, ["tuplet-bracket", "tuplet-number"])) {
-          const adjusted = this.collisionManager.findFreePosition(numberBBox, "vertical", ["tuplet-number"]);
-          if (adjusted) {
-            tupletTextY = adjusted.y + 10;
-            text.setAttribute("y", String(tupletTextY));
-            numberBBox = { ...numberBBox, y: adjusted.y };
-          }
-        }
-        this.collisionManager.registerElement("tuplet-number", numberBBox, 7, { text: text.textContent, measureIndex, chordIndex, beatIndex });
-      }
-      svg.appendChild(text);
+      this.drawTupletBracket(svg, tupletGroup, beat, notePositions, measureIndex, chordIndex, beatIndex);
     });
     return firstNoteX;
   }
-  drawSingleNote(svg, nv, x, staffLineY, width) {
-    if (nv.isRest) {
-      this.restRenderer.drawRest(svg, nv, x, staffLineY);
-      return x;
-    }
-    const centerX = x;
-    if (nv.value === 1) {
-      this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-    } else if (nv.value === 2) {
-      this.drawDiamondNoteHead(svg, centerX, staffLineY, true);
-      this.drawStem(svg, centerX, staffLineY, 25);
-    } else {
-      this.drawSlash(svg, centerX, staffLineY);
-      this.drawStem(svg, centerX, staffLineY, 25);
-      if (nv.value === 8) this.drawFlag(svg, centerX, staffLineY, 1);
-      else if (nv.value === 16) this.drawFlag(svg, centerX, staffLineY, 2);
-      else if (nv.value === 32) this.drawFlag(svg, centerX, staffLineY, 3);
-      else if (nv.value === 64) this.drawFlag(svg, centerX, staffLineY, 4);
-    }
-    if (nv.dotted) {
-      const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", (centerX + 10).toString());
-      dot.setAttribute("cy", (staffLineY - 4).toString());
-      dot.setAttribute("r", "1.5");
-      dot.setAttribute("fill", "#000");
-      dot.setAttribute("data-cg-dot", "1");
-      svg.appendChild(dot);
-      if (this.collisionManager) {
-        const cx = centerX + 10;
-        const cy = staffLineY - 4;
-        this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+  /**
+   * Détecte tous les groupes de tuplets dans le beat.
+   * Retourne un tableau de groupes avec startIndex, endIndex, count et ratio.
+   */
+  detectTupletGroups(beat) {
+    const groups = [];
+    const seenGroups = /* @__PURE__ */ new Set();
+    beat.notes.forEach((note, i) => {
+      if (note.tuplet && !seenGroups.has(note.tuplet.groupId)) {
+        seenGroups.add(note.tuplet.groupId);
+        const groupNotes = beat.notes.filter(
+          (n, idx) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId
+        );
+        const startIndex = beat.notes.findIndex(
+          (n) => n.tuplet && n.tuplet.groupId === note.tuplet.groupId
+        );
+        const endIndex = startIndex + groupNotes.length - 1;
+        groups.push({
+          startIndex,
+          endIndex,
+          count: note.tuplet.count,
+          groupId: note.tuplet.groupId,
+          ratio: note.tuplet.ratio,
+          explicitRatio: note.tuplet.explicitRatio
+        });
       }
-    }
-    return centerX;
+    });
+    return groups;
   }
   /**
-   * Draw a single note without beams or flags (for analyzer path).
-   * Analyzer overlay will handle beams; this just draws head and stem.
+   * Dessine le bracket de tuplet avec son chiffre au-dessus du groupe de notes.
+   * Si un ratio explicite est fourni (N:M), il sera affiché au lieu du simple count.
    */
-  drawSingleNoteWithoutBeam(svg, nv, x, staffLineY, drawFlagsForIsolated = false) {
-    if (nv.isRest) {
-      this.restRenderer.drawRest(svg, nv, x, staffLineY);
+  drawTupletBracket(svg, tupletGroup, beat, notePositions, measureIndex, chordIndex, beatIndex) {
+    const groupNotePositions = [];
+    for (let i = tupletGroup.startIndex; i <= tupletGroup.endIndex; i++) {
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === measureIndex && np.chordIndex === chordIndex && np.beatIndex === beatIndex && np.noteIndex === i
+      );
+      if (notePos) {
+        groupNotePositions.push(notePos);
+      }
+    }
+    if (groupNotePositions.length === 0) return;
+    const firstNote = groupNotePositions[0];
+    const lastNote = groupNotePositions[groupNotePositions.length - 1];
+    const startX = firstNote.stemTopY !== void 0 ? firstNote.x + NOTATION.SLASH_LENGTH / 2 : firstNote.x;
+    const endX = lastNote.stemTopY !== void 0 ? lastNote.x + NOTATION.SLASH_LENGTH / 2 : lastNote.x;
+    const highestStemTop = Math.min(...groupNotePositions.filter((np) => np.stemTopY !== void 0).map((np) => np.stemTopY));
+    const bracketY = highestStemTop - 9;
+    const bracket = document.createElementNS(SVG_NS, "line");
+    bracket.setAttribute("x1", String(startX));
+    bracket.setAttribute("y1", String(bracketY));
+    bracket.setAttribute("x2", String(endX));
+    bracket.setAttribute("y2", String(bracketY));
+    bracket.setAttribute("stroke", "#000");
+    bracket.setAttribute("stroke-width", "1");
+    svg.appendChild(bracket);
+    const leftBar = document.createElementNS(SVG_NS, "line");
+    leftBar.setAttribute("x1", String(startX));
+    leftBar.setAttribute("y1", String(bracketY));
+    leftBar.setAttribute("x2", String(startX));
+    leftBar.setAttribute("y2", String(bracketY + 5));
+    leftBar.setAttribute("stroke", "#000");
+    leftBar.setAttribute("stroke-width", "1");
+    svg.appendChild(leftBar);
+    const rightBar = document.createElementNS(SVG_NS, "line");
+    rightBar.setAttribute("x1", String(endX));
+    rightBar.setAttribute("y1", String(bracketY));
+    rightBar.setAttribute("x2", String(endX));
+    rightBar.setAttribute("y2", String(bracketY + 5));
+    rightBar.setAttribute("stroke", "#000");
+    rightBar.setAttribute("stroke-width", "1");
+    svg.appendChild(rightBar);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement(
+        "tuplet-bracket",
+        {
+          x: startX,
+          y: bracketY,
+          width: endX - startX,
+          height: 5
+        },
+        10,
+        // High priority (fixed element)
+        {
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          tuplet: {
+            topY: bracketY,
+            bottomY: bracketY + 5
+          }
+        }
+      );
+    }
+    const centerX = (startX + endX) / 2;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", String(centerX));
+    text.setAttribute("y", String(bracketY - 3));
+    text.setAttribute("font-size", "12");
+    text.setAttribute("font-weight", "bold");
+    text.setAttribute("text-anchor", "middle");
+    let textContent;
+    if (tupletGroup.explicitRatio && tupletGroup.ratio) {
+      textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+    } else {
+      textContent = String(tupletGroup.count);
+    }
+    text.textContent = textContent;
+    svg.appendChild(text);
+    if (this.placeAndSizeManager) {
+      const charWidth = 7;
+      const estimatedWidth = textContent.length * charWidth;
+      const textHeight = 12;
+      this.placeAndSizeManager.registerElement(
+        "tuplet-number",
+        {
+          x: centerX - estimatedWidth / 2,
+          y: bracketY - 3 - textHeight,
+          // y is baseline, so subtract height for top
+          width: estimatedWidth,
+          height: textHeight
+        },
+        10,
+        // High priority (fixed element)
+        {
+          measureIndex,
+          chordIndex,
+          beatIndex,
+          tuplet: {
+            centerX,
+            topY: bracketY - 3 - textHeight,
+            text: textContent
+          }
+        }
+      );
+    }
+  }
+};
+
+// src/renderer/TimeSignatureRenderer.ts
+var TIME_SIGNATURE_DIGITS = {
+  // Digit 0 
+  "0": "M 24.507812 0.140625 C 21.1656 0.31419328 17.872456 1.4925918 14.980469 3.4667969 C 12.088482 5.4410019 9.599073 8.2028392 7.6972656 11.433594 C 6.135576 14.086563 4.9696546 17.04405 4.1015625 20.103516 C 2.8402306 24.548899 2.1989372 29.221653 2.0605469 33.904297 C 1.8962844 39.462365 2.4586092 45.137857 4.3925781 50.214844 C 6.8962203 56.787316 11.701951 62.078741 17.414062 64.701172 C 22.447908 67.012212 28.223247 67.250269 33.253906 64.929688 C 39.325755 62.128818 43.911386 55.825129 46.371094 48.732422 C 49.120682 40.803827 49.425205 31.823738 47.634766 23.525391 C 46.046778 16.16537 42.697663 9.1116568 37.431641 4.703125 C 33.700922 1.579896 29.085669 -0.09711291 24.507812 0.140625 z M 25.564453 5.90625 C 26.976603 5.9621472 28.297827 6.8531819 29.255859 8.0722656 C 30.787189 10.020862 31.445444 12.683065 31.976562 15.259766 C 34.228389 26.184422 35.050458 37.665177 33.142578 48.679688 C 32.518598 52.28203 31.534659 55.965648 29.353516 58.603516 C 28.872411 59.185363 28.335709 59.710747 27.730469 60.101562 C 27.125228 60.492378 26.448256 60.74645 25.757812 60.771484 C 24.76017 60.807658 23.785238 60.366252 22.939453 59.744141 C 20.844881 58.203492 19.463386 55.604089 18.566406 52.900391 C 17.012243 48.215793 16.723536 43.098163 16.623047 38.072266 C 16.501142 31.975278 16.632284 25.853917 17.400391 19.822266 C 17.878101 16.07099 18.651467 12.232024 20.607422 9.2128906 C 21.205308 8.2900179 21.912947 7.453812 22.753906 6.8457031 C 23.594865 6.2375943 24.577291 5.8671751 25.564453 5.90625 z",
+  // Digit 1
+  "1": "M 6.7888448,21.869864 18.238655,0.02385365 l 16.04431,0.0694 V 54.534894 l 0.14586,1.59511 0.65636,1.38704 1.09393,0.69353 1.31271,0.69352 2.18786,0.83223 1.38566,0.27741 0.36463,0.41611 -0.0729,5.06273 -32.8179202,-0.0694 -0.0729,-4.78532 0.43757,-0.69352 0.94808,-0.34676 2.3337102,-0.34676 1.53151,-0.62418 1.60443,-1.31769 0.43757,-1.04029 0.5105,-34.95361 -0.58343,-0.55482 -0.5105,0.20806 -3.79229,3.05151 -1.16686,0.27741 -3.1359302,-1.66446 z",
+  // Digit 2 
+  "2": "M 15.887184,27.51949 C 10.643483,28.72702 4.2366558,26.15703 2.6959429,20.56234 1.0222481,14.68265 4.3286211,8.24883 9.2042346,5.0425301 c 8.2071514,-5.61537 19.1072164,-6.45522 28.3256354,-3.07163 4.937173,1.23229 8.697059,5.39242 10.834238,9.9067799 1.06,3.94257 1.16117,8.20879 0.25972,12.18455 -1.370993,3.54413 -4.847912,5.47732 -7.276112,8.18135 -6.686341,5.86751 -15.5635,7.75625 -23.261047,11.75711 -2.678645,1.57326 -5.169465,3.52993 -7.148233,5.96204 5.340937,0.45382 10.719695,0.23679 16.077113,0.44028 l 20.04839,0.36256 c 3.327142,-1.24007 3.353339,-0.0442 2.55589,3.37409 -1.086728,4.29506 -2.308404,8.553 -3.452355,12.83234 H 1.2964418e-7 C 1.1768642,61.065 1.6314294,54.55179 5.7631196,49.83162 9.4848014,44.63618 14.332536,40.38792 19.726526,37.07569 c 3.086746,-2.2288 6.425836,-4.22929 9.221178,-6.79477 2.427811,-3.64524 5.213172,-7.58208 4.887744,-12.22199 0.337996,-4.02239 -0.39157,-9.07077 -4.286479,-11.0989199 -4.455299,-1.64069 -9.638798,-1.65272 -14.001266,0.27969 -3.028855,2.7653799 3.149269,3.8267299 4.314273,5.8193599 2.515248,2.77969 2.496111,7.19422 0.912435,10.41727 -1.099424,1.87254 -2.895312,3.27407 -4.887227,4.04316 z",
+  // Digit 3 
+  "3": "m 16.149291,9.8200801 c 2.11436,1.3717799 3.54991,3.5603499 3.77587,6.0898699 0.49189,2.2082 -0.40393,4.56438 -1.40944,6.4674 -1.91107,1.68093 -4.44164,2.61463 -6.87185,3.20137 -2.8059398,-0.256 -5.9974298,-0.5861 -7.7907398,-3.05708 -1.80539,-1.85128 -2.29111,-4.61724 -2.63401,-7.08134 0.30758,-3.541 1.01106,-7.4687498 4.35896,-9.4229598 3.43872,-3.00864 7.9488598,-4.51167 12.4009898,-5.1697499 5.62287,-0.89755 11.35927,-0.34265 16.917625,0.6424199 3.51398,1.53214 7.19524,2.98428 9.81188,5.90552 1.70777,1.4177099 2.6643,3.5711898 3.58332,5.5392798 1.09096,2.2679 0.6905,4.8007 0.51905,7.21073 -0.65274,1.84354 -1.08456,3.56313 -2.58705,5.15014 -1.51188,2.04761 -3.09745,4.0422 -5.75235,5.09856 -1.05645,0.49636 -3.53908,0.90646 -3.83616,1.42883 2.66611,1.09899 5.45117,1.99014 7.58056,4.02683 1.82079,1.69658 3.86395,3.24764 4.69053,5.69585 1.22586,2.57339 1.43248,5.51625 1.12035,8.32829 -0.0672,2.1078 -0.93757,4.15823 -1.63053,6.10433 -1.71586,2.1527 -3.35391,4.3877 -5.79065,5.7781 -2.50732,2.04407 -5.46708,3.49976 -8.51117,4.51658 -2.933995,0.68438 -5.869935,1.34917 -8.902085,1.04718 -5.29561,0.14477 -10.71735,-0.51364 -15.3985598,-3.16639 -4.7777,-1.83306 -9.40227002,-5.86797 -9.50651002,-11.34627 -0.55178,-2.01826 -0.13161,-4.25165 0.68497,-6.12035 1.53525002,-3.05375 4.81242002,-4.83538 8.16394002,-4.978 2.5729398,-0.57659 5.2095598,0.50711 7.3494398,1.85838 1.27725,1.20478 2.41195,2.48859 2.56861,4.31454 0.55985,2.31125 0.55319,4.99578 -0.51259,7.12361 -0.89703,1.66285 -2.87396,3.30648 -1.97906,5.32464 1.4275,0.8502 2.83983,1.76249 4.57322,1.35966 1.93567,-0.0366 4.00467,-0.30153 5.75992,-1.06775 2.63329,-1.52441 4.833485,-3.84535 5.656775,-6.82737 1.63545,-3.69356 1.50035,-8.07189 -0.61491,-11.56502 -1.639035,-2.28535 -3.740755,-4.52661 -6.337665,-5.69211 -3.37941,-1.23343 -6.96384,-1.7092 -10.52537,-2.08258 l 0.16534,-5.04276 c 3.48413,-0.23793 7.14266,-0.32224 10.4062,-1.60704 1.99641,-0.86279 3.96509,-2.21643 5.02106,-4.12807 0.862825,-1.7279 1.568715,-3.4897 1.316615,-5.45843 0.19077,-2.49869 -0.51558,-5.01405 -1.289365,-7.34559 -0.8041,-1.9822999 -2.50956,-3.2998898 -4.28754,-4.3479198 -3.04606,-1.2112 -6.47574,-1.26377 -9.57072,-0.22566 -1.53327,0.25382 -2.24684,2.2220799 -0.92478,3.2031499 l 0.15082,0.20109 z",
+  // Digit 4 
+  "4": "M 0.05179239,49.150774 V 43.771835 L 2.3062482,41.117299 4.9129643,38.11348 7.5381772,34.394869 9.633242,30.149881 l 2.39536,-6.007638 2.113541,-6.007637 1.902206,-7.963609 1.056771,-5.8679248 0.493174,-4.12151258 23.530891,-0.20955957 -0.140894,2.93396235 -2.536274,3.9119431 -3.452131,4.8899335 -3.522587,4.610508 -4.368017,5.658355 -4.43847,5.448776 -6.340655,6.566489 -8.9473807,8.592318 v 1.257407 l 19.1628987,-0.20956 0.0705,-12.50427 15.217588,-15.368367 1.127233,-0.06991 v 27.732924 l 6.83382,-0.139713 v 6.007638 l -7.045176,0.209569 -0.0705,3.073666 0.422713,2.794259 1.127232,3.213388 1.972648,1.746392 1.972648,0.558862 1.902195,0.488985 -0.0705,4.680375 -31.069231,0.06991 -0.140914,-4.680375 2.39536,-0.209559 1.620398,-0.419149 2.113551,-1.39712 0.774963,-1.536832 0.634068,-2.58468 0.211357,-3.143542 -0.0705,-2.794239 z",
+  // Digit 5
+  "5": `<g transform="matrix(1.2205361,0,0,1.0237965,-86.98658,189.29409)">
+      <path d="m 108.50066,-184.33717 c -3.417,2.272 -7.64883,0.89171 -11.448688,1.24458 -7.734018,-0.0659 -15.468037,-0.13167 -23.202055,-0.19751 l -0.888482,33.28187 c 2.420291,1.14796 5.56086,0.35832 6.159635,-2.55269 1.092771,-3.01758 4.265065,-4.28138 7.249051,-3.77146 3.716161,-0.21815 6.252621,2.4179 7.925812,5.46138 2.797726,3.77313 3.26736,8.65937 3.301021,13.22441 0.214785,3.11111 -0.929288,6.14639 -2.187954,8.9012 -1.360329,2.21078 -3.526857,3.85672 -6.178574,3.93098 -2.273311,0.54921 -6.138722,0.60749 -6.712862,-2.30864 -0.398616,-2.87546 3.231643,-3.25046 3.994534,-5.63166 1.899428,-3.84103 0.519182,-8.69888 -2.396111,-11.60021 -2.86206,-2.79203 -8.135311,-2.4551 -10.210328,1.13793 -2.588605,4.12283 -2.630194,9.40391 -1.205787,13.93675 0.563649,3.99058 4.604649,5.83908 7.73749,7.53299 5.837535,1.42081 12.141731,2.73844 17.944787,0.42358 4.558911,-2.13728 8.492841,-5.71961 10.882751,-10.20787 1.59669,-2.45551 2.15666,-4.29979 2.73272,-7.82238 0.24221,-3.81099 0.25399,-7.34975 -0.60181,-10.31576 -0.64066,-4.20221 -3.74205,-7.46006 -6.79707,-10.12153 -3.16636,-2.51816 -7.462206,-2.74539 -11.334273,-2.94978 -5.149344,-0.0104 -10.713558,0.60943 -14.745359,4.18604 -1.433645,-0.51928 -1.481969,-4.66775 -1.150707,-6.66425 0.113382,-2.57981 2.077734,-5.12022 4.841558,-4.58157 8.010392,0.0315 16.037712,0.17306 24.051431,-0.0685 3.0427,-0.44208 3.16021,-1.43668 3.12847,-6.47866 -0.2609,-2.53712 0.99544,-6.24087 -0.69453,-7.90735 l -0.13876,-0.0584 -0.0559,-0.0235 z" fill="#000" stroke="none"/>
+    </g>`,
+  // Digit 6 
+  "6": "m 28.570584,-0.05753612 c -2.09019,-0.02646 -4.172883,0.302414 -6.203125,0.818359 -2.944291,0.74823402 -5.813004,1.90098902 -8.347657,3.62500002 -1.566171,1.065274 -2.992836,2.3402833 -4.3437498,3.6855472 -1.892467,1.8845536 -3.657016,3.9308549 -5.019531,6.2558589 -1.08189,1.846144 -1.898342,3.850095 -2.537109,5.90625 -1.0108625,3.253903 -1.57917853,6.646136 -1.80468753,10.056641 -0.165982,2.510279 -0.147465,5.0334 0,7.544922 0.196162,3.340884 0.623104,6.683587 1.57812453,9.880859 1.012496,3.389692 2.614648,6.585698 4.681641,9.414063 1.784802,2.44223 3.9293518,4.624153 6.4296868,6.257812 1.981044,1.294367 4.168436,2.234606 6.429688,2.865235 6.70105,1.868824 14.102978,0.92253 20.136719,-2.63086 4.247926,-2.501689 7.85536,-6.339647 9.644532,-11.052734 1.352343,-3.56238 1.614737,-7.634364 0.33789,-11.226563 -0.950425,-2.673871 -2.707274,-4.988145 -4.794922,-6.841797 -1.87904,-1.668426 -4.043743,-2.995102 -6.373047,-3.859375 -2.501626,-0.928212 -5.190404,-1.319138 -7.839843,-1.111328 -3.548488,0.278328 -6.928791,1.60351 -10.376954,2.515625 -0.539817,0.142793 -1.084322,0.274635 -1.636719,0.34961 -0.392462,0.05327 -0.797235,0.07641 -1.179688,-0.0293 -0.191225,-0.05286 -0.374509,-0.137172 -0.533203,-0.259766 -0.158694,-0.122594 -0.290977,-0.283998 -0.373047,-0.470703 -0.134754,-0.306561 -0.126192,-0.657513 -0.113281,-0.994141 0.107409,-2.800735 0.306224,-5.603442 0.789063,-8.361328 0.587494,-3.355651 1.59288,-6.625702 2.876953,-9.765625 0.430267,-1.052126 0.894257,-2.097109 1.515626,-3.0410152 0.621368,-0.9439063 1.410758,-1.7878437 2.376953,-2.3378906 0.481237,-0.2739648 0.998167,-0.4724237 1.521484,-0.6445313 0.476468,-0.1567 0.966934,-0.293294 1.466797,-0.291016 0.609782,0.0028 1.19966,0.212169 1.804688,0.291016 0.198582,0.02588 0.400215,0.03753 0.595703,0.082031 0.195488,0.0445 0.388916,0.1257283 0.533203,0.2695312 0.118297,0.1179001 0.19778,0.2716489 0.248047,0.4335938 0.05027,0.1619448 0.07232,0.332802 0.08984,0.5019531 0.05725,0.5527382 0.05729,1.1331753 -0.169922,1.6367188 -0.183701,0.4071274 -0.500852,0.7313452 -0.732422,1.1113282 -0.290512,0.476703 -0.438943,1.029465 -0.564453,1.578125 -0.241524,1.055809 -0.414312,2.132374 -0.451172,3.216797 -0.04742,1.395141 0.137617,2.814971 0.677734,4.09375 0.693285,1.641415 1.944797,2.982482 3.382813,3.976562 1.143872,0.790743 2.426248,1.384691 3.777343,1.648438 1.351095,0.263747 2.772328,0.187774 4.0625,-0.304688 1.077146,-0.411149 2.033921,-1.095772 2.990235,-1.753906 0.694034,-0.477633 1.402671,-0.950215 1.974609,-1.578125 0.507571,-0.557243 0.894263,-1.224383 1.183594,-1.929687 0.550967,-1.343082 0.748537,-2.813503 0.845707,-4.269529 0.08899,-1.333462 0.09539,-2.698219 -0.28125,-3.976562 -0.322959,-1.096155 -0.914312,-2.0845313 -1.523438,-3.0410157 -0.753249,-1.1827999 -1.555254,-2.3516585 -2.59375,-3.2734375 -1.123796,-0.997493 -2.480521,-1.666608 -3.835937,-2.28125 -1.472738,-0.667845 -2.9686,-1.28714 -4.511719,-1.75390602 -1.887066,-0.570802 -3.84495,-0.910669 -5.810547,-0.9355469 z M 27.201444,35.215901 c 0.688752,0.02684 1.364306,0.157386 1.990234,0.455078 1.267934,0.60303 2.166799,1.821885 2.820313,3.09961 1.08603,2.123362 1.63112,4.506903 1.861328,6.898437 0.224668,2.333983 0.157747,4.696731 -0.169922,7.017578 -0.327108,2.316866 -0.950396,4.668314 -2.369141,6.490235 -0.829513,1.065245 -1.920871,1.920143 -3.158203,2.398437 -0.998061,0.385804 -2.087748,0.524648 -3.142578,0.371094 -1.05483,-0.153555 -2.072134,-0.602358 -2.892578,-1.306641 -0.725535,-0.62281 -1.285774,-1.430368 -1.748048,-2.28125 -0.714752,-1.315604 -1.208451,-2.748492 -1.578125,-4.208984 -0.573429,-2.265476 -0.852985,-4.62386 -0.677734,-6.958984 0.161745,-2.155144 0.70565,-4.26175 1.353515,-6.316407 0.255757,-0.81111 0.530854,-1.619095 0.919922,-2.371093 0.38907,-0.751999 0.899338,-1.449603 1.562501,-1.955079 0.909527,-0.69326 2.043467,-0.985201 3.158203,-1.169921 0.680016,-0.112685 1.38156,-0.188952 2.070313,-0.16211 z",
+  // Digit 7
+  "7": "M 4.2827015,0.15793321 0.38729156,18.918027 1.0189421,19.816812 1.7561085,19.92902 2.9138936,19.030598 4.3878696,16.559035 c 0,0 36.3562514,-1.272858 34.5315874,0.561786 -1.824655,1.834634 -3.544597,3.295462 -5.474536,5.50455 -1.929935,2.2091 -4.281563,4.568454 -5.790375,6.627762 -1.508821,2.059319 -3.123559,3.857125 -4.527087,6.178557 -1.403546,2.321431 -2.702432,4.081646 -4.211253,6.964759 -1.508812,2.883112 -3.43901,5.878976 -4.526713,8.649757 -1.087703,2.770771 -2.772639,5.654683 -3.263759,8.313121 -0.456534,2.471191 -1.2483004,6.754436 -1.3701996,7.413965 H 30.828602 c 0.07393,-3.464245 -0.360739,-6.157686 0.405529,-10.671742 0.80732,-4.755756 1.543625,-11.757859 2.421117,-14.266888 0.8775,-2.509029 1.579144,-5.654083 2.632109,-7.526545 1.052956,-1.872463 1.824557,-3.669413 3.158261,-5.616769 1.333704,-1.947348 3.087983,-3.894201 4.000578,-5.841549 0.912595,-1.947358 2.737268,-5.841558 2.737268,-5.841558 L 49.236575,0.49494986 Z",
+  // Digit 8
+  "8": `<g>
+  <path d="m 25.901268,0.22106656 c -0.554264,0.0156891 -1.108522,0.050316 -1.660783,0.1015625 -0.875817,-0.05141 -1.754242,-0.05141 -2.630059,0 -4.844025,0.2843872 -9.550337,2.16476254 -13.4941074,5.09179654 -2.6699007,1.981585 -5.0859054,4.569543 -6.0604021,7.8183604 -0.7089311,2.363446 -0.6045007,4.92143 -0.1146034,7.34375 0.567906,2.808021 1.6547685,5.520423 3.3157388,7.816406 1.676849,2.317935 3.9709545,4.207846 6.6334211,5.09375 0.891126,0.296522 1.815006,0.479258 2.744663,0.591797 0.08152,0.0099 0.163601,0.01877 0.242805,0.04102 0.0792,0.02225 0.156738,0.05819 0.217553,0.115235 0.06083,0.05707 0.103352,0.137716 0.106833,0.222656 0.0017,0.04246 -0.0064,0.0853 -0.02525,0.123047 -0.01883,0.03777 -0.04743,0.06963 -0.08353,0.08984 -0.05393,0.03022 -0.123736,0.03204 -0.178704,0.0039 -0.933881,-0.105294 -1.884736,-0.0367 -2.795166,0.203125 -1.550716,0.408508 -2.9456515,1.296426 -4.2325701,2.28125 -2.2048885,1.687299 -4.1927123,3.722719 -5.6019867,6.158203 -1.67570425,2.895935 -2.48483594,6.383447 -1.94437885,9.712891 0.60895319,3.751413 2.89054255,7.078266 5.83119435,9.357422 2.9949869,2.321261 6.6235383,3.630114 10.2929723,4.382812 4.321341,0.886418 8.779642,1.043429 13.150295,0.472656 3.319819,-0.43353 6.613312,-1.294275 9.607291,-2.841797 2.569919,-1.328341 4.905784,-3.165312 6.746082,-5.449218 2.265143,-2.81115 3.754856,-6.307079 4.117966,-9.949219 0.264467,-2.652743 -0.07335,-5.391078 -1.144096,-7.816406 -0.891393,-2.019038 -2.2578,-3.769621 -3.65955,-5.449219 -1.165875,-1.396974 -2.437192,-2.814096 -4.116023,-3.435547 -0.355426,-0.131563 -0.734157,-0.229246 -1.029491,-0.472656 -0.08517,-0.0702 -0.162682,-0.153147 -0.221438,-0.248047 -0.05874,-0.0949 -0.09788,-0.202111 -0.106834,-0.314453 -0.01122,-0.139482 0.02531,-0.279979 0.08741,-0.404297 0.0621,-0.124318 0.148412,-0.233851 0.240863,-0.335938 0.334535,-0.369389 0.749373,-0.648328 1.144095,-0.947265 0.829161,-0.627964 1.584322,-1.356083 2.286247,-2.132813 1.755914,-1.943042 3.190389,-4.227308 4.003362,-6.751953 C 48.365806,18.22571 48.550053,15.54119 48.02756,12.996453 47.512065,10.485789 46.294837,8.1145286 44.482616,6.3636446 42.71143,4.6524126 40.456353,3.5852356 38.193007,2.6917697 35.820659,1.7552874 33.380982,0.97346246 30.873906,0.55895716 29.23127,0.28737786 27.56406,0.17399916 25.901268,0.22106656 Z M 24.391995,6.2288796 c 1.523215,0.02681 3.043749,0.183053 4.537532,0.490234 2.197082,0.451801 4.358083,1.248621 6.175006,2.605469 1.391333,1.0390254 2.587884,2.4453144 3.088474,4.1445314 0.519358,1.762959 0.251428,3.674521 -0.229208,5.449219 -0.402673,1.486827 -0.953995,2.935866 -1.715172,4.263671 -0.667656,1.164669 -1.516285,2.251039 -2.630059,2.960938 -0.630194,0.401658 -1.334235,0.675453 -2.058982,0.830078 -0.413453,0.08821 -0.835066,0.13732 -1.256757,0.117188 -0.824,-0.03933 -1.618921,-0.345789 -2.342578,-0.75586 -0.723658,-0.410091 -1.387214,-0.92294 -2.06481,-1.410156 -1.803409,-1.296727 -3.717085,-2.422695 -5.50098,-3.748047 -1.660043,-1.233341 -3.217433,-2.655024 -4.386022,-4.390625 -0.847951,-1.259393 -1.494156,-2.728306 -1.487906,-4.263672 0.0061,-1.507395 0.663573,-2.9852304 1.715171,-4.0273444 0.859933,-0.852171 1.959009,-1.415681 3.104014,-1.751953 1.145004,-0.336272 2.340004,-0.454516 3.529407,-0.498047 0.507331,-0.018567 1.015132,-0.024561 1.52287,-0.015624 z M 17.863466,37.717161 c 0.182529,-0.01282 0.366333,-0.0034 0.545825,0.0332 0.236944,0.04838 0.46242,0.140988 0.68568,0.236328 1.419716,0.606188 2.797904,1.320194 4.117965,2.132812 1.78315,0.887033 3.537575,1.834426 5.260118,2.841797 1.552666,0.908016 3.097246,1.880182 4.345231,3.199219 0.758883,0.802088 1.394422,1.71812 2.058982,2.605469 0.45447,0.606822 0.926503,1.206942 1.256757,1.894531 0.3922,0.81654 0.569134,1.73449 0.569134,2.646484 -3.83e-4,0.911995 -0.174468,1.818971 -0.454531,2.683594 -0.670389,2.069637 -1.98613,3.93793 -3.774153,5.09375 -1.856966,1.200381 -4.101818,1.584243 -6.28961,1.658203 -2.672117,0.09031 -5.37345,-0.251122 -7.890178,-1.185547 -2.431177,-0.90267 -4.703305,-2.389108 -6.28961,-4.5 -1.412644,-1.879793 -2.2450829,-4.251885 -2.1735863,-6.632812 0.060229,-2.004924 0.7450713,-3.949431 1.7151723,-5.685547 0.944241,-1.689853 2.154196,-3.202103 3.317682,-4.738281 0.451661,-0.59635 0.905251,-1.204977 1.491791,-1.658203 0.293271,-0.226622 0.617201,-0.411459 0.967333,-0.521485 0.175075,-0.05501 0.357468,-0.0907 0.539998,-0.103515 z" fill="#000" stroke="none"/>
+  <path d="m 13.468112,35.502025 c 1.027558,-0.491194 -0.480782,-2.502849 0.552465,-2.836448 0.625168,-0.201839 2.283372,-0.490898 2.589634,0.222426 0.344313,0.80195 0.458853,2.108575 -0.152439,2.79169 -0.941615,1.052229 -2.013472,-0.16096 -2.98966,-0.177668 z" fill="#000" stroke="none"/>
+</g>`,
+  // Digit 9
+  "9": "m 22.066178,67.242966 c 2.067273,0.02635 4.127132,-0.301177 6.135114,-0.815011 2.91201,-0.745173 5.74927,-1.893212 8.256133,-3.61017 1.549,-1.060916 2.960023,-2.330709 4.296125,-3.67047 1.871718,-1.876843 3.616921,-3.914774 4.964497,-6.230266 1.070028,-1.838592 1.877529,-3.834345 2.509292,-5.882088 0.99978,-3.240592 1.561865,-6.618947 1.784902,-10.0155 0.164162,-2.500009 0.145848,-5.012808 0,-7.514056 C 49.818229,26.178189 49.395968,22.84916 48.451418,19.664968 47.450023,16.289143 45.865437,13.106212 43.821107,10.289419 42.055873,7.8571795 39.934836,5.6841826 37.461915,4.0572069 35.502591,2.7681351 33.339182,1.8317425 31.102722,1.2036935 24.475143,-0.65748526 17.154369,0.28493749 11.186782,3.8237907 6.9854318,6.3152454 3.4175497,10.137502 1.6479942,14.831308 0.31047839,18.379114 0.05096128,22.43444 1.3138089,26.011943 c 0.9400045,2.662933 2.6775914,4.967739 4.7423504,6.813808 1.8584382,1.6616 3.9994077,2.982849 6.3031717,3.843586 2.474198,0.924415 5.133496,1.313742 7.753887,1.106782 3.509582,-0.277189 6.852824,-1.59695 10.263181,-2.505334 0.533898,-0.142209 1.072433,-0.273511 1.618774,-0.348179 0.388159,-0.05305 0.788494,-0.0761 1.166754,0.02918 0.189128,0.05264 0.370403,0.136611 0.527357,0.258703 0.156954,0.122092 0.287786,0.282836 0.368957,0.468777 0.133276,0.305307 0.124808,0.654824 0.112039,0.990074 -0.106232,2.789278 -0.302867,5.580519 -0.780412,8.327123 -0.581053,3.341923 -1.575416,6.598596 -2.84541,9.725674 -0.42555,1.047822 -0.884453,2.08853 -1.499009,3.028574 -0.614555,0.940046 -1.39529,1.78053 -2.350892,2.328327 -0.475961,0.272844 -0.987223,0.470491 -1.504802,0.641894 -0.471244,0.156059 -0.956333,0.292094 -1.450715,0.289826 -0.603097,-0.0028 -1.186507,-0.211301 -1.784902,-0.289826 -0.196405,-0.02577 -0.395827,-0.03738 -0.589171,-0.08169 -0.193345,-0.04432 -0.384652,-0.125214 -0.527357,-0.268429 -0.117,-0.117417 -0.195612,-0.270537 -0.245328,-0.43182 -0.04972,-0.161281 -0.07153,-0.33144 -0.08886,-0.499899 -0.05662,-0.550477 -0.05666,-1.12854 0.168059,-1.630024 0.181687,-0.405461 0.495361,-0.728353 0.724392,-1.106781 0.287327,-0.474753 0.43413,-1.025254 0.558264,-1.571669 0.238876,-1.05149 0.40977,-2.123651 0.446226,-3.203637 0.0469,-1.389434 -0.136109,-2.803455 -0.670304,-4.077003 -0.685684,-1.6347 -1.923474,-2.970281 -3.345724,-3.960294 -1.13133,-0.787508 -2.399646,-1.379026 -3.735928,-1.641694 -1.336281,-0.262668 -2.741932,-0.187006 -4.017958,0.303441 -1.0653354,0.409467 -2.0116204,1.091289 -2.9574493,1.746731 -0.6864246,0.475679 -1.3872921,0.946328 -1.9529594,1.571669 -0.502006,0.554963 -0.8844583,1.219374 -1.1706171,1.921793 -0.5449261,1.337587 -0.74033,2.801993 -0.8364346,4.252062 -0.088014,1.328007 -0.094344,2.687181 0.2781664,3.960294 0.319418,1.091671 0.9042874,2.076005 1.506735,3.028576 0.7449903,1.177961 1.5382022,2.342037 2.5653121,3.260045 1.1114747,0.993412 2.4533229,1.65979 3.7938789,2.271918 1.456591,0.665112 2.936052,1.281874 4.462252,1.74673 1.866376,0.568467 3.802794,0.906944 5.74684,0.931719 z M 23.420307,32.113831 C 22.739106,32.087101 22.070959,31.957089 21.451894,31.660615 20.197862,31.060052 19.308852,29.846183 18.662503,28.573685 17.58838,26.45901 17.049266,24.08522 16.821582,21.70347 16.599378,19.379035 16.665565,17.025953 16.989641,14.7146 17.313163,12.407213 17.929617,10.065385 19.332807,8.2509171 20.153225,7.19003 21.232618,6.3386293 22.456384,5.862292 c 0.987118,-0.3842257 2.064857,-0.5225017 3.108122,-0.3695759 1.043265,0.1529268 2.049415,0.5998938 2.860864,1.3012956 0.71758,0.6202621 1.271677,1.4245164 1.728882,2.2719175 0.706916,1.3102228 1.195202,2.7372488 1.560823,4.1917648 0.567142,2.256208 0.843633,4.604944 0.670303,6.930515 -0.159971,2.146327 -0.697913,4.244315 -1.338675,6.290567 -0.252953,0.807792 -0.525034,1.612471 -0.909836,2.361393 -0.384804,0.748922 -0.889477,1.443673 -1.54537,1.947081 -0.899554,0.690424 -2.021062,0.98117 -3.123576,1.165135 -0.67256,0.112224 -1.366413,0.188179 -2.047614,0.161446 z"
+};
+var TimeSignatureRenderer = class {
+  constructor(placeAndSizeManager) {
+    this.placeAndSizeManager = placeAndSizeManager;
+    /**
+     * Default digit width from user's custom SVG files (viewBox: 0 0 50 69)
+     */
+    __publicField(this, "DIGIT_WIDTH", 50);
+    /**
+     * Default digit height from user's custom SVG files (viewBox: 0 0 50 69)
+     */
+    __publicField(this, "DIGIT_HEIGHT", 69);
+    /**
+     * Standard scale for inline time signatures (same as global for consistent sizing)
+     */
+    __publicField(this, "INLINE_SCALE", 0.38);
+    // Reduced scale for better proportion with chord names
+    /**
+     * Standard scale for global time signature
+     */
+    __publicField(this, "GLOBAL_SCALE", 0.38);
+    // Reduced scale for better proportion with chord names
+    /**
+     * Vertical spacing between numerator and denominator (in scaled units)
+     */
+    __publicField(this, "VERTICAL_SPACING", 5);
+  }
+  /**
+   * Calculate the standard Y position for time signatures.
+   * This ensures all time signatures (global and inline) are vertically aligned.
+   * 
+   * @returns The Y coordinate where time signatures should be centered
+   */
+  static getStandardYPosition() {
+    return LAYOUT.MEASURE_Y_OFFSET + 30;
+  }
+  /**
+   * Render a time signature at the specified position.
+   * 
+   * @param svg - Parent SVG element
+   * @param options - Rendering options
+   * @param isGlobal - Whether this is the global time signature (affects scale)
+   */
+  render(svg, options, isGlobal = false) {
+    var _a;
+    const scale = (_a = options.scale) != null ? _a : isGlobal ? this.GLOBAL_SCALE : this.INLINE_SCALE;
+    const numeratorStr = options.numerator.toString();
+    const denominatorStr = options.denominator.toString();
+    const digitWidth = this.DIGIT_WIDTH * scale;
+    const digitHeight = this.DIGIT_HEIGHT * scale;
+    const numeratorWidth = numeratorStr.length * digitWidth * 0.6;
+    const denominatorWidth = denominatorStr.length * digitWidth * 0.6;
+    const totalWidth = Math.max(numeratorWidth, denominatorWidth);
+    const totalHeight = digitHeight * 2 + this.VERTICAL_SPACING;
+    const centerX = options.x;
+    const centerY = options.y;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("data-time-signature", `${options.numerator}/${options.denominator}`);
+    const numeratorY = centerY - digitHeight - this.VERTICAL_SPACING / 2;
+    this.renderDigits(group, numeratorStr, centerX, numeratorY, scale);
+    const denominatorY = centerY + this.VERTICAL_SPACING / 2;
+    this.renderDigits(group, denominatorStr, centerX, denominatorY, scale);
+    svg.appendChild(group);
+    if (this.placeAndSizeManager && options.measureIndex !== void 0) {
+      this.placeAndSizeManager.registerElement("time-signature", {
+        x: centerX - totalWidth / 2,
+        y: centerY - totalHeight / 2,
+        width: totalWidth,
+        height: totalHeight
+      }, options.measureIndex, {
+        numerator: options.numerator,
+        denominator: options.denominator,
+        exactX: centerX,
+        exactY: centerY
+      });
+    }
+  }
+  /**
+   * Render a string of digits at the specified position.
+   * Digits are centered horizontally around the given X position.
+   * 
+   * @param parent - Parent SVG group
+   * @param digits - String of digits to render (e.g., "34", "6", "12")
+   * @param centerX - Center X position
+   * @param topY - Top Y position of the digits
+   * @param scale - Scale factor
+   */
+  renderDigits(parent, digits, centerX, topY, scale) {
+    const digitWidth = this.DIGIT_WIDTH * scale;
+    const digitSpacing = digitWidth * 1.05;
+    const totalWidth = digits.length * digitSpacing;
+    let currentX = centerX - totalWidth / 2;
+    for (const digit of digits) {
+      const pathData = TIME_SIGNATURE_DIGITS[digit];
+      if (!pathData) {
+        console.warn(`[TimeSignatureRenderer] No path data for digit: ${digit}`);
+        continue;
+      }
+      const digitSvg = document.createElementNS(SVG_NS, "svg");
+      digitSvg.setAttribute("x", currentX.toFixed(2));
+      digitSvg.setAttribute("y", topY.toFixed(2));
+      digitSvg.setAttribute("width", (this.DIGIT_WIDTH * scale).toFixed(2));
+      digitSvg.setAttribute("height", (this.DIGIT_HEIGHT * scale).toFixed(2));
+      if (pathData.trim().startsWith("<")) {
+        digitSvg.setAttribute("viewBox", `0 0 ${this.DIGIT_WIDTH} ${this.DIGIT_HEIGHT}`);
+        digitSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        digitSvg.innerHTML = pathData;
+      } else {
+        digitSvg.setAttribute("viewBox", `0 0 ${this.DIGIT_WIDTH} ${this.DIGIT_HEIGHT}`);
+        digitSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("fill", "#000");
+        path.setAttribute("stroke", "none");
+        digitSvg.appendChild(path);
+      }
+      parent.appendChild(digitSvg);
+      currentX += digitSpacing;
+    }
+  }
+  /**
+   * Calculate the width that a time signature will occupy.
+   * Useful for layout calculations.
+   * 
+   * @param numerator - Numerator
+   * @param denominator - Denominator
+   * @param isGlobal - Whether this is the global time signature
+   * @returns Width in pixels
+   */
+  calculateWidth(numerator, denominator, isGlobal = false) {
+    const scale = isGlobal ? this.GLOBAL_SCALE : this.INLINE_SCALE;
+    const numeratorStr = numerator.toString();
+    const denominatorStr = denominator.toString();
+    const digitWidth = this.DIGIT_WIDTH * scale;
+    const numeratorWidth = numeratorStr.length * digitWidth * 0.6;
+    const denominatorWidth = denominatorStr.length * digitWidth * 0.6;
+    return Math.max(numeratorWidth, denominatorWidth);
+  }
+};
+
+// src/renderer/MeasureRenderer.ts
+var MeasureRenderer = class {
+  constructor(measure, x, y, width, beamedAtLevel1, placeAndSizeManager, stemsDirection, displayRepeatSymbol) {
+    this.measure = measure;
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.beamedAtLevel1 = beamedAtLevel1;
+    this.placeAndSizeManager = placeAndSizeManager;
+    /**
+     * Measure renderer constructor.
+     * 
+     * @param measure - Measure to render
+     * @param x - Starting X position of the measure in the SVG
+     * @param y - Starting Y position of the measure in the SVG
+     * @param width - Width allocated to the measure
+     * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
+     * @param placeAndSizeManager - Position and size manager to avoid overlaps
+     * @param stemsDirection - Stem direction ('up' or 'down')
+     * @param displayRepeatSymbol - Display the % symbol for repeated measures
+     */
+    __publicField(this, "restRenderer");
+    __publicField(this, "noteRenderer");
+    __publicField(this, "timeSignatureRenderer");
+    __publicField(this, "stemsDirection");
+    __publicField(this, "displayRepeatSymbol");
+    this.stemsDirection = stemsDirection === "down" ? "down" : "up";
+    this.displayRepeatSymbol = displayRepeatSymbol != null ? displayRepeatSymbol : false;
+    this.restRenderer = new RestRenderer(this.placeAndSizeManager);
+    this.noteRenderer = new NoteRenderer(this.stemsDirection, this.placeAndSizeManager);
+    this.timeSignatureRenderer = new TimeSignatureRenderer(this.placeAndSizeManager);
+  }
+  /**
+   * Draw the complete measure in the SVG.
+   * 
+   * This method orchestrates rendering of all measure elements:
+   * 1. Barlines (left with possible repeat)
+   * 2. Staff line
+   * 3. Chord segments with their beats
+   * 4. Notes and rests with beams
+   * 5. Right barline (with possible repeat or double bar)
+   * 
+   * @param svg - Parent SVG element
+   * @param measureIndex - Measure index in the grid (for numbering)
+   * @param notePositions - Array collecting positions of all notes (for ties)
+   * @param grid - Complete grid (for time signature context, etc.)
+   */
+  drawMeasure(svg, measureIndex, notePositions, grid) {
+    var _a;
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.__isEmpty) {
+      this.drawEmptyMeasure(svg, measureIndex);
       return;
     }
-    if (nv.value === 1) {
-      this.drawDiamondNoteHead(svg, x, staffLineY, true);
-    } else if (nv.value === 2) {
-      this.drawDiamondNoteHead(svg, x, staffLineY, true);
-      this.drawStem(svg, x, staffLineY, 25);
-    } else {
-      this.drawSlash(svg, x, staffLineY);
-      this.drawStem(svg, x, staffLineY, 25);
-      if (drawFlagsForIsolated) {
-        const level = nv.value >= 64 ? 4 : nv.value >= 32 ? 3 : nv.value >= 16 ? 2 : nv.value >= 8 ? 1 : 0;
-        if (level > 0) {
-          this.drawFlag(svg, x, staffLineY, level);
-        }
+    if (this.displayRepeatSymbol && this.measure.isRepeat) {
+      const isChordOnly = this.measure.__isChordOnlyMode;
+      const isSimpleRepeat = this.measure.source === "%";
+      const isBracketPercent = (_a = this.measure.source) == null ? void 0 : _a.includes("[%]");
+      if (isChordOnly || isSimpleRepeat || isBracketPercent) {
+        this.drawChordOnlyRepeatMeasure(svg, measureIndex);
+      } else {
+        this.drawRhythmRepeatMeasure(svg, measureIndex);
       }
+      return;
     }
-    if (nv.dotted) {
-      const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", (x + 10).toString());
-      dot.setAttribute("cy", (staffLineY - 4).toString());
-      dot.setAttribute("r", "1.5");
-      dot.setAttribute("fill", "#000");
-      dot.setAttribute("data-cg-dot", "1");
-      svg.appendChild(dot);
-      if (this.collisionManager) {
-        const cx = x + 10;
-        const cy = staffLineY - 4;
-        this.collisionManager.registerElement("dot", { x: cx - 2, y: cy - 2, width: 4, height: 4 }, 9, { value: nv.value, dotted: true });
+    if (this.measure.__isChordOnlyMode) {
+      this.drawChordOnlyMeasure(svg, measureIndex);
+      return;
+    }
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
+    const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
+    const staffLine = document.createElementNS(SVG_NS, "line");
+    staffLine.setAttribute("x1", (this.x + LAYOUT.BASE_LEFT_PADDING).toString());
+    staffLine.setAttribute("y1", staffLineY.toString());
+    staffLine.setAttribute("x2", (this.x + this.width - LAYOUT.BASE_LEFT_PADDING).toString());
+    staffLine.setAttribute("y2", staffLineY.toString());
+    staffLine.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    staffLine.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THIN.toString());
+    svg.appendChild(staffLine);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("staff-line", {
+        x: this.x + LAYOUT.BASE_LEFT_PADDING,
+        y: staffLineY - VISUAL.STROKE_WIDTH_THIN,
+        width: this.width - LAYOUT.BASE_LEFT_PADDING * 2,
+        height: VISUAL.STROKE_WIDTH_THIN * 2
+      }, 0, {
+        exactX: this.x + this.width / 2,
+        // Center X of the staff line
+        exactY: staffLineY,
+        measureIndex
+      });
+    }
+    const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
+    const segmentNoteCursor = new Array(segments.length).fill(0);
+    const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
+    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
+    const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + (idx > 0 && seg.leadingSpace ? 1 : 0), 0);
+    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
+    const totalInnerPadding = innerPaddingPerSegment * segments.length;
+    const totalSeparatorPixels = separatorsCount * separatorWidth;
+    let extraLeftPadding = this.measure.isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      extraLeftPadding += 50;
+    }
+    const availableForBeatCells = Math.max(0, this.width - totalInnerPadding - totalSeparatorPixels - extraLeftPadding);
+    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
+    const valueMinSpacing = (v) => {
+      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+      if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+      if (v >= 8) return NOTE_SPACING.EIGHTH;
+      return NOTE_SPACING.QUARTER_AND_LONGER;
+    };
+    const requiredBeatWidth = (beat) => {
+      var _a2;
+      const noteCount = ((_a2 = beat == null ? void 0 : beat.notes) == null ? void 0 : _a2.length) || 0;
+      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
+      const spacing = Math.max(
+        ...beat.notes.map((n) => {
+          const base = valueMinSpacing(n.value);
+          return n.isRest ? base + 4 : base;
+        })
+      );
+      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + 8;
+    };
+    const perSegmentRequired = segments.map((seg) => {
+      const reqs = (seg.beats || []).map((b) => requiredBeatWidth(b));
+      return reqs.reduce((a, b) => a + b, 0);
+    });
+    const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
+    let currentX = this.x + extraLeftPadding;
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+      const segment = segments[segmentIndex];
+      if (segmentIndex > 0 && segment.leadingSpace) {
+        currentX += separatorWidth;
       }
+      const segBeatCount = segment.beats.length || 1;
+      const reqPerBeat = segment.beats.map((b) => requiredBeatWidth(b));
+      const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
+      const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
+      const segmentWidth = segmentBeatsWidth + innerPaddingPerSegment;
+      const segmentX = currentX + LAYOUT.BASE_LEFT_PADDING;
+      const beatsWidth = segmentWidth - innerPaddingPerSegment;
+      let beatCursorX = segmentX;
+      segment.beats.forEach((beat, beatIndex) => {
+        const beatWidth = reqPerBeat[beatIndex] / reqSum * beatsWidth;
+        const beatX = beatCursorX;
+        const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
+        beatCursorX += beatWidth;
+      });
+      currentX += segmentWidth;
+    }
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+    } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
     }
   }
-  drawDiamondNoteHead(svg, x, y, hollow) {
-    const diamondSize = 6;
-    const diamond = document.createElementNS(SVG_NS, "polygon");
-    const points = [[x, y - diamondSize], [x + diamondSize, y], [x, y + diamondSize], [x - diamondSize, y]];
-    diamond.setAttribute("points", points.map((p) => `${p[0]},${p[1]}`).join(" "));
-    diamond.setAttribute("fill", hollow ? "white" : "black");
-    diamond.setAttribute("stroke", "#000");
-    diamond.setAttribute("stroke-width", "1");
-    svg.appendChild(diamond);
+  /**
+   * Draw the rhythm (notes) of a beat.
+   * Delegates rendering to NoteRenderer.
+   */
+  drawRhythm(svg, beat, x, staffLineY, width, measureIndex, chordIndex, beatIndex, notePositions, segmentNoteCursor) {
+    return this.noteRenderer.drawBeat(
+      svg,
+      beat,
+      x,
+      staffLineY,
+      width,
+      measureIndex,
+      chordIndex,
+      beatIndex,
+      notePositions,
+      segmentNoteCursor,
+      this.beamedAtLevel1
+    );
   }
-  drawSlash(svg, x, y) {
-    const slashLength = 10;
-    const slash = document.createElementNS(SVG_NS, "line");
-    slash.setAttribute("x1", (x + slashLength / 2).toString());
-    slash.setAttribute("y1", (y - slashLength / 2).toString());
-    slash.setAttribute("x2", (x - slashLength / 2).toString());
-    slash.setAttribute("y2", (y + slashLength / 2).toString());
-    slash.setAttribute("stroke", "#000");
-    slash.setAttribute("stroke-width", "3");
-    svg.appendChild(slash);
-  }
-  drawStem(svg, x, y, height) {
-    const slashLength = 10;
-    const stemStartX = x - slashLength / 2 + 2;
-    const stemStartY = y + slashLength / 2;
-    const stem = document.createElementNS(SVG_NS, "line");
-    stem.setAttribute("x1", stemStartX.toString());
-    stem.setAttribute("y1", stemStartY.toString());
-    stem.setAttribute("x2", stemStartX.toString());
-    stem.setAttribute("y2", (stemStartY + height).toString());
-    stem.setAttribute("stroke", "#000");
-    stem.setAttribute("stroke-width", "2");
-    svg.appendChild(stem);
-    return { x: stemStartX, topY: stemStartY, bottomY: stemStartY + height };
-  }
-  drawFlag(svg, x, staffLineY, count) {
-    const slashLength = 10;
-    const stemStartX = x - slashLength / 2 + 2;
-    const stemBottomY = staffLineY + slashLength / 2 + 25;
-    for (let i = 0; i < count; i++) {
-      const flag = document.createElementNS(SVG_NS, "path");
-      const flagY = stemBottomY - i * 10;
-      flag.setAttribute("d", `M ${stemStartX} ${flagY} Q ${stemStartX - 10} ${flagY - 5} ${stemStartX - 8} ${flagY - 12}`);
-      flag.setAttribute("stroke", "#000");
-      flag.setAttribute("stroke-width", "2");
-      flag.setAttribute("fill", "none");
-      svg.appendChild(flag);
-    }
-  }
-  drawBar(svg, x, y, height) {
+  /**
+   * Dessine une barre de mesure simple.
+   */
+  drawBar(svg, x, y, height, measureIndex, side) {
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("x1", x.toString());
     line.setAttribute("y1", y.toString());
@@ -1400,37 +2850,383 @@ var MeasureRenderer = class {
     line.setAttribute("stroke-width", "1.5");
     svg.appendChild(line);
   }
-  drawBarWithRepeat(svg, x, y, height, isStart) {
-    this.drawDoubleBar(svg, x, y, height);
-    const dotOffset = isStart ? 12 : -12;
-    const dot1Y = y + height * 0.35;
-    const dot2Y = y + height * 0.65;
+  drawBarWithRepeat(svg, x, y, height, isStart, measureIndex) {
+    if (isStart) {
+      const thickBar = document.createElementNS(SVG_NS, "line");
+      thickBar.setAttribute("x1", x.toString());
+      thickBar.setAttribute("y1", y.toString());
+      thickBar.setAttribute("x2", x.toString());
+      thickBar.setAttribute("y2", (y + height).toString());
+      thickBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thickBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THICK.toString());
+      svg.appendChild(thickBar);
+      const thinBar = document.createElementNS(SVG_NS, "line");
+      thinBar.setAttribute("x1", (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
+      thinBar.setAttribute("y1", y.toString());
+      thinBar.setAttribute("x2", (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
+      thinBar.setAttribute("y2", (y + height).toString());
+      thinBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thinBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
+      svg.appendChild(thinBar);
+    } else {
+      const thinBar = document.createElementNS(SVG_NS, "line");
+      thinBar.setAttribute("x1", x.toString());
+      thinBar.setAttribute("y1", y.toString());
+      thinBar.setAttribute("x2", x.toString());
+      thinBar.setAttribute("y2", (y + height).toString());
+      thinBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thinBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
+      svg.appendChild(thinBar);
+      const thickBar = document.createElementNS(SVG_NS, "line");
+      thickBar.setAttribute("x1", (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
+      thickBar.setAttribute("y1", y.toString());
+      thickBar.setAttribute("x2", (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
+      thickBar.setAttribute("y2", (y + height).toString());
+      thickBar.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      thickBar.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THICK.toString());
+      svg.appendChild(thickBar);
+    }
+    const dotOffset = isStart ? NOTATION.REPEAT_DOT_OFFSET : -NOTATION.REPEAT_DOT_OFFSET;
+    const staffLineY = y + NOTATION.STAFF_LINE_Y_OFFSET;
+    const dotSpacing = NOTATION.REPEAT_DOT_OFFSET;
+    const dot1Y = staffLineY - dotSpacing;
+    const dot2Y = staffLineY + dotSpacing;
     [dot1Y, dot2Y].forEach((dotY) => {
       const circle = document.createElementNS(SVG_NS, "circle");
-      circle.setAttribute("cx", (x + dotOffset).toString());
+      const dotX = x + dotOffset;
+      circle.setAttribute("cx", dotX.toString());
       circle.setAttribute("cy", dotY.toString());
-      circle.setAttribute("r", "2");
-      circle.setAttribute("fill", "#000");
+      circle.setAttribute("r", NOTATION.REPEAT_DOT_RADIUS.toString());
+      circle.setAttribute("fill", VISUAL.COLOR_BLACK);
       svg.appendChild(circle);
     });
   }
-  drawDoubleBar(svg, x, y, height) {
+  drawFinalDoubleBar(svg, x, y, height) {
     const bar1 = document.createElementNS(SVG_NS, "line");
     bar1.setAttribute("x1", x.toString());
     bar1.setAttribute("y1", y.toString());
     bar1.setAttribute("x2", x.toString());
     bar1.setAttribute("y2", (y + height).toString());
-    bar1.setAttribute("stroke", "#000");
-    bar1.setAttribute("stroke-width", "1.5");
+    bar1.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    bar1.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
     svg.appendChild(bar1);
     const bar2 = document.createElementNS(SVG_NS, "line");
-    bar2.setAttribute("x1", (x + 6).toString());
+    bar2.setAttribute("x1", (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
     bar2.setAttribute("y1", y.toString());
-    bar2.setAttribute("x2", (x + 6).toString());
+    bar2.setAttribute("x2", (x + LAYOUT.DOUBLE_BAR_SPACING).toString());
     bar2.setAttribute("y2", (y + height).toString());
-    bar2.setAttribute("stroke", "#000");
-    bar2.setAttribute("stroke-width", "1.5");
+    bar2.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    bar2.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_FINAL.toString());
     svg.appendChild(bar2);
+  }
+  /**
+   * Draw the repeat count (e.g., "x3") after a repeat end barline.
+   * @param svg - SVG parent element
+   * @param x - X position of the barline
+   * @param count - Number of repeats
+   */
+  drawRepeatCount(svg, x, count) {
+    const textX = x + LAYOUT.BASE_LEFT_PADDING;
+    const textY = this.y + 5;
+    const fontSize = LAYOUT.REPEAT_COUNT_FONT_SIZE;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", textX.toString());
+    text.setAttribute("y", textY.toString());
+    text.setAttribute("font-family", "Arial, sans-serif");
+    text.setAttribute("font-size", `${fontSize}px`);
+    text.setAttribute("font-weight", "normal");
+    text.setAttribute("fill", VISUAL.COLOR_BLACK);
+    text.textContent = `x${count}`;
+    svg.appendChild(text);
+    if (this.placeAndSizeManager) {
+      const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH;
+      this.placeAndSizeManager.registerElement("repeat-count", {
+        x: textX,
+        y: textY - fontSize,
+        // Text baseline is at textY, so top is textY - fontSize
+        width: textWidth,
+        height: fontSize
+      }, 5, {
+        count,
+        exactX: textX + textWidth / 2,
+        exactY: textY
+      });
+    }
+  }
+  /**
+   * Draw a volta bracket above the staff.
+   * 
+   * Volta brackets indicate different endings for repeats:
+   * - isClosed=true: bracket with right hook ┌─1,2,3────┐ (before :||, loop back)
+   * - isClosed=false: bracket without right hook ┌─4───── (after :||, continue)
+   * 
+   * @param svg - SVG parent element
+   * @param startX - Left X position of the bracket
+   * @param endX - Right X position of the bracket
+   * @param text - Text to display (e.g., "1-3", "4", "1,2,3")
+   * @param isClosed - Whether to draw the right hook (closed bracket)
+   */
+  drawVoltaBracket(svg, startX, endX, text, isClosed) {
+    const y = this.y + LAYOUT.BASE_LEFT_PADDING;
+    const hookHeight = NOTATION.HOOK_HEIGHT;
+    const horizontalLine = document.createElementNS(SVG_NS, "line");
+    horizontalLine.setAttribute("x1", startX.toString());
+    horizontalLine.setAttribute("y1", y.toString());
+    horizontalLine.setAttribute("x2", endX.toString());
+    horizontalLine.setAttribute("y2", y.toString());
+    horizontalLine.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    horizontalLine.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
+    svg.appendChild(horizontalLine);
+    const leftHook = document.createElementNS(SVG_NS, "line");
+    leftHook.setAttribute("x1", startX.toString());
+    leftHook.setAttribute("y1", y.toString());
+    leftHook.setAttribute("x2", startX.toString());
+    leftHook.setAttribute("y2", (y + hookHeight).toString());
+    leftHook.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    leftHook.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
+    svg.appendChild(leftHook);
+    if (isClosed) {
+      const rightHook = document.createElementNS(SVG_NS, "line");
+      rightHook.setAttribute("x1", endX.toString());
+      rightHook.setAttribute("y1", y.toString());
+      rightHook.setAttribute("x2", endX.toString());
+      rightHook.setAttribute("y2", (y + hookHeight).toString());
+      rightHook.setAttribute("stroke", VISUAL.COLOR_BLACK);
+      rightHook.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_MEDIUM.toString());
+      svg.appendChild(rightHook);
+    }
+    const voltaText = this.createText(text, startX + 5, y - VISUAL.STROKE_WIDTH_THIN * 2, "14px", "normal");
+    voltaText.setAttribute("text-anchor", "start");
+    svg.appendChild(voltaText);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("volta-bracket", {
+        x: startX,
+        y: y - LAYOUT.INNER_PADDING_PER_SEGMENT,
+        // Include text height
+        width: endX - startX,
+        height: hookHeight + LAYOUT.INNER_PADDING_PER_SEGMENT
+      }, 1, { text, isClosed });
+    }
+  }
+  /**
+   * Draw a chord-only measure (no rhythm notation).
+   * Draws only the visual separators (diagonal slash for 2 chords, small slashes for 3+).
+   * The actual chord rendering is handled by ChordRenderer.
+   * 
+   * @param svg - SVG container
+   * @param measureIndex - Index of the measure
+   */
+  /**
+   * Draw an empty measure (only barlines, no staff line, no content).
+   * Used when measures-per-line is specified to force empty measures to be rendered.
+   */
+  drawEmptyMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
+    }
+  }
+  drawChordOnlyMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
+    const segments = this.measure.chordSegments || [];
+    const chordCount = segments.length;
+    if (chordCount === 2) {
+      const slashStartX = leftBarX + 5;
+      const slashStartY = this.y + 110;
+      const slashEndX = rightBarX - 5;
+      const slashEndY = this.y + LAYOUT.BASE_LEFT_PADDING;
+      const diagonalLine = document.createElementNS(SVG_NS, "line");
+      diagonalLine.setAttribute("x1", slashStartX.toString());
+      diagonalLine.setAttribute("y1", slashStartY.toString());
+      diagonalLine.setAttribute("x2", slashEndX.toString());
+      diagonalLine.setAttribute("y2", slashEndY.toString());
+      diagonalLine.setAttribute("stroke", "#999");
+      diagonalLine.setAttribute("stroke-width", "2");
+      svg.appendChild(diagonalLine);
+    } else if (chordCount > 2) {
+      const availableWidth = this.width - 20;
+      const chordSpacing = availableWidth / chordCount;
+      for (let idx = 1; idx < chordCount; idx++) {
+        const slashX = this.x + 10 + chordSpacing * idx;
+        const slashLine = document.createElementNS(SVG_NS, "line");
+        slashLine.setAttribute("x1", slashX.toString());
+        slashLine.setAttribute("y1", (this.y + 30).toString());
+        slashLine.setAttribute("x2", (slashX + 10).toString());
+        slashLine.setAttribute("y2", (this.y + 90).toString());
+        slashLine.setAttribute("stroke", "#999");
+        slashLine.setAttribute("stroke-width", "1.5");
+        svg.appendChild(slashLine);
+      }
+    }
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
+    }
+  }
+  /**
+   * Draw a chord-only measure with repeat symbol (%).
+   * Used when show% is enabled for chord-only repeated measures.
+   * Draws the % symbol without staff line (cleaner look for chord-only context).
+   */
+  drawChordOnlyRepeatMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
+    this.drawRepeatSymbol(svg);
+    this.measure.__hasRepeatSymbol = true;
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
+    }
+  }
+  /**
+   * Draw a rhythm measure with repeat symbol (%).
+   * Used when show% is enabled for rhythm repeated measures.
+   * Draws the % symbol WITH staff line (standard rhythm notation).
+   */
+  drawRhythmRepeatMeasure(svg, measureIndex) {
+    const leftBarX = this.x;
+    const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    if (this.measure.isRepeatStart) {
+      this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
+    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+      this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
+    }
+    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
+    const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
+    const staffLine = document.createElementNS(SVG_NS, "line");
+    staffLine.setAttribute("x1", (this.x + LAYOUT.BASE_LEFT_PADDING).toString());
+    staffLine.setAttribute("y1", staffLineY.toString());
+    staffLine.setAttribute("x2", (this.x + this.width - LAYOUT.BASE_LEFT_PADDING).toString());
+    staffLine.setAttribute("y2", staffLineY.toString());
+    staffLine.setAttribute("stroke", VISUAL.COLOR_BLACK);
+    staffLine.setAttribute("stroke-width", VISUAL.STROKE_WIDTH_THIN.toString());
+    svg.appendChild(staffLine);
+    this.measure.__hasRepeatSymbol = true;
+    this.drawRepeatSymbol(svg);
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
+      if (this.measure.repeatCount !== void 0) {
+        this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
+      }
+    } else if (this.measure.barline === "||") {
+      this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
+    } else {
+      this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
+    }
+  }
+  /**
+   * Draw the repeat symbol (%) in the center of the measure.
+   * Uses the official SVG path for a classical measure repeat symbol.
+   */
+  drawRepeatSymbol(svg) {
+    const centerX = this.x + this.width / 2;
+    const centerY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
+    const targetHeight = 30;
+    const originalHeight = 178;
+    const originalWidth = 188;
+    const scale = targetHeight / originalHeight;
+    const symbolWidth = originalWidth * scale;
+    const symbolHeight = targetHeight;
+    const translateX = centerX - symbolWidth / 2;
+    const translateY = centerY - symbolHeight / 2 - 2;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("data-repeat-symbol", "true");
+    group.setAttribute("transform", `translate(${translateX.toFixed(2)},${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", "M 0.29640036,177.3364 35.741505,135.44902 71.186609,93.561637 82.730763,80.33404 116.29431,40.651251 149.85784,0.96846227 h 37.46642 L 153.76072,40.651251 120.19718,80.33404 108.65303,93.561637 73.207926,135.44902 37.762822,177.3364 Z M 131.5485,152.77085 c -3.23819,-3.81078 -5.88759,-10.61356 -5.88759,-15.11723 0,-4.50368 2.6494,-11.30646 5.88759,-15.11724 3.23814,-3.81083 9.01868,-6.92875 12.84561,-6.92875 3.82693,0 9.60748,3.11792 12.84563,6.92875 3.23818,3.81078 5.88758,10.61356 5.88758,15.11724 0,4.50367 -2.6494,11.30645 -5.88758,15.11723 -3.23815,3.81083 -9.0187,6.92875 -12.84563,6.92875 -3.82693,0 -9.60747,-3.11792 -12.84561,-6.92875 z M 34.135803,51.359299 C 30.897632,47.548517 28.24822,40.74574 28.24822,36.242052 c 0,-4.503687 2.649412,-11.306465 5.887583,-15.117246 11.362479,-13.3718214 31.57884,-3.693983 31.57884,15.117246 0,4.503688 -2.649413,11.306465 -5.887583,15.117247 -3.238167,3.810826 -9.018699,6.928747 -12.845629,6.928747 -3.826929,0 -9.607461,-3.117921 -12.845628,-6.928747 z");
+    path.setAttribute("fill", "#444");
+    group.appendChild(path);
+    svg.appendChild(group);
+    if (this.placeAndSizeManager) {
+      this.placeAndSizeManager.registerElement("repeat-symbol", {
+        x: translateX,
+        y: translateY,
+        width: symbolWidth,
+        height: symbolHeight
+      }, 5, {
+        exactX: centerX,
+        exactY: centerY,
+        measureIndex: -1
+        // Will be set by caller if needed
+      });
+    }
+  }
+  /**
+   * Draw the right barline of the measure.
+   */
+  drawRightBarline(svg, x, y, height) {
+    if (this.measure.isRepeatEnd) {
+      this.drawBarWithRepeat(svg, x, y, height, false);
+    } else {
+      this.drawBar(svg, x, y, height);
+    }
+  }
+  /**
+   * Draw a time signature at the start of this measure.
+   * Used for inline time signature changes (e.g., 4/4 -> 3/4).
+   * Uses TimeSignatureRenderer for standard stacked notation.
+   * 
+   * @param svg - Parent SVG element
+   * @param timeSignature - Time signature to display
+   * @param measureIndex - Measure index (for PlaceAndSizeManager)
+   */
+  drawTimeSignature(svg, timeSignature, measureIndex) {
+    const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20;
+    const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
+    this.timeSignatureRenderer.render(svg, {
+      x: timeSignatureX,
+      y: staffLineY,
+      numerator: timeSignature.numerator || timeSignature.beatsPerMeasure,
+      denominator: timeSignature.denominator || timeSignature.beatUnit,
+      measureIndex
+    }, false);
   }
   createText(text, x, y, size, weight = "normal") {
     const textEl = document.createElementNS(SVG_NS, "text");
@@ -1452,25 +3248,25 @@ var TieManager = class {
     __publicField(this, "pending", []);
   }
   /**
-   * Ajoute une liaison en attente de résolution.
+   * Adds a tie awaiting resolution.
    * 
-   * Utilisé lorsqu'une note se termine par une liaison "to void" en fin de ligne.
+   * Used when a note ends with a "to void" tie at the end of a line.
    * 
-   * @param measureIndex - Index de la mesure contenant la note de départ
-   * @param x - Position X de la fin de la liaison
-   * @param y - Position Y de la fin de la liaison
+   * @param measureIndex - Index of the measure containing the start note
+   * @param x - X position of the tie end
+   * @param y - Y position of the tie end
    */
   addPendingTie(measureIndex, x, y) {
     this.pending.push({ measureIndex, x, y });
   }
   /**
-   * Tente de résoudre une liaison en attente pour une note commençant par "from void".
+   * Attempts to resolve a pending tie for a note starting with "from void".
    * 
-   * Recherche une liaison en attente dont l'index de mesure est strictement inférieur
-   * à celui donné (car la liaison vient d'une mesure précédente).
+   * Searches for a pending tie whose measure index is strictly less than
+   * the given one (since the tie comes from a previous measure).
    * 
-   * @param measureIndex - Index de la mesure contenant la note d'arrivée
-   * @returns La liaison en attente (et la retire de la liste) ou null si aucune
+   * @param measureIndex - Index of the measure containing the destination note
+   * @returns The pending tie (and removes it from the list) or null if none
    */
   resolvePendingFor(measureIndex) {
     for (let i = 0; i < this.pending.length; i++) {
@@ -1482,12 +3278,229 @@ var TieManager = class {
     return null;
   }
   /**
-   * Efface toutes les liaisons en attente.
+   * Clears all pending ties.
    * 
-   * Utilisé pour réinitialiser le gestionnaire entre différents rendus.
+   * Used to reset the manager between different renders.
    */
   clearPending() {
     this.pending = [];
+  }
+};
+
+// src/utils/VoltaManager.ts
+var VoltaManager = class {
+  constructor() {
+    __publicField(this, "allMeasurePositions", []);
+    __publicField(this, "allBarlines", []);
+  }
+  /**
+   * Registers a measure position for volta rendering.
+   * 
+   * Should be called for each measure as it's rendered, in order.
+   * 
+   * @param mp - Measure position with coordinates and line information
+   */
+  addMeasurePosition(mp) {
+    this.allMeasurePositions.push(mp);
+  }
+  /**
+   * Registers barlines from a line before PlaceAndSizeManager.clearAll().
+   * 
+   * Since PlaceAndSizeManager is cleared after each line for collision management,
+   * we need to save barline positions before they're lost.
+   * 
+   * @param barlines - Array of barline information from the current line
+   */
+  addBarlines(barlines) {
+    this.allBarlines.push(...barlines);
+  }
+  /**
+   * Renders all volta brackets with global context.
+   * 
+   * This method must be called AFTER all lines have been processed,
+   * so it has a complete view of all measures and can correctly
+   * render voltas that span multiple lines.
+   * 
+   * @param svg - Parent SVG element
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  renderVoltas(svg, placeAndSizeManager) {
+    const measurePositions = this.allMeasurePositions;
+    const allBarlines = this.allBarlines;
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure;
+      if (measure.voltaStart) {
+        let endMeasureIndex = i;
+        for (let j = i; j < measurePositions.length; j++) {
+          const endMeasure = measurePositions[j].measure;
+          if (endMeasure.voltaEnd && endMeasure.voltaEnd.text === measure.voltaStart.text) {
+            endMeasureIndex = j;
+            break;
+          }
+        }
+        const startMP = measurePositions[i];
+        const endMP = measurePositions[endMeasureIndex];
+        if (startMP.x !== void 0 && endMP.x !== void 0 && startMP.y !== void 0) {
+          const voltaInfo = measure.voltaStart;
+          const hookHeight = 15;
+          const textSize = 14;
+          const voltaMeasures = measurePositions.slice(i, endMeasureIndex + 1);
+          const lineGroups = /* @__PURE__ */ new Map();
+          voltaMeasures.forEach((mp2) => {
+            if (!lineGroups.has(mp2.lineIndex)) {
+              lineGroups.set(mp2.lineIndex, []);
+            }
+            lineGroups.get(mp2.lineIndex).push(mp2);
+          });
+          lineGroups.forEach((lineMeasures, lineIndex) => {
+            var _a, _b, _c, _d, _e, _f, _g;
+            const isFirstLine = lineIndex === startMP.lineIndex;
+            const isLastLine = lineIndex === endMP.lineIndex;
+            const firstMeasureOnLine = lineMeasures[0];
+            const lastMeasureOnLine = lineMeasures[lineMeasures.length - 1];
+            let startX;
+            let startBarline;
+            if (isFirstLine && i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+              const prevMeasureIndex = measurePositions[i - 1].globalIndex;
+              startBarline = allBarlines.find(
+                (bl) => bl.measureIndex === prevMeasureIndex && bl.side === "right"
+              );
+              startX = (_a = startBarline == null ? void 0 : startBarline.exactX) != null ? _a : firstMeasureOnLine.x + firstMeasureOnLine.width - 2;
+            } else {
+              startBarline = allBarlines.find(
+                (bl) => bl.measureIndex === firstMeasureOnLine.globalIndex && bl.side === "left"
+              );
+              startX = (_b = startBarline == null ? void 0 : startBarline.exactX) != null ? _b : firstMeasureOnLine.x;
+            }
+            const endRightBarline = allBarlines.find(
+              (bl) => bl.measureIndex === lastMeasureOnLine.globalIndex && bl.side === "right"
+            );
+            let endX = (_d = (_c = endRightBarline == null ? void 0 : endRightBarline.visualEndX) != null ? _c : endRightBarline == null ? void 0 : endRightBarline.exactX) != null ? _d : lastMeasureOnLine.x + lastMeasureOnLine.width - 2;
+            const y = (_e = startBarline == null ? void 0 : startBarline.y) != null ? _e : firstMeasureOnLine.y;
+            const horizontalLine = document.createElementNS(SVG_NS, "line");
+            horizontalLine.setAttribute("x1", startX.toString());
+            horizontalLine.setAttribute("y1", y.toString());
+            horizontalLine.setAttribute("x2", endX.toString());
+            horizontalLine.setAttribute("y2", y.toString());
+            horizontalLine.setAttribute("stroke", "#000");
+            horizontalLine.setAttribute("stroke-width", "1.5");
+            horizontalLine.setAttribute("data-volta", "horizontal");
+            svg.appendChild(horizontalLine);
+            if (isFirstLine) {
+              const leftHook = document.createElementNS(SVG_NS, "line");
+              leftHook.setAttribute("x1", startX.toString());
+              leftHook.setAttribute("y1", y.toString());
+              leftHook.setAttribute("x2", startX.toString());
+              leftHook.setAttribute("y2", (y + hookHeight).toString());
+              leftHook.setAttribute("stroke", "#000");
+              leftHook.setAttribute("stroke-width", "1.5");
+              leftHook.setAttribute("data-volta", "left-hook");
+              svg.appendChild(leftHook);
+            }
+            if (isLastLine && voltaInfo.isClosed) {
+              const rightHook = document.createElementNS(SVG_NS, "line");
+              rightHook.setAttribute("x1", endX.toString());
+              rightHook.setAttribute("y1", y.toString());
+              rightHook.setAttribute("x2", endX.toString());
+              rightHook.setAttribute("y2", (y + hookHeight).toString());
+              rightHook.setAttribute("stroke", "#000");
+              rightHook.setAttribute("stroke-width", "1.5");
+              rightHook.setAttribute("data-volta", "right-hook");
+              svg.appendChild(rightHook);
+            }
+            if (isFirstLine) {
+              const textY = y + textSize + 2;
+              const registeredVoltaTexts = placeAndSizeManager.getElements().filter(
+                (el) => {
+                  var _a2;
+                  return el.type === "volta-text" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === i;
+                }
+              );
+              const registeredText = registeredVoltaTexts[0];
+              const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+              const leftPadding = (_g = (_f = registeredText == null ? void 0 : registeredText.metadata) == null ? void 0 : _f.leftPadding) != null ? _g : LAYOUT.VOLTA_TEXT_LEFT_PADDING;
+              const textX = registeredText ? registeredText.bbox.x + textMargin + leftPadding : startX + LAYOUT.VOLTA_TEXT_OFFSET + textMargin;
+              const voltaText = document.createElementNS(SVG_NS, "text");
+              voltaText.setAttribute("x", textX.toString());
+              voltaText.setAttribute("y", textY.toString());
+              voltaText.setAttribute("font-family", "Arial, sans-serif");
+              voltaText.setAttribute("font-size", `${textSize}px`);
+              voltaText.setAttribute("font-weight", "normal");
+              voltaText.setAttribute("fill", "#000");
+              voltaText.setAttribute("text-anchor", "start");
+              voltaText.setAttribute("data-volta", "text");
+              voltaText.textContent = voltaInfo.text;
+              svg.appendChild(voltaText);
+              let realTextWidth = voltaInfo.text.length * (textSize * 0.6);
+              let realTextHeight = textSize;
+              try {
+                const textBBox = voltaText.getBBox();
+                realTextWidth = textBBox.width;
+                realTextHeight = textBBox.height;
+              } catch (e) {
+              }
+              placeAndSizeManager.registerElement("volta-bracket", {
+                x: startX,
+                y,
+                width: endX - startX,
+                height: hookHeight + realTextHeight + 4
+              }, 1, {
+                text: voltaInfo.text,
+                isClosed: voltaInfo.isClosed,
+                exactX: (startX + endX) / 2,
+                exactY: y + hookHeight / 2,
+                horizontalLineY: y,
+                leftHookX: startX,
+                rightHookX: endX,
+                hookHeight,
+                visualStartX: startX,
+                visualEndX: endX,
+                visualTopY: y,
+                visualBottomY: y + hookHeight + realTextHeight + 4,
+                measureStartIndex: i,
+                measureEndIndex: endMeasureIndex,
+                isFirstLine: true
+              });
+            } else {
+              placeAndSizeManager.registerElement("volta-bracket", {
+                x: startX,
+                y,
+                width: endX - startX,
+                height: hookHeight
+              }, 1, {
+                text: voltaInfo.text,
+                isClosed: voltaInfo.isClosed && isLastLine,
+                exactX: (startX + endX) / 2,
+                exactY: y + hookHeight / 2,
+                horizontalLineY: y,
+                leftHookX: isFirstLine ? startX : void 0,
+                rightHookX: isLastLine && voltaInfo.isClosed ? endX : void 0,
+                hookHeight,
+                visualStartX: startX,
+                visualEndX: endX,
+                visualTopY: y,
+                visualBottomY: y + hookHeight,
+                measureStartIndex: firstMeasureOnLine.globalIndex,
+                measureEndIndex: lastMeasureOnLine.globalIndex,
+                isFirstLine: false,
+                lineIndex
+              });
+            }
+          });
+        }
+      }
+    }
+  }
+  /**
+   * Clears all accumulated data.
+   * 
+   * Should be called before starting a new render to ensure
+   * no stale data from previous renders remains.
+   */
+  clear() {
+    this.allMeasurePositions = [];
+    this.allBarlines = [];
   }
 };
 
@@ -1535,19 +3548,21 @@ var MusicAnalyzer = class {
     };
   }
   /**
-   * Determine the actual grouping mode (resolve 'auto' to 'binary' or 'ternary')
+   * Resolve grouping mode to concrete binary/ternary/irregular mode.
    * 
-   * Rules:
-   * - noauto: user controls grouping via spaces (no auto-breaking)
-   * - binary: group by 2 eighths (1.0 quarter)
-   * - ternary: group by 3 eighths (1.5 quarters)
-   * - auto: detect from time signature
-   *   - denominator <= 4: binary (quarter-note based, group by 2)
-   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (dotted-quarter based, group by 3)
-   *   - else: irregular (space-based grouping, no auto-breaking)
+   * NEW PHILOSOPHY (v3.0.0):
+   * - 'space-based': (DEFAULT) user controls grouping via spaces only → irregular
+   * - 'auto-beam': enable algorithmic auto-breaking based on meter → binary or ternary
+   * - 'binary': force binary grouping (groups of 2 eighths = 1 quarter)
+   * - 'ternary': force ternary grouping (groups of 3 eighths = 1 dotted quarter)
+   * 
+   * Auto-detection logic for 'auto-beam':
+   *   - denominator <= 4: binary (simple time)
+   *   - denominator >= 8 with numerator in {3,6,9,12}: ternary (compound time)
+   *   - else: irregular (no reliable pattern)
    */
   resolveGroupingMode(timeSignature) {
-    if (timeSignature.groupingMode === "noauto") {
+    if (timeSignature.groupingMode === "space-based") {
       return "irregular";
     }
     if (timeSignature.groupingMode === "binary") {
@@ -1556,12 +3571,15 @@ var MusicAnalyzer = class {
     if (timeSignature.groupingMode === "ternary") {
       return "ternary";
     }
-    const { numerator, denominator } = timeSignature;
-    if (denominator <= 4) {
-      return "binary";
-    }
-    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
-      return "ternary";
+    if (timeSignature.groupingMode === "auto-beam") {
+      const { numerator, denominator } = timeSignature;
+      if (denominator <= 4) {
+        return "binary";
+      }
+      if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+        return "ternary";
+      }
+      return "irregular";
     }
     return "irregular";
   }
@@ -1632,7 +3650,7 @@ var MusicAnalyzer = class {
     for (let k = 1; k < beamableIdxs.length; k++) {
       const a = beamableIdxs[k - 1];
       const b = beamableIdxs[k];
-      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure)) {
+      if (this.isHardBreakBetween(allNotes[a], allNotes[b], measure, allNotes)) {
         segments.push(seg);
         seg = [b];
       } else {
@@ -1676,10 +3694,21 @@ var MusicAnalyzer = class {
           if (mid && mid.isRest) {
             const restLevel = this.getBeamLevel(mid.value);
             if (inTuplet) {
-              if (restLevel < notesLevel) {
-                blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+              const aTuplet = allNotes[aIdx].tuplet;
+              const bTuplet = allNotes[bIdx].tuplet;
+              const sameTupletNoSpace = aTuplet && bTuplet && aTuplet.groupId === bTuplet.groupId && !bNote.hasLeadingSpace;
+              if (sameTupletNoSpace) {
+                if (restLevel < notesLevel) {
+                  blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+                } else {
+                  blockFromLevel = Math.min(blockFromLevel, Math.max(2, restLevel));
+                }
               } else {
-                blockFromLevel = Math.min(blockFromLevel, restLevel);
+                if (restLevel < notesLevel) {
+                  blockFromLevel = Math.min(blockFromLevel, notesLevel + 1);
+                } else {
+                  blockFromLevel = Math.min(blockFromLevel, restLevel);
+                }
               }
             } else {
               if (restLevel === notesLevel - 1) {
@@ -1797,8 +3826,8 @@ var MusicAnalyzer = class {
       }
     }
   }
-  isHardBreakBetween(a, b, measure) {
-    var _a, _b, _c, _d;
+  isHardBreakBetween(a, b, measure, allNotes) {
+    var _a, _b;
     if (a.forcedBeamThroughTie) {
       DebugLogger2.log("\u{1F517} Forced beam through tie [_]", {
         fromNote: a.absoluteIndex,
@@ -1806,7 +3835,8 @@ var MusicAnalyzer = class {
       });
       return false;
     }
-    if (a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
+    const resolvedMode = measure.timeSignature ? this.resolveGroupingMode(measure.timeSignature) : "irregular";
+    if (resolvedMode === "irregular" && a.segmentIndex === b.segmentIndex && ((_a = a.beatIndex) != null ? _a : -1) !== ((_b = b.beatIndex) != null ? _b : -1)) {
       const aTuplet = a.tuplet;
       const bTuplet = b.tuplet;
       if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
@@ -1819,28 +3849,36 @@ var MusicAnalyzer = class {
       });
       return true;
     }
-    if (a.segmentIndex === b.segmentIndex && ((_c = a.beatIndex) != null ? _c : -1) === ((_d = b.beatIndex) != null ? _d : -1)) {
+    if (resolvedMode !== "irregular") {
       const aTuplet2 = a.tuplet;
       const bTuplet2 = b.tuplet;
       if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
         return false;
       }
-      if (measure.timeSignature) {
-        const resolvedMode = this.resolveGroupingMode(measure.timeSignature);
-        if (resolvedMode !== "irregular" && a.quarterStart !== void 0 && b.quarterStart !== void 0) {
-          const groupSize = resolvedMode === "binary" ? 1 : 1.5;
-          const aGroup = Math.floor(a.quarterStart / groupSize);
-          const bGroup = Math.floor(b.quarterStart / groupSize);
-          if (aGroup !== bGroup) {
-            DebugLogger2.log(`\u{1F3B5} Auto-break at ${resolvedMode} boundary`, {
-              aStart: a.quarterStart,
-              bStart: b.quarterStart,
-              groupSize,
-              aGroup,
-              bGroup
-            });
-            return true;
-          }
+      if (a.quarterStart !== void 0 && b.quarterStart !== void 0 && measure.timeSignature) {
+        let groupSize;
+        const actualMode = measure.timeSignature.groupingMode;
+        if (actualMode === "binary") {
+          groupSize = 0.5;
+          groupSize = 1;
+        } else if (actualMode === "ternary") {
+          groupSize = 1.5;
+        } else if (actualMode === "auto-beam") {
+          groupSize = measure.timeSignature.denominator <= 4 ? 1 : 1.5;
+        } else {
+          return false;
+        }
+        const aGroup = Math.floor(a.quarterStart / groupSize);
+        const bGroup = Math.floor(b.quarterStart / groupSize);
+        if (aGroup !== bGroup) {
+          DebugLogger2.log(`\u{1F3B5} Auto-break at ${actualMode} boundary`, {
+            aStart: a.quarterStart,
+            bStart: b.quarterStart,
+            groupSize,
+            aGroup,
+            bGroup
+          });
+          return true;
         }
       }
     }
@@ -1913,9 +3951,8 @@ var MusicAnalyzer = class {
   }
 };
 
-// src/renderer/AnalyzerBeamOverlay.ts
-function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
-  const beamGap = 5;
+// src/renderer/BeamRenderer.ts
+function drawBeams(svg, analyzed, measureIndex, notePositions, stemsDirection) {
   const level1Beamed = /* @__PURE__ */ new Set();
   for (const g of analyzed.beamGroups) {
     if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
@@ -1934,9 +3971,16 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
     });
     const valid = refs.filter((r) => r.pos);
     if (valid.length === 0) continue;
-    const stemBottoms = valid.map((v) => v.pos.stemBottomY || v.pos.y + 30);
-    const baseStemBottom = stemBottoms.length ? Math.min(...stemBottoms) : valid[0].pos.y + 30;
-    const beamY = baseStemBottom - (level - 1) * beamGap;
+    let beamY;
+    if (stemsDirection === "up") {
+      const stemTops = valid.map((v) => v.pos.stemTopY || v.pos.y - NOTATION.STEM_HEIGHT);
+      const baseStemTop = stemTops.length ? Math.min(...stemTops) : valid[0].pos.y - NOTATION.STEM_HEIGHT;
+      beamY = baseStemTop + (level - 1) * NOTATION.BEAM_GAP;
+    } else {
+      const stemBottoms = valid.map((v) => v.pos.stemBottomY || v.pos.y + NOTATION.STEM_HEIGHT);
+      const baseStemBottom = stemBottoms.length ? Math.max(...stemBottoms) : valid[0].pos.y + NOTATION.STEM_HEIGHT;
+      beamY = baseStemBottom - (level - 1) * NOTATION.BEAM_GAP;
+    }
     if (group.isPartial) {
       const p = valid[0].pos;
       if (group.level > 1) {
@@ -1946,38 +3990,39 @@ function drawAnalyzerBeams(svg, analyzed, measureIndex, notePositions) {
           return;
         }
       }
-      const startX = p.x - 10 / 2 + 2;
-      const beamletLength = 8;
-      const endX = group.direction === "right" ? startX + beamletLength : startX - beamletLength;
+      const startX = stemsDirection === "up" ? p.x + NOTATION.SLASH_LENGTH / 2 : p.x - NOTATION.SLASH_LENGTH / 2;
+      const endX = group.direction === "right" ? startX + NOTATION.BEAMLET_LENGTH : startX - NOTATION.BEAMLET_LENGTH;
+      const strokeWidth = VISUAL.BEAM_STROKE_WIDTH;
       const beamlet = document.createElementNS(SVG_NS, "line");
       beamlet.setAttribute("x1", String(startX));
       beamlet.setAttribute("y1", String(beamY));
       beamlet.setAttribute("x2", String(endX));
       beamlet.setAttribute("y2", String(beamY));
       beamlet.setAttribute("stroke", "#000");
-      beamlet.setAttribute("stroke-width", "2");
+      beamlet.setAttribute("stroke-width", String(strokeWidth));
       svg.appendChild(beamlet);
     } else {
       const first = valid[0].pos;
       const last = valid[valid.length - 1].pos;
-      const startX = first.x - 10 / 2 + 2;
-      const endX = last.x - 10 / 2 + 2;
+      const startX = stemsDirection === "up" ? first.x + NOTATION.SLASH_LENGTH / 2 : first.x - NOTATION.SLASH_LENGTH / 2;
+      const endX = stemsDirection === "up" ? last.x + NOTATION.SLASH_LENGTH / 2 : last.x - NOTATION.SLASH_LENGTH / 2;
+      const strokeWidth = VISUAL.BEAM_STROKE_WIDTH;
       const beam = document.createElementNS(SVG_NS, "line");
       beam.setAttribute("x1", String(startX));
       beam.setAttribute("y1", String(beamY));
       beam.setAttribute("x2", String(endX));
       beam.setAttribute("y2", String(beamY));
       beam.setAttribute("stroke", "#000");
-      beam.setAttribute("stroke-width", "2");
+      beam.setAttribute("stroke-width", String(strokeWidth));
       svg.appendChild(beam);
     }
   }
 }
 
-// src/renderer/CollisionManager.ts
-var CollisionManager = class {
+// src/renderer/PlaceAndSizeManager.ts
+var PlaceAndSizeManager = class {
   /**
-   * Constructeur du gestionnaire de collisions.
+   * Constructeur du gestionnaire de position et taille.
    * 
    * @param config - Configuration optionnelle
    */
@@ -1993,64 +4038,286 @@ var CollisionManager = class {
     };
   }
   /**
+   * Détermine la couche de collision appropriée pour un type d'élément.
+   * 
+   * @param type - Type de l'élément
+   * @returns La couche de collision appropriée
+   */
+  getCollisionLayer(type) {
+    switch (type) {
+      // Éléments au-dessus du bloc de mesures
+      case "volta-bracket":
+      case "volta-text":
+        return "above-measure";
+      // Éléments au-dessus de la portée (noms d'accords)
+      case "chord":
+      case "repeat-count":
+        return "above-staff";
+      // Décorations (pick-strokes uniquement)
+      case "pick-stroke":
+        return "decoration";
+      // Tuplets (au-dessus du staff, sous les decorations)
+      case "tuplet-bracket":
+      case "tuplet-number":
+        return "tuplets";
+      // Éléments sur la portée (notes, rests, stems, beams, ties)
+      case "note":
+      case "rest":
+      case "stem":
+      case "beam":
+      case "tie":
+      case "flag":
+      case "diamond":
+      case "slash":
+      case "dot":
+      case "staff-line":
+        return "staff";
+      // Éléments structurels
+      case "barline":
+      case "time-signature":
+      case "double-bar":
+      case "repeat-symbol":
+      case "measure":
+        return "structure";
+      default:
+        return "staff";
+    }
+  }
+  /**
+   * Détermine la marge horizontale de sécurité pour un type d'élément.
+   * 
+   * Cette marge crée un "espace de sécurité" horizontal de part et d'autre de l'élément
+   * pour éviter que d'autres éléments ne le touchent (surtout important pour barlines, 
+   * accords, volta text, etc.).
+   * 
+   * @param type - Type de l'élément
+   * @returns Marge horizontale en pixels
+   */
+  getHorizontalMargin(type) {
+    switch (type) {
+      // Éléments critiques nécessitant un large espace
+      case "barline":
+      case "double-bar":
+        return 5;
+      // Barres de mesure : large marge pour la lisibilité
+      case "time-signature":
+        return 4;
+      // Chiffrage : besoin d'espace pour la lisibilité
+      // Éléments textuels au-dessus de la portée
+      case "chord":
+        return 3;
+      // Accords : marge moyenne
+      case "volta-text":
+      case "repeat-count":
+        return 3;
+      // Textes volta/repeat : marge moyenne
+      case "tuplet-number":
+        return 2;
+      // Numéros de tuplet : petite marge
+      // Éléments graphiques nécessitant un peu d'espace
+      case "volta-bracket":
+      case "tuplet-bracket":
+        return 1;
+      // Brackets : marge minimale
+      // Éléments sur la portée (notes, rests)
+      case "note":
+      case "rest":
+      case "diamond":
+      case "slash":
+        return 1;
+      // Petite marge pour éviter collisions avec accords
+      // Éléments linéaires/décoratifs sans besoin de marge
+      case "stem":
+      case "beam":
+      case "tie":
+      case "pick-stroke":
+      case "flag":
+      case "dot":
+      case "staff-line":
+      case "repeat-symbol":
+        return 0;
+      // Pas de marge horizontale
+      default:
+        return 2;
+    }
+  }
+  /**
+   * Vérifie si deux types d'éléments ont besoin d'une protection contre les collisions HORIZONTALES.
+   * 
+   * Certains éléments (stem, beam, tie, staff-line) peuvent se superposer horizontalement sans problème.
+   * D'autres (barlines, chords, volta-text) ont besoin d'espace horizontal protégé.
+   * 
+   * @param type1 - Premier type d'élément
+   * @param type2 - Deuxième type d'élément
+   * @returns true si les éléments ne doivent PAS se chevaucher horizontalement
+   */
+  canCollideHorizontally(type1, type2) {
+    const transparentHorizontal = /* @__PURE__ */ new Set([
+      "stem",
+      "beam",
+      "tie",
+      "staff-line",
+      "flag"
+    ]);
+    if (transparentHorizontal.has(type1) && transparentHorizontal.has(type2)) {
+      return false;
+    }
+    const margin1 = this.getHorizontalMargin(type1);
+    const margin2 = this.getHorizontalMargin(type2);
+    if (transparentHorizontal.has(type1) && margin2 === 0) {
+      return false;
+    }
+    if (transparentHorizontal.has(type2) && margin1 === 0) {
+      return false;
+    }
+    return true;
+  }
+  /**
+   * Vérifie si deux types d'éléments peuvent entrer en collision VERTICALE.
+   * Utilise le système de layers pour déterminer si deux éléments peuvent se superposer verticalement.
+   * 
+   * @param type1 - Premier type d'élément
+   * @param type2 - Deuxième type d'élément
+   * @returns true si les éléments ne doivent PAS se chevaucher verticalement
+   */
+  canCollideVertically(type1, type2) {
+    const layer1 = this.getCollisionLayer(type1);
+    const layer2 = this.getCollisionLayer(type2);
+    if (layer1 === layer2) {
+      return true;
+    }
+    if (layer1 === "above-measure" && layer2 === "structure" || layer1 === "structure" && layer2 === "above-measure") {
+      return true;
+    }
+    if (layer1 === "above-measure" && layer2 === "above-staff" || layer1 === "above-staff" && layer2 === "above-measure") {
+      return true;
+    }
+    if (layer1 === "above-staff" && layer2 === "structure" || layer1 === "structure" && layer2 === "above-staff") {
+      return true;
+    }
+    if (layer1 === "staff" && layer2 === "above-staff" || layer1 === "above-staff" && layer2 === "staff") {
+      return false;
+    }
+    if (layer1 === "staff" && layer2 === "above-measure" || layer1 === "above-measure" && layer2 === "staff") {
+      return false;
+    }
+    if (layer1 === "decoration" && layer2 === "above-staff" || layer1 === "above-staff" && layer2 === "decoration") {
+      return false;
+    }
+    if (layer1 === "decoration" && layer2 === "above-measure" || layer1 === "above-measure" && layer2 === "decoration") {
+      return false;
+    }
+    if (layer1 === "staff" && layer2 === "decoration" || layer1 === "decoration" && layer2 === "staff") {
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Vérifie si deux types d'éléments peuvent entrer en collision (2D: horizontal ET vertical).
+   * 
+   * Logique :
+   * - Si les éléments sont sur des layers verticaux séparés (ex: notes vs chords) → PAS de collision
+   * - Si les éléments sont sur le même layer vertical → vérifier collision horizontale
+   * 
+   * @param type1 - Premier type d'élément
+   * @param type2 - Deuxième type d'élément
+   * @returns true si les éléments peuvent entrer en collision
+   */
+  canCollide(type1, type2) {
+    const canCollideVert = this.canCollideVertically(type1, type2);
+    if (!canCollideVert) {
+      return false;
+    }
+    return this.canCollideHorizontally(type1, type2);
+  }
+  /**
    * Enregistre un nouvel élément dans le gestionnaire.
    * 
    * @param type - Type de l'élément
    * @param bbox - Zone occupée par l'élément
    * @param priority - Priorité de l'élément (0 = fixe, 10 = mobile)
-   * @param metadata - Métadonnées optionnelles
+   * @param metadata - Métadonnées enrichies avec géométrie visuelle et contexte musical
+   * @param overrideLayer - Layer personnalisé (pour éléments dynamiques comme pick-strokes)
    */
-  registerElement(type, bbox, priority = 5, metadata) {
-    this.elements.push({ type, bbox, priority, metadata });
+  registerElement(type, bbox, priority = 5, metadata, overrideLayer) {
+    var _a;
+    const layer = overrideLayer != null ? overrideLayer : this.getCollisionLayer(type);
+    const horizontalMargin = this.getHorizontalMargin(type);
+    const enrichedMetadata = {
+      ...metadata,
+      elementType: type,
+      canCollide: (_a = metadata == null ? void 0 : metadata.canCollide) != null ? _a : true
+    };
+    this.elements.push({
+      type,
+      bbox,
+      priority,
+      layer,
+      horizontalMargin,
+      metadata: enrichedMetadata
+    });
     if (this.config.debugMode) {
-      console.log(`[CollisionManager] Registered ${type}`, bbox);
+      console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`, enrichedMetadata);
     }
   }
   /**
    * Vérifie si une zone entre en collision avec des éléments existants.
    * 
    * @param bbox - Zone à tester
+   * @param testType - Type de l'élément qu'on teste (pour vérifier canCollide)
    * @param excludeTypes - Types d'éléments à exclure de la vérification
    * @param spacing - Marge supplémentaire autour de la zone (défaut: minSpacing)
    * @returns true si collision détectée
    */
-  hasCollision(bbox, excludeTypes = [], spacing) {
-    const margin = spacing != null ? spacing : this.config.minSpacing;
+  hasCollision(bbox, testType, excludeTypes = [], spacing) {
+    const baseMargin = spacing != null ? spacing : this.config.minSpacing;
+    const testMargin = testType ? this.getHorizontalMargin(testType) : 0;
     return this.elements.some((element) => {
       if (excludeTypes.includes(element.type)) {
         return false;
       }
-      return this.boxesCollide(bbox, element.bbox, margin);
+      if (testType && !this.canCollide(testType, element.type)) {
+        return false;
+      }
+      const totalMargin = baseMargin + testMargin + element.horizontalMargin;
+      return this.boxesCollide(bbox, element.bbox, totalMargin);
     });
   }
   /**
    * Trouve tous les éléments en collision avec une zone donnée.
    * 
    * @param bbox - Zone à tester
+   * @param testType - Type de l'élément qu'on teste (pour vérifier canCollide)
    * @param excludeTypes - Types d'éléments à exclure
    * @param spacing - Marge supplémentaire
    * @returns Liste des éléments en collision
    */
-  findCollisions(bbox, excludeTypes = [], spacing) {
-    const margin = spacing != null ? spacing : this.config.minSpacing;
+  findCollisions(bbox, testType, excludeTypes = [], spacing) {
+    const baseMargin = spacing != null ? spacing : this.config.minSpacing;
+    const testMargin = testType ? this.getHorizontalMargin(testType) : 0;
     return this.elements.filter((element) => {
       if (excludeTypes.includes(element.type)) {
         return false;
       }
-      return this.boxesCollide(bbox, element.bbox, margin);
+      if (testType && !this.canCollide(testType, element.type)) {
+        return false;
+      }
+      const totalMargin = baseMargin + testMargin + element.horizontalMargin;
+      return this.boxesCollide(bbox, element.bbox, totalMargin);
     });
   }
   /**
    * Trouve une position libre pour un élément en ajustant sa position.
    * 
    * @param bbox - Zone souhaitée
+   * @param testType - Type de l'élément qu'on cherche à placer
    * @param direction - Direction d'ajustement préférée
    * @param excludeTypes - Types à exclure de la détection
    * @param maxAttempts - Nombre maximum de tentatives
    * @returns Nouvelle position ajustée ou null si aucune position libre trouvée
    */
-  findFreePosition(bbox, direction = "vertical", excludeTypes = [], maxAttempts = 20) {
-    if (!this.hasCollision(bbox, excludeTypes)) {
+  findFreePosition(bbox, testType, direction = "vertical", excludeTypes = [], maxAttempts = 20) {
+    if (!this.hasCollision(bbox, testType, excludeTypes)) {
       return bbox;
     }
     const step = this.config.minSpacing + 2;
@@ -2070,15 +4337,15 @@ var CollisionManager = class {
         else if (quadrant === 2) candidate = { ...bbox, y: bbox.y + distance };
         else candidate = { ...bbox, x: bbox.x - distance };
       }
-      if (!this.hasCollision(candidate, excludeTypes)) {
+      if (!this.hasCollision(candidate, testType, excludeTypes)) {
         if (this.config.debugMode) {
-          console.log(`[CollisionManager] Found free position after ${attempt} attempts`, candidate);
+          console.log(`[PlaceAndSizeManager] Found free position after ${attempt} attempts`, candidate);
         }
         return candidate;
       }
     }
     if (this.config.debugMode) {
-      console.warn(`[CollisionManager] Could not find free position after ${maxAttempts} attempts`);
+      console.warn(`[PlaceAndSizeManager] Could not find free position after ${maxAttempts} attempts`);
     }
     return null;
   }
@@ -2116,7 +4383,7 @@ var CollisionManager = class {
   clear() {
     this.elements = [];
     if (this.config.debugMode) {
-      console.log("[CollisionManager] Cleared all elements");
+      console.log("[PlaceAndSizeManager] Cleared all elements");
     }
   }
   /**
@@ -2128,7 +4395,7 @@ var CollisionManager = class {
     const before = this.elements.length;
     this.elements = this.elements.filter((e) => e.type !== type);
     if (this.config.debugMode) {
-      console.log(`[CollisionManager] Cleared ${before - this.elements.length} elements of type ${type}`);
+      console.log(`[PlaceAndSizeManager] Cleared ${before - this.elements.length} elements of type ${type}`);
     }
   }
   /**
@@ -2155,60 +4422,1204 @@ var CollisionManager = class {
     };
   }
   /**
+   * Calcule les bounds globaux de tous les éléments enregistrés.
+   * Utile pour dimensionner correctement le SVG avec des marges.
+   * 
+   * @returns Les coordonnées min/max de tous les éléments, ou null si aucun élément
+   */
+  getGlobalBounds() {
+    if (this.elements.length === 0) {
+      return null;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    this.elements.forEach((el) => {
+      const { x, y, width, height } = el.bbox;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + width);
+      maxY = Math.max(maxY, y + height);
+    });
+    return { minX, minY, maxX, maxY };
+  }
+  /**
    * Vérifie si deux bounding boxes se chevauchent (avec marge optionnelle).
+   * La marge est appliquée AUTOUR de chaque box (des deux côtés).
+   * 
+   * Exemple : box à x=150, width=15, margin=5
+   *   → zone protégée : (150-5) à (150+15+5) = 145 à 170
    * 
    * @param a - Première box
    * @param b - Deuxième box
-   * @param margin - Marge supplémentaire à considérer
+   * @param margin - Marge supplémentaire à considérer (appliquée des deux côtés)
    * @returns true si collision détectée
    */
   boxesCollide(a, b, margin = 0) {
-    return !(a.x + a.width + margin < b.x || b.x + b.width + margin < a.x || a.y + a.height + margin < b.y || b.y + b.height + margin < a.y);
+    const aExpanded = {
+      x: a.x - margin,
+      y: a.y - margin,
+      width: a.width + 2 * margin,
+      height: a.height + 2 * margin
+    };
+    const bExpanded = {
+      x: b.x - margin,
+      y: b.y - margin,
+      width: b.width + 2 * margin,
+      height: b.height + 2 * margin
+    };
+    return !(aExpanded.x + aExpanded.width < bExpanded.x || bExpanded.x + bExpanded.width < aExpanded.x || aExpanded.y + aExpanded.height < bExpanded.y || bExpanded.y + bExpanded.height < aExpanded.y);
+  }
+  /**
+   * Clears all registered elements.
+   * Resets the manager to initial state.
+   */
+  clearAll() {
+    this.clear();
+  }
+  /**
+   * Récupère tous les éléments enregistrés d'un type donné.
+   * 
+   * @param type - Type d'élément à filtrer
+   * @returns Liste des éléments correspondants avec leurs métadonnées complètes
+   */
+  getElementsByType(type) {
+    return this.elements.filter((el) => el.type === type);
+  }
+  /**
+   * Récupère tous les éléments d'une mesure donnée.
+   * 
+   * @param measureIndex - Index de la mesure
+   * @returns Liste des éléments de cette mesure avec leurs métadonnées
+   */
+  getElementsByMeasure(measureIndex) {
+    return this.elements.filter(
+      (el) => {
+        var _a;
+        return ((_a = el.metadata) == null ? void 0 : _a.measureIndex) === measureIndex;
+      }
+    );
+  }
+  /**
+   * Diagnostic complet des métadonnées d'alignement chords-stems.
+   * Retourne un rapport détaillé pour chaque mesure.
+   * 
+   * @returns Rapport de diagnostic par mesure
+   */
+  diagnoseChordStemAlignment() {
+    const measures = new Set(
+      this.elements.map((el) => {
+        var _a;
+        return (_a = el.metadata) == null ? void 0 : _a.measureIndex;
+      }).filter((idx) => idx !== void 0)
+    );
+    return Array.from(measures).map((measureIndex) => {
+      const chords = this.getElementsByMeasure(measureIndex).filter((el) => {
+        var _a;
+        return el.type === "chord" && ((_a = el.metadata) == null ? void 0 : _a.chord);
+      }).map((el) => ({
+        symbol: el.metadata.chord.symbol,
+        textX: el.metadata.chord.textX,
+        textAnchor: el.metadata.chord.textAnchor,
+        bbox: el.bbox
+      }));
+      const stems = this.getElementsByMeasure(measureIndex).filter((el) => {
+        var _a;
+        return el.type === "stem" && ((_a = el.metadata) == null ? void 0 : _a.stem);
+      }).map((el) => ({
+        centerX: el.metadata.stem.centerX,
+        direction: el.metadata.stem.direction,
+        bbox: el.bbox
+      }));
+      const alignment = chords.length > 0 && stems.length > 0 ? {
+        firstChordX: chords[0].textX,
+        firstStemX: stems[0].centerX,
+        difference: chords[0].textX - stems[0].centerX
+      } : null;
+      return {
+        measureIndex,
+        chords,
+        stems,
+        alignment
+      };
+    }).sort((a, b) => a.measureIndex - b.measureIndex);
+  }
+  /**
+   * Affiche un rapport de diagnostic dans la console.
+   * Utile pour déboguer les problèmes d'alignement.
+   */
+  logDiagnosticReport() {
+    const report = this.diagnoseChordStemAlignment();
+    console.log("=== DIAGNOSTIC REPORT: Chord-Stem Alignment ===");
+    report.forEach((measure) => {
+      console.log(`
+\u{1F4CF} Measure ${measure.measureIndex}:`);
+      console.log(`  Chords: ${measure.chords.length}`);
+      measure.chords.forEach((c, i) => {
+        console.log(`    [${i}] "${c.symbol}" at X=${c.textX.toFixed(2)} (anchor=${c.textAnchor})`);
+        console.log(`        bbox: x=${c.bbox.x.toFixed(2)}, w=${c.bbox.width.toFixed(2)}`);
+      });
+      console.log(`  Stems: ${measure.stems.length}`);
+      measure.stems.forEach((s, i) => {
+        console.log(`    [${i}] ${s.direction} stem at centerX=${s.centerX.toFixed(2)}`);
+        console.log(`        bbox: x=${s.bbox.x.toFixed(2)}, w=${s.bbox.width.toFixed(2)}`);
+      });
+      if (measure.alignment) {
+        const diff = measure.alignment.difference;
+        const status = Math.abs(diff) < 0.5 ? "\u2705 ALIGNED" : "\u274C MISALIGNED";
+        console.log(`  ${status}: Chord X=${measure.alignment.firstChordX.toFixed(2)}, Stem X=${measure.alignment.firstStemX.toFixed(2)}, \u0394=${diff.toFixed(2)}px`);
+      } else {
+        console.log(`  \u26A0\uFE0F  No alignment data available`);
+      }
+    });
+    console.log("\n=== END DIAGNOSTIC REPORT ===");
+  }
+};
+
+// src/renderer/ChordRenderer.ts
+var ChordRenderer = class {
+  /**
+   * ChordRenderer constructor.
+   */
+  constructor() {
+  }
+  /**
+   * Estimates the width of a chord text.
+   * 
+   * @param text - Chord text
+   * @param fontSize - Font size
+   * @returns Estimated width in pixels
+   */
+  estimateTextWidth(text, fontSize) {
+    return Math.ceil(text.length * fontSize * TYPOGRAPHY.CHAR_WIDTH_RATIO);
+  }
+  /**
+   * Finds the X position of the start of the first note in a segment.
+   * Uses metadata registered in PlaceAndSizeManager.
+   * Returns headLeftX (left edge of note head) for optimal visual alignment.
+   * 
+   * @param placeAndSizeManager - Placement manager
+   * @param measureIndex - Measure index
+   * @param chordIndex - Segment/chord index
+   * @returns X position of the first note's start, or null if not found
+   */
+  findFirstNoteX(placeAndSizeManager, measureIndex, chordIndex) {
+    const notes = placeAndSizeManager.getElementsByMeasure(measureIndex).filter((el) => el.type === "note").filter((el) => {
+      var _a;
+      return ((_a = el.metadata) == null ? void 0 : _a.chordIndex) === chordIndex;
+    }).sort((a, b) => {
+      var _a, _b, _c, _d;
+      const beatDiff = ((_a = a.metadata.beatIndex) != null ? _a : 0) - ((_b = b.metadata.beatIndex) != null ? _b : 0);
+      if (beatDiff !== 0) return beatDiff;
+      return ((_c = a.metadata.noteIndex) != null ? _c : 0) - ((_d = b.metadata.noteIndex) != null ? _d : 0);
+    });
+    if (notes.length === 0) {
+      return null;
+    }
+    const firstNote = notes[0];
+    return firstNote.bbox.x;
+  }
+  /**
+   * Calculates safe Y position for a chord to avoid collisions with stems, tuplets, and voltas.
+   * 
+   * @param placeAndSizeManager - Placement manager
+   * @param measureIndex - Measure index
+   * @param staffLineY - Staff line Y position
+   * @param baseVerticalOffset - Base vertical offset (minimum)
+   * @returns Adjusted Y position to avoid stems, tuplets, and voltas
+   */
+  calculateSafeChordY(placeAndSizeManager, measureIndex, staffLineY, baseVerticalOffset) {
+    const measureElements = placeAndSizeManager.getElementsByMeasure(measureIndex);
+    const stems = measureElements.filter((el) => el.type === "stem");
+    const tupletNumbers = measureElements.filter((el) => el.type === "tuplet-number");
+    const tupletBrackets = measureElements.filter((el) => el.type === "tuplet-bracket");
+    const voltaTexts = measureElements.filter((el) => el.type === "volta-text");
+    const voltaBrackets = measureElements.filter((el) => el.type === "volta-bracket");
+    let safeY = staffLineY - baseVerticalOffset;
+    if (stems.length > 0) {
+      let highestStemY = staffLineY;
+      stems.forEach((stem) => {
+        var _a;
+        if ((_a = stem.metadata) == null ? void 0 : _a.stem) {
+          const { topY, direction } = stem.metadata.stem;
+          if (direction === "up") {
+            highestStemY = Math.min(highestStemY, topY);
+          }
+        }
+      });
+      const stemClearance = POSITIONING.STEM_CLEARANCE;
+      safeY = Math.min(safeY, highestStemY - stemClearance);
+    }
+    if (tupletNumbers.length > 0) {
+      const highestTupletY = Math.min(...tupletNumbers.map((t) => t.bbox.y));
+      const tupletClearance = 2;
+      safeY = Math.min(safeY, highestTupletY - tupletClearance);
+    }
+    if (tupletBrackets.length > 0 && tupletNumbers.length === 0) {
+      const highestBracketY = Math.min(...tupletBrackets.map((t) => t.bbox.y));
+      const bracketClearance = 2;
+      safeY = Math.min(safeY, highestBracketY - bracketClearance);
+    }
+    if (voltaBrackets.length > 0 || voltaTexts.length > 0) {
+      let lowestVoltaY = 0;
+      voltaBrackets.forEach((vb) => {
+        lowestVoltaY = Math.max(lowestVoltaY, vb.bbox.y);
+      });
+      voltaTexts.forEach((vt) => {
+        lowestVoltaY = Math.max(lowestVoltaY, vt.bbox.y + vt.bbox.height);
+      });
+      if (lowestVoltaY > 0) {
+        const voltaClearance = -2;
+        const chordTop = lowestVoltaY + voltaClearance;
+        safeY = Math.max(safeY, chordTop);
+      }
+    }
+    const CHORD_HEIGHT = 22;
+    const MIN_TOP_MARGIN = 5;
+    const minY = MIN_TOP_MARGIN + CHORD_HEIGHT;
+    if (safeY < minY) {
+      safeY = minY;
+    }
+    return safeY;
+  }
+  /**
+   * Renders all chords for the given measures.
+   * 
+   * This method is called AFTER all notes/stems have been rendered
+   * and registered in PlaceAndSizeManager, allowing precise alignment
+   * with stems.
+   * 
+   * @param svg - Parent SVG element
+   * @param measurePositions - Measure positions
+   * @param placeAndSizeManager - Placement manager
+   * @param options - Rendering options
+   */
+  renderChords(svg, measurePositions, placeAndSizeManager, options = {}) {
+    var _a, _b, _c;
+    const fontSize = (_a = options.fontSize) != null ? _a : TYPOGRAPHY.CHORD_FONT_SIZE;
+    const baseVerticalOffset = (_b = options.verticalOffset) != null ? _b : POSITIONING.CHORD_VERTICAL_OFFSET;
+    const displayRepeatSymbol = (_c = options.displayRepeatSymbol) != null ? _c : false;
+    const STAFF_LINE_OFFSET = NOTATION.STAFF_LINE_Y_OFFSET;
+    measurePositions.forEach((mp) => {
+      var _a2;
+      if (!mp.x || !mp.y) return;
+      const measure = mp.measure;
+      const measureX = mp.x;
+      const measureY = mp.y;
+      const isBracketPercent = displayRepeatSymbol && ((_a2 = measure.source) == null ? void 0 : _a2.includes("[%]"));
+      if (measure.__isChordOnlyMode || isBracketPercent) {
+        this.renderChordOnlyMeasure(svg, mp, placeAndSizeManager, displayRepeatSymbol);
+        return;
+      }
+      const staffLineY = measureY + STAFF_LINE_OFFSET;
+      if (displayRepeatSymbol && measure.isRepeat && measure.source === "%") {
+        return;
+      }
+      const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+      segments.forEach((segment, segmentIndex) => {
+        const chordSymbol = segment.chord;
+        if (!chordSymbol || chordSymbol === "") {
+          return;
+        }
+        const chordY = this.calculateSafeChordY(
+          placeAndSizeManager,
+          mp.globalIndex,
+          staffLineY,
+          baseVerticalOffset
+        );
+        const firstNoteX = this.findFirstNoteX(
+          placeAndSizeManager,
+          mp.globalIndex,
+          segmentIndex
+        );
+        if (firstNoteX !== null) {
+          let adjustedX = firstNoteX;
+          const measureElements = placeAndSizeManager.getElementsByMeasure(mp.globalIndex);
+          const voltaTexts = measureElements.filter((el) => el.type === "volta-text");
+          if (voltaTexts.length > 0) {
+            voltaTexts.forEach((vt) => {
+              const voltaTextRight = vt.bbox.x + vt.bbox.width;
+              const voltaTextY = vt.bbox.y;
+              const chordHeight = 22;
+              if (chordY >= voltaTextY - chordHeight - 10 && chordY <= voltaTextY + vt.bbox.height + 10) {
+                adjustedX = Math.max(adjustedX, voltaTextRight);
+              }
+            });
+          }
+          this.renderChordSymbol(
+            svg,
+            chordSymbol,
+            adjustedX,
+            chordY,
+            fontSize,
+            "start",
+            placeAndSizeManager,
+            mp.globalIndex,
+            segmentIndex
+          );
+        } else {
+          console.warn(
+            `[ChordRenderer] No note found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`
+          );
+          const segmentWidth = mp.width / segments.length;
+          const segmentX = measureX + segmentIndex * segmentWidth + segmentWidth / 2;
+          this.renderChordSymbol(
+            svg,
+            chordSymbol,
+            segmentX,
+            chordY,
+            fontSize,
+            "middle",
+            placeAndSizeManager,
+            mp.globalIndex,
+            segmentIndex
+          );
+        }
+      });
+    });
+  }
+  /**
+   * Renders a chord symbol at the given position.
+   * 
+   * @param svg - Parent SVG element
+   * @param chordSymbol - Chord symbol (e.g., "C", "Am7", "G/B")
+   * @param x - X position
+   * @param y - Y position (baseline)
+   * @param fontSize - Font size
+   * @param textAnchor - Text anchor mode
+   * @param placeAndSizeManager - Placement manager
+   * @param measureIndex - Measure index
+   * @param chordIndex - Segment index
+   */
+  renderChordSymbol(svg, chordSymbol, x, y, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex) {
+    let processedChord = chordSymbol.replace(/#/g, "\u266F").replace(/\bb\b/g, "\u266D");
+    processedChord = processedChord.replace(/b([0-9])/g, "\u266D$1");
+    processedChord = processedChord.replace(/([A-G])b([^0-9]|$)/g, "$1\u266D$2");
+    const chordText = document.createElementNS(SVG_NS, "text");
+    chordText.setAttribute("x", x.toString());
+    chordText.setAttribute("y", y.toString());
+    chordText.setAttribute("font-family", "Arial, sans-serif");
+    chordText.setAttribute("font-size", `${fontSize}px`);
+    chordText.setAttribute("font-weight", "bold");
+    chordText.setAttribute("fill", "#000");
+    chordText.setAttribute("text-anchor", textAnchor);
+    chordText.setAttribute("class", "chord-symbol");
+    const rootMatch = processedChord.match(/^[A-G][♯♭]?/);
+    if (!rootMatch) {
+      chordText.textContent = processedChord;
+      svg.appendChild(chordText);
+      const textWidth2 = this.estimateTextWidth(processedChord, fontSize);
+      this.registerChordBBox(chordText, x, y, textWidth2, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, processedChord);
+      return;
+    }
+    const root = rootMatch[0];
+    let remaining = processedChord.substring(root.length);
+    const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|\-)/);
+    const quality = qualityMatch ? qualityMatch[0] : "";
+    remaining = remaining.substring(quality.length);
+    let bass = "";
+    const lastSlashIndex = remaining.lastIndexOf("/");
+    if (lastSlashIndex !== -1) {
+      bass = remaining.substring(lastSlashIndex);
+      remaining = remaining.substring(0, lastSlashIndex);
+    }
+    const superstructures = remaining;
+    const mainNode = document.createTextNode(root);
+    chordText.appendChild(mainNode);
+    const qualityAndSuper = quality + superstructures;
+    if (qualityAndSuper.length > 0) {
+      const parenGroups = qualityAndSuper.match(/\([^)]+\)/g);
+      if (parenGroups && parenGroups.length > 1) {
+        const firstParenIndex = qualityAndSuper.indexOf("(");
+        const beforeParens = qualityAndSuper.substring(0, firstParenIndex);
+        if (beforeParens.length > 0) {
+          const beforeSpan = document.createElementNS(SVG_NS, "tspan");
+          beforeSpan.setAttribute("font-size", `${Math.round(fontSize * 0.75)}px`);
+          beforeSpan.textContent = beforeParens;
+          chordText.appendChild(beforeSpan);
+        }
+        const mainTextWidth = this.estimateTextWidth(root + beforeParens, fontSize * TYPOGRAPHY.SUPERSTRUCTURE_SIZE_RATIO);
+        const stackX = x + mainTextWidth + POSITIONING.CHORD_PARENTHESES_SPACING;
+        parenGroups.forEach((group, index) => {
+          const parenSpan = document.createElementNS(SVG_NS, "tspan");
+          parenSpan.setAttribute("font-size", `${Math.round(fontSize * TYPOGRAPHY.PARENTHESES_SIZE_RATIO)}px`);
+          parenSpan.setAttribute("x", stackX.toString());
+          if (index === 0) {
+            parenSpan.setAttribute("dy", "-0.5em");
+          } else {
+            parenSpan.setAttribute("dy", "1.2em");
+          }
+          parenSpan.textContent = group;
+          chordText.appendChild(parenSpan);
+        });
+      } else {
+        const superSpan = document.createElementNS(SVG_NS, "tspan");
+        superSpan.setAttribute("font-size", `${Math.round(fontSize * TYPOGRAPHY.SUPERSTRUCTURE_SIZE_RATIO)}px`);
+        superSpan.textContent = qualityAndSuper;
+        chordText.appendChild(superSpan);
+      }
+    }
+    if (bass.length > 0) {
+      const bassSpan = document.createElementNS(SVG_NS, "tspan");
+      bassSpan.setAttribute("font-size", `${Math.round(fontSize * TYPOGRAPHY.BASS_NOTE_SIZE_RATIO)}px`);
+      bassSpan.textContent = bass;
+      chordText.appendChild(bassSpan);
+    }
+    svg.appendChild(chordText);
+    const textWidth = this.estimateTextWidth(processedChord, fontSize);
+    this.registerChordBBox(chordText, x, y, textWidth, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, processedChord);
+  }
+  /**
+   * Helper method to register chord bounding box in PlaceAndSizeManager
+   */
+  registerChordBBox(chordText, x, y, textWidth, fontSize, textAnchor, placeAndSizeManager, measureIndex, chordIndex, chordSymbol) {
+    let bboxX;
+    if (textAnchor === "start") {
+      bboxX = x;
+    } else if (textAnchor === "middle") {
+      bboxX = x - textWidth / 2;
+    } else {
+      bboxX = x - textWidth;
+    }
+    placeAndSizeManager.registerElement("chord", {
+      x: bboxX,
+      y: y - fontSize,
+      width: textWidth,
+      height: fontSize + 4
+    }, 5, {
+      measureIndex,
+      chordIndex,
+      canCollide: true,
+      chord: {
+        symbol: chordSymbol,
+        textX: x,
+        textY: y,
+        textAnchor,
+        textWidth,
+        fontSize
+      }
+    });
+  }
+  /**
+   * Renders chords for a chord-only measure (no rhythm notation).
+   * Uses special positioning logic based on the number of chord segments.
+   * 
+   * @param svg - Parent SVG element
+   * @param measurePosition - Measure position info
+   * @param placeAndSizeManager - Placement manager
+   */
+  renderChordOnlyMeasure(svg, measurePosition, placeAndSizeManager, displayRepeatSymbol = false) {
+    var _a;
+    const measure = measurePosition.measure;
+    const isSimpleRepeat = displayRepeatSymbol && measure.isRepeat && measure.source === "%";
+    if (isSimpleRepeat) {
+      return;
+    }
+    const measureX = measurePosition.x;
+    const measureY = measurePosition.y;
+    const measureWidth = measurePosition.width;
+    const measureIndex = measurePosition.globalIndex;
+    const segments = measure.chordSegments || [];
+    const chordCount = segments.length;
+    if (chordCount === 0) {
+      return;
+    } else if (chordCount === 1) {
+      const chord = segments[0].chord;
+      const isRepeatWithChord = (_a = measure.source) == null ? void 0 : _a.includes("[%]");
+      let chordX;
+      let chordY;
+      let textAnchor;
+      if (isRepeatWithChord) {
+        chordX = measureX + LAYOUT.BASE_LEFT_PADDING + 5;
+        const staffLineY = measureY + NOTATION.STAFF_LINE_Y_OFFSET;
+        chordY = staffLineY - POSITIONING.CHORD_VERTICAL_OFFSET;
+        textAnchor = "start";
+      } else {
+        chordX = measureX + measureWidth / 2;
+        chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+        textAnchor = "middle";
+      }
+      const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
+      this.renderChordSymbol(
+        svg,
+        chord,
+        chordX,
+        chordY,
+        fontSize,
+        textAnchor,
+        placeAndSizeManager,
+        measureIndex,
+        0
+      );
+    } else if (chordCount === 2) {
+      const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
+      const chord1 = segments[0].chord;
+      const chord1X = measureX + measureWidth * POSITIONING.CHORD_ONLY_2_FIRST_X;
+      const chord1Y = measureY + POSITIONING.CHORD_ONLY_2_FIRST_Y;
+      this.renderChordSymbol(
+        svg,
+        chord1,
+        chord1X,
+        chord1Y,
+        fontSize,
+        "middle",
+        placeAndSizeManager,
+        measureIndex,
+        0
+      );
+      const chord2 = segments[1].chord;
+      const chord2X = measureX + measureWidth * POSITIONING.CHORD_ONLY_2_SECOND_X;
+      const chord2Y = measureY + POSITIONING.CHORD_ONLY_2_SECOND_Y;
+      this.renderChordSymbol(
+        svg,
+        chord2,
+        chord2X,
+        chord2Y,
+        fontSize,
+        "middle",
+        placeAndSizeManager,
+        measureIndex,
+        1
+      );
+    } else {
+      const availableWidth = measureWidth - LAYOUT.BASE_LEFT_PADDING - LAYOUT.BASE_RIGHT_PADDING;
+      const chordSpacing = availableWidth / chordCount;
+      const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
+      segments.forEach((segment, idx) => {
+        const chord = segment.chord;
+        if (!chord) return;
+        const chordX = measureX + LAYOUT.BASE_LEFT_PADDING + chordSpacing * (idx + 0.5);
+        const chordY = measureY + POSITIONING.CHORD_ONLY_Y_CENTER;
+        this.renderChordSymbol(
+          svg,
+          chord,
+          chordX,
+          chordY,
+          fontSize,
+          "middle",
+          placeAndSizeManager,
+          measureIndex,
+          idx
+        );
+      });
+    }
+  }
+};
+
+// src/renderer/StrumPatternRenderer.ts
+var StrumPatternRenderer = class {
+  /**
+   * Detect the global subdivision (8, 16, 32, or 64) across the entire grid.
+   * 
+   * Rule: Return the smallest note value found (highest numeric value).
+   * 
+   * This determines the "grain" of the rhythmic timeline for alternation.
+   * 
+   * @param grid - Complete chord grid
+   * @returns 8, 16, 32, or 64 (subdivision unit)
+   */
+  static detectGlobalSubdivision(grid) {
+    var _a;
+    let smallestValue = 8;
+    for (const measure of grid.measures) {
+      const groupBase = {};
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const prev = (_a = groupBase[gid]) != null ? _a : 0;
+              groupBase[gid] = Math.max(prev, n.value);
+            }
+          }
+        }
+      }
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.isRest || n.tieEnd || n.tieFromVoid) continue;
+            let effectiveValue = n.value;
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const base = groupBase[gid] || n.value;
+              effectiveValue = Math.max(effectiveValue, base);
+            }
+            if (effectiveValue > smallestValue) {
+              smallestValue = effectiveValue;
+            }
+          }
+        }
+      }
+    }
+    return smallestValue;
+  }
+  /**
+   * Detect the smallest subdivision within a specific beat.
+   * 
+   * @param beat - Beat object containing notes
+   * @returns 4, 8, 16, 32, or 64 (subdivision unit for this beat)
+   */
+  static detectBeatSubdivision(beat) {
+    let smallestValue = 4;
+    for (const note of beat.notes) {
+      if (note.isRest || note.tieEnd || note.tieFromVoid) continue;
+      if (note.value > smallestValue) {
+        smallestValue = note.value;
+      }
+    }
+    return smallestValue;
+  }
+  /**
+   * Build a rhythmic timeline and assign directions to each note.
+   * 
+   * This is the core algorithm that:
+   * 1. Builds a continuous timeline of all notes
+   * 2. Applies the 3-level priority system:
+   *    - Level 1: Explicit symbols (user-defined)
+   *    - Level 2: Predefined patterns (time signature-specific)
+   *    - Level 3: Automatic alternation (fallback)
+   * 
+   * @param grid - Complete chord grid
+   * @param config - Configuration (pick or finger mode)
+   * @returns Array of notes with assigned directions
+   */
+  static assignDirections(grid, config) {
+    const globalStep = this.detectGlobalSubdivision(grid);
+    const baseStep = Math.min(globalStep, 16);
+    const notesOnTimeline = [];
+    let currentSubdivision = 0;
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          const beatStep = this.detectBeatSubdivision(beat);
+          const effectiveStep = beatStep >= 32 ? beatStep : baseStep;
+          beat.notes.forEach((note, noteIndex) => {
+            const noteDuration = note.value;
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            const subdivisionCount = Math.round(effectiveStep / noteDuration * dottedMultiplier);
+            let explicitSymbol;
+            if (config.mode === "pick" && note.pickDirection) {
+              explicitSymbol = note.pickDirection;
+            } else if (config.mode === "finger" && note.fingerSymbol) {
+              explicitSymbol = note.fingerSymbol;
+            }
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack,
+              value: note.value,
+              explicitSymbol
+            });
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+    const timeSignature = grid.timeSignature;
+    const tsKey = `${timeSignature.numerator}/${timeSignature.denominator}`;
+    const DEBUG_DISABLE_PATTERNS = false;
+    const patternConfig = FINGER_PATTERNS[tsKey];
+    const patternArray = DEBUG_DISABLE_PATTERNS ? void 0 : patternConfig == null ? void 0 : patternConfig.pattern;
+    let patternBeats;
+    if (globalStep === 8) {
+      patternBeats = 2;
+    } else if (globalStep === 16) {
+      patternBeats = 1;
+    } else if (globalStep >= 32) {
+      patternBeats = 0.5;
+    } else {
+      patternBeats = 2;
+    }
+    const beatValue = 4;
+    const subdivisionsPerBeat = globalStep / beatValue;
+    const timeline = [];
+    if (patternArray && config.mode === "finger") {
+      const totalPatternSubdivisions = patternBeats * subdivisionsPerBeat;
+      const subdivPerPatternElement = totalPatternSubdivisions / patternArray.length;
+      for (let i = 0; i < currentSubdivision; i++) {
+        const positionInPattern = i % totalPatternSubdivisions;
+        const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
+        const rawSymbol = patternArray[patternIndex];
+        const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || "fr");
+        const direction = normalizedSymbol.endsWith("u") ? "up" : "down";
+        timeline.push({ direction, subdivisionIndex: i, symbol: normalizedSymbol });
+      }
+    } else {
+      const basePattern = ["t", "tu", "h", "tu"];
+      for (let i = 0; i < currentSubdivision; i++) {
+        let direction;
+        let symbol;
+        if (config.mode === "finger") {
+          let patternIndex;
+          if (globalStep > 8) {
+            const positionInBeat = i % subdivisionsPerBeat;
+            patternIndex = positionInBeat % basePattern.length;
+          } else {
+            patternIndex = i % basePattern.length;
+          }
+          const rawSymbol = basePattern[patternIndex];
+          symbol = this.normalizeFingerSymbol(rawSymbol, config.language || "en");
+          direction = symbol.endsWith("u") ? "up" : "down";
+        } else {
+          const isDown = i % 2 === 0;
+          direction = isDown ? "down" : "up";
+        }
+        timeline.push({
+          direction,
+          subdivisionIndex: i,
+          symbol
+        });
+      }
+    }
+    const result = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
+      if (n.explicitSymbol) {
+        let direction2;
+        let normalizedSymbol;
+        if (config.mode === "pick") {
+          direction2 = n.explicitSymbol === "d" ? "down" : "up";
+          normalizedSymbol = n.explicitSymbol;
+        } else {
+          normalizedSymbol = this.normalizeFingerSymbol(n.explicitSymbol, config.language || "en");
+          direction2 = normalizedSymbol.endsWith("u") ? "up" : "down";
+        }
+        return {
+          ...n,
+          assignedDirection: direction2,
+          assignedSymbol: normalizedSymbol
+        };
+      }
+      const timelineSlot = timeline[n.subdivisionStart];
+      const direction = (timelineSlot == null ? void 0 : timelineSlot.direction) || "down";
+      const assignedSymbol = timelineSlot == null ? void 0 : timelineSlot.symbol;
+      return {
+        ...n,
+        assignedDirection: direction,
+        assignedSymbol
+      };
+    });
+    return result;
+  }
+  /**
+   * Normalize and translate finger symbols to their canonical form.
+   * 
+   * This function accepts ALL variants (short, long, English, French) and normalizes them
+   * to the long form in the target language.
+   * 
+   * Accepted Input Variants:
+   * - Short English: t, tu, h, hu
+   * - Long English: td, tu, hd, hu
+   * - Short French: p, pu, m, mu
+   * - Long French: pd, pu, md, mu
+   * 
+   * Output (normalized long form):
+   * - English: td, tu, hd, hu
+   * - French: pd, pu, md, mu
+   * 
+   * Examples:
+   * ```
+   * normalizeFingerSymbol('t', 'en')   → 'td'  (expand short)
+   * normalizeFingerSymbol('td', 'en')  → 'td'  (already normalized)
+   * normalizeFingerSymbol('t', 'fr')   → 'pd'  (expand + translate)
+   * normalizeFingerSymbol('td', 'fr')  → 'pd'  (translate)
+   * normalizeFingerSymbol('p', 'fr')   → 'pd'  (expand short French)
+   * normalizeFingerSymbol('pd', 'fr')  → 'pd'  (already normalized)
+   * normalizeFingerSymbol('tu', 'en')  → 'tu'  (already normalized)
+   * normalizeFingerSymbol('tu', 'fr')  → 'pu'  (translate)
+   * ```
+   * 
+   * @param symbol - Original symbol (any variant)
+   * @param language - Target language ('en' or 'fr')
+   * @returns Normalized symbol in long form for target language
+   */
+  static normalizeFingerSymbol(symbol, language) {
+    const toEnglishLong = {
+      // Short English → Long English
+      "t": "td",
+      "tu": "tu",
+      // already long
+      "h": "hd",
+      "hu": "hu",
+      // already long
+      // Long English → Long English (pass-through)
+      "td": "td",
+      "hd": "hd",
+      // Short French → Long English (normalize first)
+      "p": "td",
+      "pu": "tu",
+      "m": "hd",
+      "mu": "hu",
+      // Long French → Long English
+      "pd": "td",
+      "md": "hd"
+    };
+    const englishLong = toEnglishLong[symbol] || symbol;
+    if (language === "fr") {
+      const enToFr = {
+        "td": "pd",
+        "tu": "pu",
+        "hd": "md",
+        "hu": "mu"
+      };
+      return enToFr[englishLong] || englishLong;
+    }
+    return englishLong;
+  }
+};
+
+// src/renderer/CountingRenderer.ts
+var CountingRenderer = class {
+  /**
+   * Draw counting numbers on notes.
+   * 
+   * This method renders sequential counting numbers (1, 2, 3...) below or above
+   * note heads depending on stem direction. Numbers are styled according to their
+   * countingSize property:
+   * - 't' (tall): Bold, larger font - for beat starts
+   * - 'm' (medium): Normal weight, medium font - for subdivisions
+   * - 's' (small): Normal weight, small font, gray - for rests
+   * 
+   * Position logic:
+   * - Stems-up: numbers placed BELOW note head (default)
+   * - Stems-down: numbers placed ABOVE note head
+   * - Spacing: 5px from note head edge (closer than pick/finger symbols)
+   * 
+   * @param svg - Parent SVG element to append counting numbers to
+   * @param notePositions - Array of note positions with counting metadata
+   * @param stemsDirection - Global stem direction ('up' or 'down')
+   * @param allowedMeasureIndices - Optional filter to render only specific measures (line-based rendering)
+   * @param placeAndSizeManager - Optional collision detection manager for future enhancements
+   */
+  static drawCountingNumbers(svg, notePositions, stemsDirection, allowedMeasureIndices, placeAndSizeManager) {
+    const FONT_SIZE_TALL = NOTATION.COUNTING_FONT_SIZE_TALL;
+    const FONT_SIZE_MEDIUM = NOTATION.COUNTING_FONT_SIZE_MEDIUM;
+    const FONT_SIZE_SMALL = NOTATION.COUNTING_FONT_SIZE_SMALL;
+    const MARGIN = NOTATION.COUNTING_MARGIN;
+    const FONT_WEIGHT_TALL = NOTATION.COUNTING_FONT_WEIGHT_TALL;
+    const FONT_WEIGHT_NORMAL = NOTATION.COUNTING_FONT_WEIGHT_NORMAL;
+    const COLOR_REST = NOTATION.COUNTING_COLOR_REST;
+    const COLOR_NORMAL = NOTATION.COUNTING_COLOR_NORMAL;
+    const NOTE_HEAD_HALF_HEIGHT = NOTATION.PATTERN_NOTE_HEAD_HALF_HEIGHT;
+    notePositions.forEach((notePos) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(notePos.measureIndex)) {
+        return;
+      }
+      if (notePos.countingLabel === void 0 || notePos.countingSize === void 0) {
+        return;
+      }
+      if (notePos.countingLabel === "") {
+        return;
+      }
+      const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
+      const noteStemDirection = hasStem ? notePos.stemTopY < notePos.y ? "up" : "down" : stemsDirection;
+      const placeBelow = noteStemDirection === "up";
+      const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadEdgeY = placeBelow ? noteHeadBottom : noteHeadTop;
+      let fontSize;
+      let fontWeight;
+      let color;
+      switch (notePos.countingSize) {
+        case "t":
+          fontSize = FONT_SIZE_TALL;
+          fontWeight = FONT_WEIGHT_TALL;
+          color = COLOR_NORMAL;
+          break;
+        case "m":
+          fontSize = FONT_SIZE_MEDIUM;
+          fontWeight = FONT_WEIGHT_NORMAL;
+          color = COLOR_NORMAL;
+          break;
+        case "s":
+          fontSize = FONT_SIZE_SMALL;
+          fontWeight = FONT_WEIGHT_NORMAL;
+          color = COLOR_REST;
+          break;
+        default:
+          fontSize = FONT_SIZE_MEDIUM;
+          fontWeight = FONT_WEIGHT_NORMAL;
+          color = COLOR_NORMAL;
+      }
+      const textY = placeBelow ? noteHeadEdgeY + MARGIN + fontSize * 0.75 : noteHeadEdgeY - MARGIN;
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("x", notePos.x.toString());
+      text.setAttribute("y", textY.toString());
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("font-family", "Arial, sans-serif");
+      text.setAttribute("font-size", `${fontSize}px`);
+      text.setAttribute("font-weight", fontWeight);
+      text.setAttribute("fill", color);
+      text.setAttribute("data-counting", "true");
+      text.setAttribute("data-counting-size", notePos.countingSize);
+      text.textContent = notePos.countingLabel;
+      svg.appendChild(text);
+      if (placeAndSizeManager) {
+        const estimatedWidth = fontSize * 0.6 * notePos.countingLabel.length;
+        const bbox = {
+          x: notePos.x - estimatedWidth / 2,
+          y: placeBelow ? noteHeadEdgeY + MARGIN : textY - fontSize,
+          width: estimatedWidth,
+          height: fontSize
+        };
+        placeAndSizeManager.registerElement("counting", bbox, 6, {
+          label: notePos.countingLabel,
+          size: notePos.countingSize,
+          exactX: notePos.x,
+          exactY: textY
+        });
+      }
+    });
   }
 };
 
 // src/renderer/SVGRenderer.ts
 var SVGRenderer = class {
-  /**
-   * Rend une grille d'accords en élément SVG.
-   * 
-   * @param grid - Structure ChordGrid contenant les mesures à rendre
-   * @returns Élément SVG prêt à être inséré dans le DOM
-   */
-  render(grid) {
-    return this.createSVG(grid);
+  constructor() {
+    // Dynamic spacing limits for readability
+    __publicField(this, "MIN_SPACING_RATIO", SEGMENT_WIDTH.MIN_SPACING_RATIO);
+    __publicField(this, "MAX_SPACING_RATIO", SEGMENT_WIDTH.MAX_SPACING_RATIO);
   }
-  createSVG(grid) {
-    const measuresPerLine = 4;
-    const baseMeasureWidth = 240;
-    const measureHeight = 120;
+  /**
+   * Calculate the minimum spacing for a given rhythmic value.
+   */
+  getMinSpacingForValue(v) {
+    if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+    if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+    if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+    if (v >= 8) return NOTE_SPACING.EIGHTH;
+    return NOTE_SPACING.QUARTER_AND_LONGER;
+  }
+  /**
+   * Calculate the required width for a beat.
+   */
+  calculateBeatWidth(beat) {
+    var _a;
+    const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
+    if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + SEGMENT_WIDTH.SINGLE_NOTE_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX;
+    const spacing = Math.max(
+      ...beat.notes.map((n) => {
+        const base = this.getMinSpacingForValue(n.value);
+        return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
+      })
+    );
+    return SEGMENT_WIDTH.MULTI_NOTE_LEFT_PADDING + SEGMENT_WIDTH.MULTI_NOTE_RIGHT_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX + (noteCount - 1) * spacing + SEGMENT_WIDTH.MULTI_NOTE_END_MARGIN;
+  }
+  /**
+   * Calcule la largeur totale requise pour une mesure.
+   */
+  calculateMeasureWidth(measure) {
+    if (measure.__isEmpty) {
+      return LAYOUT.BASE_MEASURE_WIDTH * 0.5;
+    }
+    const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+    let width = 0;
+    segments.forEach((seg, idx) => {
+      if (idx > 0 && seg.leadingSpace) width += LAYOUT.SEPARATOR_WIDTH;
+      const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + this.calculateBeatWidth(b), 0);
+      width += beatsWidth + LAYOUT.INNER_PADDING_PER_SEGMENT;
+    });
+    if (measure.__shouldShowTimeSignature && measure.timeSignature) {
+      width += 60;
+    }
+    return Math.max(LAYOUT.BASE_MEASURE_WIDTH, Math.ceil(width));
+  }
+  /**
+   * Effective width used for rendering, accounting for the potential compression ratio.
+   */
+  getRenderedMeasureWidth(measure) {
+    const base = this.calculateMeasureWidth(measure);
+    const ratio = measure.__spacingRatio;
+    return ratio ? base * ratio : base;
+  }
+  /**
+   * Compares two time signatures for equality.
+   */
+  timeSignaturesEqual(ts1, ts2) {
+    if (!ts1 || !ts2) return ts1 === ts2;
+    return ts1.numerator === ts2.numerator && ts1.denominator === ts2.denominator;
+  }
+  /**
+   * PRE-MARK measures with time signature changes BEFORE layout calculation.
+   * This allows calculateMeasureWidth() to reserve space for inline time signatures.
+   * Only marks actual changes (not line-starts, which are handled later in markTimeSignatureDisplay).
+   */
+  preMarkTimeSignatureChanges(measures, globalTimeSignature) {
+    let currentTimeSignature = globalTimeSignature;
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
+      if (measure.timeSignature && !this.timeSignaturesEqual(measure.timeSignature, currentTimeSignature)) {
+        measure.__shouldShowTimeSignature = true;
+        currentTimeSignature = measure.timeSignature;
+      }
+    }
+  }
+  /**
+   * Marks measures that should display their time signature.
+   * This takes into account:
+   * - First occurrence of a time signature change
+   * - Line breaks (forced with \n or automatic) where the current metric differs from global
+   */
+  markTimeSignatureDisplay(renderLines, globalTimeSignature) {
+    let currentTimeSignature = globalTimeSignature;
+    renderLines.forEach((line, lineIndex) => {
+      line.measures.forEach((measure, posInLine) => {
+        const isLineStart = posInLine === 0;
+        const measureTS = measure.timeSignature;
+        let shouldShow = false;
+        if (measureTS) {
+          if (!this.timeSignaturesEqual(measureTS, currentTimeSignature)) {
+            shouldShow = true;
+            currentTimeSignature = measureTS;
+          } else {
+            currentTimeSignature = measureTS;
+          }
+        } else if (isLineStart && lineIndex > 0) {
+          if (!this.timeSignaturesEqual(currentTimeSignature, globalTimeSignature)) {
+            measure.timeSignature = currentTimeSignature;
+            shouldShow = true;
+          }
+        }
+        measure.__shouldShowTimeSignature = shouldShow;
+      });
+    });
+  }
+  /**
+   * Calculates the layout of measures into lines.
+   * 
+   * @param measures - Array of all measures
+   * @param maxWidth - Maximum width of a line (used in auto mode)
+   * @param forcedMeasuresPerLine - If defined, forces exactly N measures per line
+   * @returns Array of render lines
+   */
+  calculateLayout(measures, maxWidth, forcedMeasuresPerLine) {
+    const lines = [];
+    let currentLineMeasures = [];
+    let currentLineWidth = 0;
+    let currentY = 0;
+    for (let i = 0; i < measures.length; i++) {
+      const measure = measures[i];
+      const measureWidth = this.calculateMeasureWidth(measure);
+      currentLineMeasures.push(measure);
+      currentLineWidth += measureWidth;
+      let shouldBreak = false;
+      if (forcedMeasuresPerLine !== void 0) {
+        const currentMeasure = measure;
+        const forcedBreakByFlag = currentMeasure.isLineBreak;
+        const forcedBreakByCount = currentLineMeasures.length >= forcedMeasuresPerLine;
+        shouldBreak = forcedBreakByFlag || forcedBreakByCount;
+      } else {
+        const isOverflowing = currentLineMeasures.length > 1 && currentLineWidth > maxWidth;
+        const forcedBreak = measure.isLineBreak || false;
+        shouldBreak = isOverflowing || forcedBreak;
+      }
+      if (shouldBreak) {
+        lines.push({
+          measures: currentLineMeasures,
+          width: currentLineWidth,
+          height: LAYOUT.MEASURE_HEIGHT,
+          startY: currentY
+        });
+        currentLineMeasures = [];
+        currentLineWidth = 0;
+        currentY += LAYOUT.MEASURE_HEIGHT + LAYOUT.LINE_VERTICAL_SPACING;
+      }
+    }
+    if (currentLineMeasures.length > 0) {
+      lines.push({
+        measures: currentLineMeasures,
+        width: currentLineWidth,
+        height: LAYOUT.MEASURE_HEIGHT,
+        startY: currentY
+      });
+    }
+    this.applyDynamicSpacing(lines, maxWidth, forcedMeasuresPerLine !== void 0);
+    return lines;
+  }
+  /**
+   * Dynamically adjusts measure widths on each line
+   * based on available space, while respecting readability limits.
+   * 
+   * @param lines - Render lines to adjust
+   * @param maxWidth - Maximum available width
+   * @param isForcedLayout - If true, removes limits to force adjustment to frame
+   */
+  applyDynamicSpacing(lines, maxWidth, isForcedLayout = false) {
+    for (const line of lines) {
+      if (line.measures.length === 0) continue;
+      const currentWidth = line.width;
+      let targetRatio = maxWidth / currentWidth;
+      if (isForcedLayout) {
+        if (targetRatio < 0.7) {
+          targetRatio = 1;
+        }
+      } else {
+        targetRatio = Math.max(this.MIN_SPACING_RATIO, Math.min(this.MAX_SPACING_RATIO, targetRatio));
+      }
+      if (Math.abs(targetRatio - 1) > 0.01) {
+        for (const measure of line.measures) {
+          measure.__spacingRatio = targetRatio;
+        }
+        line.width = currentWidth * targetRatio;
+      }
+    }
+  }
+  /**
+   * Renders a chord grid as an SVG element.
+   * 
+   * @param grid - ChordGrid structure containing measures to render
+   * @returns SVG element ready to be inserted into the DOM
+   */
+  /**
+   * Renders a chord grid as an SVG element.
+   * @param grid - ChordGrid structure containing measures to render
+   * @param optionsOrStemsDirection - Render options or stem direction (backward compatibility)
+   */
+  render(grid, optionsOrStemsDirection) {
+    let options;
+    if (typeof optionsOrStemsDirection === "string") {
+      options = { stemsDirection: optionsOrStemsDirection };
+    } else {
+      options = optionsOrStemsDirection || {};
+    }
+    const stemsDir = options.stemsDirection === "down" ? "down" : "up";
+    return this.createSVG(grid, stemsDir, options);
+  }
+  createSVG(grid, stemsDirection, options) {
+    const measuresPerLine = LAYOUT.DEFAULT_MEASURES_PER_LINE;
+    const baseMeasureWidth = LAYOUT.BASE_MEASURE_WIDTH;
+    const measureHeight = LAYOUT.MEASURE_HEIGHT;
     const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
-    const timeSigFontSize = 18;
-    const timeSigAvgCharFactor = 0.53;
+    const timeSigFontSize = TYPOGRAPHY.TIME_SIG_NUMERATOR_SIZE;
+    const timeSigAvgCharFactor = TYPOGRAPHY.CHAR_WIDTH_RATIO;
     const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
-    const baseLeftPadding = 10;
-    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + 4;
-    const separatorWidth = 12;
-    const innerPaddingPerSegment = 20;
-    const headHalfMax = 6;
+    const baseLeftPadding = LAYOUT.BASE_LEFT_PADDING;
+    const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + LAYOUT.TIME_SIG_MARGIN;
+    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
+    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
+    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
     const valueMinSpacing = (v) => {
-      if (v >= 64) return 16;
-      if (v >= 32) return 20;
-      if (v >= 16) return 26;
-      if (v >= 8) return 24;
-      return 20;
+      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
+      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
+      if (v >= 16) return NOTE_SPACING.SIXTEENTH;
+      if (v >= 8) return NOTE_SPACING.EIGHTH;
+      return NOTE_SPACING.QUARTER_AND_LONGER;
     };
     const requiredBeatWidth = (beat) => {
       var _a;
       const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
-      if (noteCount <= 1) return 28 + 10 + headHalfMax;
+      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
       const spacing = Math.max(
         ...beat.notes.map((n) => {
           const base = valueMinSpacing(n.value);
-          return n.isRest ? base + 4 : base;
+          return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
         })
       );
-      return 10 + 10 + headHalfMax + (noteCount - 1) * spacing + 8;
+      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + LAYOUT.SEGMENT_END_PADDING;
     };
     const requiredMeasureWidth = (measure) => {
       const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
@@ -2220,63 +5631,91 @@ var SVGRenderer = class {
       });
       return Math.max(baseMeasureWidth, Math.ceil(width2));
     };
-    const dynamicMeasureWidths = grid.measures.map((m) => requiredMeasureWidth(m));
-    let currentLine = 0;
-    let measuresInCurrentLine = 0;
+    const dynamicMeasureWidths = grid.measures.map((m) => this.calculateMeasureWidth(m));
+    let maxLineWidth;
+    if (options.measuresPerLine) {
+      const targetSVGWidth = 1e3;
+      const availableWidth = targetSVGWidth - dynamicLineStartPadding - LAYOUT.AVAILABLE_WIDTH_SIDE_MARGIN;
+      maxLineWidth = availableWidth;
+    } else {
+      maxLineWidth = measuresPerLine * baseMeasureWidth;
+    }
+    this.preMarkTimeSignatureChanges(grid.measures, grid.timeSignature);
+    const renderLines = this.calculateLayout(grid.measures, maxLineWidth, options.measuresPerLine);
+    this.resolveCrossLineTies(renderLines);
+    this.markTimeSignatureDisplay(renderLines, grid.timeSignature);
     const measurePositions = [];
     let globalIndex = 0;
-    const maxLineWidth = measuresPerLine * baseMeasureWidth;
-    let currentLineWidth = 0;
-    grid.measures.forEach((measure, mi) => {
-      const mWidth = dynamicMeasureWidths[mi];
-      if (measuresInCurrentLine > 0 && currentLineWidth + mWidth > maxLineWidth) {
-        currentLine++;
-        measuresInCurrentLine = 0;
-        currentLineWidth = 0;
-      }
-      const isLineStart = measuresInCurrentLine === 0;
-      measure.__isLineStart = isLineStart;
-      measurePositions.push({ measure, lineIndex: currentLine, posInLine: measuresInCurrentLine, globalIndex: globalIndex++, width: mWidth });
-      measuresInCurrentLine++;
-      currentLineWidth += mWidth;
-      if (measure.isLineBreak) {
-        currentLine++;
-        measuresInCurrentLine = 0;
-        currentLineWidth = 0;
+    renderLines.forEach((line, lineIndex) => {
+      let currentX = dynamicLineStartPadding;
+      line.measures.forEach((measure, posInLine) => {
+        const measureWidth = this.getRenderedMeasureWidth(measure);
+        measure.__isLineStart = posInLine === 0;
+        measurePositions.push({
+          measure,
+          lineIndex,
+          posInLine,
+          globalIndex,
+          width: measureWidth,
+          x: currentX,
+          y: line.startY + LAYOUT.MEASURE_Y_OFFSET
+          // Y offset to leave space for title/signature if needed
+        });
+        currentX += measureWidth;
+        globalIndex++;
+      });
+    });
+    const lines = renderLines.length;
+    let maxRepeatCountWidth = 0;
+    renderLines.forEach((line) => {
+      const lastMeasure = line.measures[line.measures.length - 1];
+      if (lastMeasure && lastMeasure.repeatCount !== void 0) {
+        const count = lastMeasure.repeatCount;
+        const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH;
+        const totalRepeatCountWidth = LAYOUT.BASE_LEFT_PADDING + textWidth;
+        maxRepeatCountWidth = Math.max(maxRepeatCountWidth, totalRepeatCountWidth);
       }
     });
-    const lines = currentLine + 1;
-    const linesWidths = new Array(lines).fill(0);
-    measurePositions.forEach((p) => {
-      linesWidths[p.lineIndex] += p.width;
-    });
-    const width = Math.max(...linesWidths, baseMeasureWidth) + 60;
-    const height = lines * (measureHeight + 20) + 20;
+    const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN + maxRepeatCountWidth;
+    const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
+    const isStemDown = options.stemsDirection === "down";
+    let additionalBottomSpace = 0;
+    if (options.countingMode) {
+      additionalBottomSpace += NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+    }
+    if (options.fingerMode || options.pickStrokes) {
+      additionalBottomSpace += 15;
+    }
+    const height = layoutBottom + LAYOUT.BOTTOM_SVG_MARGIN + additionalBottomSpace;
+    const topMarginForChords = LAYOUT.TOP_MARGIN_FOR_CHORDS;
+    const totalHeight = height + topMarginForChords;
     const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("width", String(width));
-    svg.setAttribute("height", String(height));
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("viewBox", `0 ${-topMarginForChords} ${width} ${totalHeight}`);
     svg.setAttribute("xmlns", SVG_NS);
-    const collisionManager = new CollisionManager();
+    const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
+    const timeSignatureRenderer = new TimeSignatureRenderer(placeAndSizeManager);
     const tieManager = new TieManager();
+    const voltaManager = new VoltaManager();
     const notePositions = [];
     const bg = document.createElementNS(SVG_NS, "rect");
     bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
+    bg.setAttribute("y", String(-topMarginForChords));
     bg.setAttribute("width", String(width));
-    bg.setAttribute("height", String(height));
+    bg.setAttribute("height", String(totalHeight));
     bg.setAttribute("fill", "white");
     svg.appendChild(bg);
-    const timeSigBaselineY = 40;
-    const timeText = this.createText(timeSignatureString, baseLeftPadding, timeSigBaselineY, `${timeSigFontSize}px`, "bold");
-    svg.appendChild(timeText);
+    const timeSigX = baseLeftPadding + timeSigWidthEstimate / 2;
+    const firstLineY = 20;
+    const timeSigY = firstLineY + NOTATION.STAFF_LINE_Y_OFFSET;
+    timeSignatureRenderer.render(svg, {
+      x: timeSigX,
+      y: timeSigY,
+      numerator: grid.timeSignature.numerator,
+      denominator: grid.timeSignature.denominator,
+      measureIndex: 0
+    }, true);
     svg.__dynamicLineStartPadding = dynamicLineStartPadding;
-    collisionManager.registerElement("time-signature", {
-      x: baseLeftPadding,
-      y: timeSigBaselineY - timeSigFontSize,
-      width: timeSigWidthEstimate,
-      height: timeSigFontSize + 4
-    }, 0, { text: timeSignatureString, widthEstimate: timeSigWidthEstimate });
     let analyzedMeasures = [];
     let level1BeamSet;
     try {
@@ -2312,7 +5751,7 @@ var SVGRenderer = class {
         });
         const parsedMeasure = {
           segments,
-          timeSignature: grid.timeSignature,
+          timeSignature: m.timeSignature || grid.timeSignature,
           barline: m.barline || "|",
           isLineBreak: m.isLineBreak || false,
           source: m.source || ""
@@ -2334,42 +5773,129 @@ var SVGRenderer = class {
     } catch (e) {
       analyzedMeasures = [];
     }
-    const lineAccumulated = new Array(lines).fill(dynamicLineStartPadding);
-    measurePositions.forEach(({ measure, lineIndex, posInLine, globalIndex: globalIndex2, width: mWidth }) => {
-      var _a, _b;
-      const x = lineAccumulated[lineIndex];
-      const y = lineIndex * (measureHeight + 20) + 20;
-      let perMeasureBeamSet;
-      if (level1BeamSet) {
-        perMeasureBeamSet = /* @__PURE__ */ new Set();
-        (_b = (_a = analyzedMeasures[globalIndex2]) == null ? void 0 : _a.beamGroups) == null ? void 0 : _b.forEach((g) => {
-          if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
-            g.notes.forEach((r) => {
-              const key = `${r.segmentIndex}:${r.noteIndex}`;
-              perMeasureBeamSet.add(key);
-            });
-          }
+    let globalMeasureIndex = 0;
+    renderLines.forEach((line, lineIndex) => {
+      placeAndSizeManager.clearAll();
+      const lineY = line.startY + 20;
+      let currentX = svg.__dynamicLineStartPadding || 40;
+      const lineMeasurePositions = [];
+      line.measures.forEach((measure, posInLine) => {
+        const mWidth = this.getRenderedMeasureWidth(measure);
+        measure.__isLineStart = posInLine === 0;
+        const mp = {
+          measure,
+          lineIndex,
+          posInLine,
+          globalIndex: globalMeasureIndex++,
+          width: mWidth,
+          x: currentX,
+          y: lineY
+        };
+        lineMeasurePositions.push(mp);
+        voltaManager.addMeasurePosition(mp);
+        currentX += mWidth;
+      });
+      this.registerBarlines(lineMeasurePositions, placeAndSizeManager);
+      this.registerVoltaText(lineMeasurePositions, placeAndSizeManager);
+      lineMeasurePositions.forEach((mp) => {
+        const measure = mp.measure;
+        const measureHeight2 = 120;
+        placeAndSizeManager.registerElement("measure", {
+          x: mp.x,
+          y: mp.y,
+          width: mp.width,
+          height: measureHeight2
+        }, 0, {
+          measureIndex: mp.globalIndex,
+          lineIndex: mp.lineIndex,
+          posInLine: mp.posInLine,
+          visualStartX: mp.x,
+          visualEndX: mp.x + mp.width,
+          visualTopY: mp.y,
+          visualBottomY: mp.y + measureHeight2,
+          timeSignature: measure.timeSignature ? `${measure.timeSignature.beats}/${measure.timeSignature.beatValue}` : void 0,
+          isLineStart: measure.__isLineStart,
+          isRepeatStart: measure.isRepeatStart,
+          barlineType: measure.barline,
+          hasVoltaStart: !!measure.voltaStart,
+          hasVoltaEnd: !!measure.voltaEnd
         });
+      });
+      const stemsDir = stemsDirection === "down" ? "down" : "up";
+      lineMeasurePositions.forEach((mp) => {
+        var _a, _b, _c;
+        const { measure, globalIndex: globalIndex2, width: mWidth, x, y } = mp;
+        let perMeasureBeamSet;
+        if (level1BeamSet) {
+          perMeasureBeamSet = /* @__PURE__ */ new Set();
+          (_b = (_a = analyzedMeasures[globalIndex2]) == null ? void 0 : _a.beamGroups) == null ? void 0 : _b.forEach((g) => {
+            if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
+              g.notes.forEach((r) => {
+                perMeasureBeamSet.add(`${r.segmentIndex}:${r.noteIndex}`);
+              });
+            }
+          });
+        }
+        const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir != null ? stemsDir : "up", (_c = options.displayRepeatSymbol) != null ? _c : false);
+        mr.drawMeasure(svg, globalIndex2, notePositions, grid);
+        if (analyzedMeasures[globalIndex2]) {
+          drawBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
+        }
+      });
+      const chordRenderer = new ChordRenderer();
+      let chordVerticalOffset = 40;
+      if (options.stemsDirection === "down" && options.countingMode && (options.pickStrokes || options.fingerMode)) {
+        chordVerticalOffset += 20;
       }
-      const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, collisionManager);
-      mr.drawMeasure(svg, globalIndex2, notePositions, grid);
-      if (analyzedMeasures[globalIndex2]) {
-        drawAnalyzerBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions);
+      chordRenderer.renderChords(svg, lineMeasurePositions, placeAndSizeManager, {
+        displayRepeatSymbol: options.displayRepeatSymbol,
+        fontSize: 22,
+        verticalOffset: chordVerticalOffset
+      });
+      if (options.measureNumbering && lineIndex === 0) {
+        this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber);
+      } else if (options.measureNumbering && options.measureNumbering.interval === 0) {
+        this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber + lineMeasurePositions[0].globalIndex);
       }
-      lineAccumulated[lineIndex] += mWidth;
+      const currentLineNotes = notePositions.filter(
+        (n) => lineMeasurePositions.some((mp) => mp.globalIndex === n.measureIndex)
+      );
+      const allowedMeasureIndices = new Set(lineMeasurePositions.map((mp) => mp.globalIndex));
+      this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
+      this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+      this.drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices);
+      if (options.countingMode) {
+        CountingRenderer.drawCountingNumbers(svg, notePositions, stemsDirection, allowedMeasureIndices, placeAndSizeManager);
+      }
+      const lineBarlines = placeAndSizeManager.getElements().filter((el) => {
+        var _a, _b;
+        return el.type === "barline" && ((_a = el.metadata) == null ? void 0 : _a.exactX) !== void 0 && ((_b = el.metadata) == null ? void 0 : _b.measureIndex) !== void 0;
+      }).map((el) => ({
+        exactX: el.metadata.exactX,
+        visualStartX: el.metadata.visualStartX,
+        visualEndX: el.metadata.visualEndX,
+        y: el.bbox.y,
+        measureIndex: el.metadata.measureIndex,
+        side: el.metadata.side
+      }));
+      voltaManager.addBarlines(lineBarlines);
     });
-    this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, collisionManager);
+    voltaManager.renderVoltas(svg, placeAndSizeManager);
+    const bounds = placeAndSizeManager.getGlobalBounds();
+    if (options.debugPlacement) {
+      placeAndSizeManager.logDiagnosticReport();
+    }
     return svg;
   }
   /**
-   * Crée un élément texte SVG avec les propriétés spécifiées.
+   * Creates an SVG text element with specified properties.
    * 
-   * @param text - Contenu du texte
-   * @param x - Position X
-   * @param y - Position Y
-   * @param size - Taille de la police
-   * @param weight - Poids de la police (normal, bold, etc.)
-   * @returns Élément SVG text
+   * @param text - Text content
+   * @param x - X position
+   * @param y - Y position
+   * @param size - Font size
+   * @param weight - Font weight (normal, bold, etc.)
+   * @returns SVG text element
    */
   createText(text, x, y, size, weight = "normal") {
     const textEl = document.createElementNS(SVG_NS, "text");
@@ -2383,22 +5909,22 @@ var SVGRenderer = class {
     return textEl;
   }
   /**
-   * Détecte et dessine les liaisons (ties) entre notes.
+   * Detects and draws ties between notes.
    * 
-   * Cette méthode gère trois types de liaisons :
-   * 1. Liaisons normales entre notes adjacentes
-   * 2. Liaisons "to void" (vers une note virtuelle en fin de ligne)
-   * 3. Liaisons "from void" (depuis une note virtuelle en début de ligne)
+   * This method handles three types of ties:
+   * 1. Normal ties between adjacent notes
+   * 2. "to void" ties (to a virtual note at the end of a line)
+   * 3. "from void" ties (from a virtual note at the start of a line)
    * 
-   * Les liaisons entre lignes sont gérées par le TieManager.
+   * Cross-line ties are managed by the TieManager.
    * 
-   * @param svg - Élément SVG parent
-   * @param notePositions - Tableau des positions de toutes les notes
-   * @param svgWidth - Largeur totale du SVG
-   * @param tieManager - Gestionnaire de liaisons entre lignes
-   * @param measurePositions - Positions et lignes des mesures (pour détecter les changements de ligne)
+   * @param svg - Parent SVG element
+   * @param notePositions - Array of all note positions
+   * @param svgWidth - Total SVG width
+   * @param tieManager - Cross-line tie manager
+   * @param measurePositions - Measure positions and lines (to detect line changes)
    */
-  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, collisionManager) {
+  detectAndDrawTies(svg, notePositions, svgWidth, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices) {
     var _a;
     const lineStartPadding = (_a = svg.__dynamicLineStartPadding) != null ? _a : 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
@@ -2416,34 +5942,71 @@ var SVGRenderer = class {
       if (cur.tieStart && !cur.tieToVoid) {
         const curMeasurePos = measurePositions.find((mp) => mp.globalIndex === cur.measureIndex);
         if (!curMeasurePos) continue;
+        let sameLineTarget = null;
+        let crossLineTarget = null;
         for (let j = i + 1; j < notePositions.length; j++) {
           const target = notePositions[j];
-          if (target.tieEnd || target.tieFromVoid) {
-            const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
-            if (targetMeasurePos && targetMeasurePos.lineIndex !== curMeasurePos.lineIndex) {
-              cur.tieToVoid = true;
-              if (!target.tieFromVoid) {
-                target.tieFromVoid = true;
-              }
-              cur.tieStart = false;
-            }
+          if (!(target.tieEnd || target.tieFromVoid)) continue;
+          const targetMeasurePos = measurePositions.find((mp) => mp.globalIndex === target.measureIndex);
+          if (!targetMeasurePos) continue;
+          if (target.measureIndex === cur.measureIndex) {
+            sameLineTarget = target;
             break;
+          } else if (targetMeasurePos.lineIndex === curMeasurePos.lineIndex) {
+            sameLineTarget = target;
+            break;
+          } else if (!crossLineTarget) {
+            crossLineTarget = target;
           }
+        }
+        if (!sameLineTarget && crossLineTarget) {
+          cur.tieToVoid = true;
+          if (!crossLineTarget.tieFromVoid) crossLineTarget.tieFromVoid = true;
+          cur.tieStart = false;
         }
       }
     }
     const matched = /* @__PURE__ */ new Set();
-    const dotsForCollisions = collisionManager ? collisionManager.getElements().filter((e) => e.type === "dot") : [];
-    const drawCurve = (startX, startY, endX, endY, isCross) => {
+    const dotsForCollisions = placeAndSizeManager ? placeAndSizeManager.getElements().filter((e) => e.type === "dot") : [];
+    const fallbackStemsOrientation = stemsDirection != null ? stemsDirection : "down";
+    const inferStemsOrientation = (note) => {
+      if (note.stemTopY !== void 0 && note.stemBottomY !== void 0) {
+        return note.stemTopY <= note.y ? "up" : "down";
+      }
+      return fallbackStemsOrientation;
+    };
+    const resolveAnchorY = (note, edge, orientation) => {
+      const stemCandidate = orientation === "up" ? note.stemBottomY : note.stemTopY;
+      const headEdge = edge === "right" ? note.headRightX : note.headLeftX;
+      const horizontalHalf = headEdge !== void 0 ? Math.abs(headEdge - note.x) : 0;
+      const baselineOffset = Math.max(3, Math.min(5, horizontalHalf > 0 ? horizontalHalf * 0.6 : 3));
+      let anchor = stemCandidate;
+      if (anchor === void 0 || (orientation === "up" ? anchor <= note.y : anchor >= note.y)) {
+        anchor = note.y + (orientation === "up" ? baselineOffset : -baselineOffset);
+      }
+      let clearance;
+      if (orientation === "up") {
+        clearance = edge === "right" ? -1 : 3.5;
+      } else {
+        clearance = edge === "right" ? 3.5 : -1;
+      }
+      return anchor + (orientation === "up" ? clearance : -clearance);
+    };
+    const drawCurve = (startX, startY, endX, endY, isCross, orientation, meta) => {
       const path = document.createElementNS(SVG_NS, "path");
       const dx = Math.abs(endX - startX);
       const baseAmp = Math.min(40, Math.max(8, dx / 6));
-      let controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
-      if (collisionManager) {
+      let controlY;
+      if (orientation === "up") {
+        controlY = Math.max(startY, endY) + (isCross ? baseAmp + 10 : baseAmp);
+      } else {
+        controlY = Math.min(startY, endY) - (isCross ? baseAmp + 10 : baseAmp);
+      }
+      if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const preliminaryTopY = controlY;
-        const preliminaryBottomY = Math.max(startY, endY);
+        const preliminaryTopY = orientation === "up" ? Math.min(startY, endY) : controlY;
+        const preliminaryBottomY = orientation === "up" ? controlY : Math.max(startY, endY);
         const overlappingDot = dotsForCollisions.find((d2) => {
           const db = d2.bbox;
           const horiz = db.x < maxX && db.x + db.width > minX;
@@ -2451,8 +6014,8 @@ var SVGRenderer = class {
           return horiz && vert;
         });
         if (overlappingDot) {
-          const raise = Math.max(6, baseAmp * 0.6);
-          controlY -= raise;
+          const adjust = Math.max(6, baseAmp * 0.6);
+          controlY += orientation === "up" ? adjust : -adjust;
         }
       }
       const midX = (startX + endX) / 2;
@@ -2461,40 +6024,67 @@ var SVGRenderer = class {
       path.setAttribute("stroke", "#000");
       path.setAttribute("stroke-width", "1.5");
       path.setAttribute("fill", "none");
+      if (meta == null ? void 0 : meta.half) {
+        path.setAttribute("data-half-tie", "1");
+      }
+      if (meta == null ? void 0 : meta.start) {
+        const s = meta.start;
+        path.setAttribute("data-start", `${s.measureIndex}:${s.chordIndex}:${s.beatIndex}:${s.noteIndex}`);
+      }
+      if (meta == null ? void 0 : meta.end) {
+        const e = meta.end;
+        path.setAttribute("data-end", `${e.measureIndex}:${e.chordIndex}:${e.beatIndex}:${e.noteIndex}`);
+      }
       svg.appendChild(path);
-      if (collisionManager) {
+      if (placeAndSizeManager) {
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
-        const topY = controlY;
-        const bottomY = Math.max(startY, endY);
-        collisionManager.registerElement("tie", { x: minX, y: topY, width: maxX - minX, height: bottomY - topY }, 3, { cross: isCross });
+        const midCurveY = 0.25 * startY + 0.5 * controlY + 0.25 * endY;
+        const topY = Math.min(startY, endY, midCurveY, controlY);
+        const bottomY = Math.max(startY, endY, midCurveY, controlY);
+        placeAndSizeManager.registerElement("tie", {
+          x: minX,
+          y: topY,
+          width: maxX - minX,
+          height: bottomY - topY
+        }, 3, {
+          cross: isCross,
+          exactX: (startX + endX) / 2,
+          exactY: controlY,
+          midCurveY,
+          // Actual midpoint of the Bézier curve
+          orientation
+          // 'up' or 'down' to know where the curve is
+        });
       }
     };
-    const drawHalfToMeasureRight = (measureIdx, startX, startY) => {
+    const drawHalfToMeasureRight = (measureIdx, startX, startY, orientation, startMeta) => {
       const bounds = measureXB[measureIdx];
       const marginX = bounds ? bounds.xEnd - 8 : svgWidth - 16;
-      drawCurve(startX, startY, marginX, startY, true);
+      drawCurve(startX, startY, marginX, startY, true, orientation, { start: startMeta, half: true });
       return { x: marginX, y: startY };
     };
-    const drawHalfFromMeasureLeft = (measureIdx, endX, endY) => {
+    const drawHalfFromMeasureLeft = (measureIdx, endX, endY, orientation, endMeta) => {
       const bounds = measureXB[measureIdx];
       const startX = bounds ? bounds.xStart + 4 : 16;
-      drawCurve(startX, endY, endX, endY, true);
+      drawCurve(startX, endY, endX, endY, true, orientation, { end: endMeta, half: true });
     };
     for (let i = 0; i < notePositions.length; i++) {
       if (matched.has(i)) continue;
       const cur = notePositions[i];
-      const startX = cur.headRightX !== void 0 ? cur.headRightX : cur.x;
-      let startY;
-      if (cur.headRightX !== void 0) {
-        const half = Math.abs(cur.headRightX - cur.x);
-        startY = half >= 6 ? cur.y : cur.y - half;
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(cur.measureIndex)) continue;
+      const orientation = inferStemsOrientation(cur);
+      const isDiamond = cur.value === 1 || cur.value === 2;
+      let startX;
+      if (isDiamond) {
+        startX = cur.x;
       } else {
-        startY = cur.y - 8;
+        startX = orientation === "up" ? cur.headLeftX !== void 0 ? cur.headLeftX : cur.x : cur.headRightX !== void 0 ? cur.headRightX : cur.x;
       }
+      const startY = resolveAnchorY(cur, orientation === "up" ? "left" : "right", orientation);
       if (cur.tieStart || cur.tieToVoid) {
         if (cur.tieToVoid) {
-          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+          const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY, orientation);
           tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
           matched.add(i);
           continue;
@@ -2503,22 +6093,37 @@ var SVGRenderer = class {
         for (let j = i + 1; j < notePositions.length; j++) {
           if (matched.has(j)) continue;
           const cand = notePositions[j];
-          if (cand.tieEnd) {
+          if (!cand.tieEnd) continue;
+          if (cand.measureIndex === cur.measureIndex) {
             found = j;
             break;
           }
         }
+        if (found < 0) {
+          for (let j = i + 1; j < notePositions.length; j++) {
+            if (matched.has(j)) continue;
+            const cand = notePositions[j];
+            if (cand.tieEnd) {
+              found = j;
+              break;
+            }
+          }
+        }
         if (found >= 0) {
           const tgt = notePositions[found];
-          const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
-          let endY;
-          if (tgt.headLeftX !== void 0) {
-            const halfT = Math.abs(tgt.headLeftX - tgt.x);
-            endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+          const targetOrientation = inferStemsOrientation(tgt);
+          const isTargetDiamond = tgt.value === 1 || tgt.value === 2;
+          let endX;
+          if (isTargetDiamond) {
+            endX = tgt.x;
           } else {
-            endY = tgt.y - 8;
+            endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
           }
-          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex);
+          const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
+          drawCurve(startX, startY, endX, endY, cur.measureIndex !== tgt.measureIndex, targetOrientation, {
+            start: { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex },
+            end: { measureIndex: tgt.measureIndex, chordIndex: tgt.chordIndex, beatIndex: tgt.beatIndex, noteIndex: tgt.noteIndex }
+          });
           matched.add(i);
           matched.add(found);
           continue;
@@ -2538,19 +6143,23 @@ var SVGRenderer = class {
           const tgtMP = measurePositions.find((mp) => mp.globalIndex === tgt.measureIndex);
           const crossesLine = !!(curMP && tgtMP && curMP.lineIndex !== tgtMP.lineIndex);
           if (crossesLine) {
-            const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY);
+            const pending = drawHalfToMeasureRight(cur.measureIndex, startX, startY, orientation);
             tieManager.addPendingTie(cur.measureIndex, pending.x, pending.y);
             matched.add(i);
           } else {
-            const endX = tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x;
-            let endY;
-            if (tgt.headLeftX !== void 0) {
-              const halfT = Math.abs(tgt.headLeftX - tgt.x);
-              endY = halfT >= 6 ? tgt.y : tgt.y + halfT;
+            const targetOrientation = inferStemsOrientation(tgt);
+            const isTargetDiamond = tgt.value === 1 || tgt.value === 2;
+            let endX;
+            if (isTargetDiamond) {
+              endX = tgt.x;
             } else {
-              endY = tgt.y - 8;
+              endX = targetOrientation === "up" ? tgt.headLeftX !== void 0 ? tgt.headLeftX : tgt.x : tgt.headRightX !== void 0 ? tgt.headRightX : tgt.x;
             }
-            drawCurve(startX, startY, endX, endY, false);
+            const endY = resolveAnchorY(tgt, targetOrientation === "up" ? "left" : "right", targetOrientation);
+            drawCurve(startX, startY, endX, endY, false, targetOrientation, {
+              start: { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex },
+              end: { measureIndex: tgt.measureIndex, chordIndex: tgt.chordIndex, beatIndex: tgt.beatIndex, noteIndex: tgt.noteIndex }
+            });
             matched.add(i);
             matched.add(foundFromVoid);
           }
@@ -2559,33 +6168,861 @@ var SVGRenderer = class {
       }
       if (cur.tieFromVoid && !matched.has(i)) {
         let endX = cur.headLeftX !== void 0 ? cur.headLeftX : cur.x;
-        let endY;
-        if (cur.headLeftX !== void 0) {
-          const half = Math.abs(cur.headLeftX - cur.x);
-          endY = half >= 6 ? cur.y : cur.y + half;
-        } else {
-          endY = cur.y - 8;
-        }
-        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY);
+        const orientation2 = inferStemsOrientation(cur);
+        let endY = resolveAnchorY(cur, "left", orientation2);
+        drawHalfFromMeasureLeft(cur.measureIndex, endX, endY, orientation2, { measureIndex: cur.measureIndex, chordIndex: cur.chordIndex, beatIndex: cur.beatIndex, noteIndex: cur.noteIndex });
         matched.add(i);
       }
     }
+  }
+  /**
+   * Pre-registers barline positions in PlaceAndSizeManager with enriched metadata.
+   * This allows volta text and other elements to detect and avoid collisions with barlines.
+   * 
+   * @param measurePositions - Array of measure positions
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  registerBarlines(measurePositions, placeAndSizeManager) {
+    measurePositions.forEach((mp, i) => {
+      if (mp.x === void 0 || mp.y === void 0) return;
+      const measure = mp.measure;
+      const leftBarX = mp.x;
+      const rightBarX = mp.x + mp.width - 2;
+      const y = mp.y;
+      const height = 120;
+      if (i === 0 || measure.__isLineStart || measure.isRepeatStart) {
+        const barlineType2 = measure.isRepeatStart ? "repeat-start" : "normal";
+        let barlineWidth2 = 6;
+        let visualStartX2 = leftBarX;
+        let visualEndX2 = leftBarX;
+        if (barlineType2 === "repeat-start") {
+          barlineWidth2 = 10;
+          visualStartX2 = leftBarX - 1.5;
+          visualEndX2 = leftBarX + 6.75;
+        }
+        placeAndSizeManager.registerElement("barline", {
+          x: leftBarX - 3,
+          y,
+          width: barlineWidth2,
+          height
+        }, 0, {
+          exactX: leftBarX,
+          measureIndex: mp.globalIndex,
+          side: "left",
+          type: barlineType2,
+          visualStartX: visualStartX2,
+          visualEndX: visualEndX2,
+          thinLineX: barlineType2 === "repeat-start" ? leftBarX + 6 : leftBarX,
+          thickLineX: barlineType2 === "repeat-start" ? leftBarX : void 0,
+          dotsX: barlineType2 === "repeat-start" ? leftBarX + 12 : void 0
+        });
+      }
+      let barlineType = "normal";
+      let barlineWidth = 6;
+      let visualStartX = rightBarX;
+      let visualEndX = rightBarX;
+      let thinLineX = rightBarX;
+      let thickLineX = void 0;
+      let dotsX = void 0;
+      if (measure.barline === ":||" || measure.barline === "repeat-end") {
+        barlineType = "repeat-end";
+        barlineWidth = 10;
+        visualStartX = rightBarX - 0.75;
+        visualEndX = rightBarX + 7.5;
+        thinLineX = rightBarX;
+        thickLineX = rightBarX + 6;
+        dotsX = rightBarX - 12;
+      } else if (measure.barline === "||") {
+        barlineType = "final-double";
+        barlineWidth = 10;
+        visualStartX = rightBarX - 2.5;
+        visualEndX = rightBarX + 8.5;
+        thinLineX = rightBarX;
+        thickLineX = rightBarX + 6;
+      }
+      placeAndSizeManager.registerElement("barline", {
+        x: rightBarX - 3,
+        y,
+        width: barlineWidth,
+        height
+      }, 0, {
+        exactX: rightBarX,
+        measureIndex: mp.globalIndex,
+        side: "right",
+        type: barlineType,
+        visualStartX,
+        visualEndX,
+        thinLineX,
+        thickLineX,
+        dotsX
+      });
+    });
+  }
+  /**
+   * Pre-registers volta text positions in PlaceAndSizeManager with enriched metadata.
+   * Uses barline visual end positions to avoid collisions.
+   * 
+   * @param measurePositions - Array of measure positions with x, y coordinates
+   * @param placeAndSizeManager - Collision detection manager
+   */
+  registerVoltaText(measurePositions, placeAndSizeManager) {
+    var _a, _b, _c;
+    for (let i = 0; i < measurePositions.length; i++) {
+      const mp = measurePositions[i];
+      const measure = mp.measure;
+      if (measure.voltaStart) {
+        const startMP = measurePositions[i];
+        if (startMP.x !== void 0 && startMP.y !== void 0) {
+          let startBarline;
+          if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
+            const prevMeasureIndex = measurePositions[i - 1].globalIndex;
+            startBarline = placeAndSizeManager.getElements().find(
+              (el) => {
+                var _a2, _b2;
+                return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === prevMeasureIndex && ((_b2 = el.metadata) == null ? void 0 : _b2.side) === "right";
+              }
+            );
+          } else {
+            startBarline = placeAndSizeManager.getElements().find(
+              (el) => {
+                var _a2, _b2;
+                return el.type === "barline" && ((_a2 = el.metadata) == null ? void 0 : _a2.measureIndex) === startMP.globalIndex && ((_b2 = el.metadata) == null ? void 0 : _b2.side) === "left";
+              }
+            );
+          }
+          const startX = (_c = (_b = (_a = startBarline == null ? void 0 : startBarline.metadata) == null ? void 0 : _a.visualEndX) != null ? _b : startBarline ? startBarline.bbox.x + startBarline.bbox.width : void 0) != null ? _c : i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex ? measurePositions[i - 1].x + measurePositions[i - 1].width : startMP.x;
+          const y = startMP.y;
+          const textSize = 14;
+          const textOffset = LAYOUT.VOLTA_TEXT_OFFSET;
+          const textMargin = LAYOUT.VOLTA_TEXT_MARGIN;
+          const leftPadding = LAYOUT.VOLTA_TEXT_LEFT_PADDING;
+          const voltaInfo = measure.voltaStart;
+          const initialTextX = startX + textOffset;
+          const textY = y + textSize + 2;
+          const estimatedTextWidth = voltaInfo.text.length * (textSize * 0.6);
+          const initialBBox = {
+            x: initialTextX - textMargin - leftPadding,
+            y: textY - textSize - textMargin,
+            width: estimatedTextWidth + 2 * textMargin + leftPadding,
+            height: textSize + 2 * textMargin
+          };
+          const adjustedBBox = placeAndSizeManager.findFreePosition(
+            initialBBox,
+            "volta-text",
+            // Type of element (for layer-based collision checking)
+            "horizontal",
+            // Adjust horizontally only
+            ["volta-text", "volta-bracket"],
+            // Exclude self-collision
+            10
+            // Max 10 attempts
+          );
+          const finalBBox = adjustedBBox || initialBBox;
+          placeAndSizeManager.registerElement("volta-text", finalBBox, 5, {
+            text: voltaInfo.text,
+            exactX: finalBBox.x + textMargin + leftPadding + estimatedTextWidth / 2,
+            exactY: textY - textSize / 2,
+            textMargin,
+            leftPadding,
+            measureIndex: i
+            // Add measureIndex so drawVoltaBrackets can find it
+          });
+        }
+      }
+    }
+  }
+  /**
+   * Pre-registration of pick-strokes in PlaceAndSizeManager WITHOUT drawing them.
+   * This method must be called BEFORE detectAndDrawTies() so that ties
+   * can detect and avoid pick-strokes via the layer system.
+   * 
+   * Calculates the same positions as drawPickStrokes but only registers
+   * bounding boxes in PlaceAndSizeManager.
+   */
+  preRegisterPickStrokes(grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices) {
+    const mode = options.pickStrokes;
+    if (!mode) return;
+    const step = this.detectGlobalSubdivision(grid);
+    const timeline = [];
+    const notesOnTimeline = [];
+    let currentSubdivision = 0;
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            const noteDuration = note.value;
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            const subdivisionCount = Math.round(step / noteDuration * dottedMultiplier);
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack
+            });
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+    let isDown = true;
+    for (let i = 0; i < currentSubdivision; i++) {
+      timeline.push({
+        pickDirection: isDown ? "down" : "up",
+        subdivisionIndex: i
+      });
+      isDown = !isDown;
+    }
+    const attacksWithPicks = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
+      var _a;
+      return {
+        measureIndex: n.measureIndex,
+        chordIndex: n.chordIndex,
+        beatIndex: n.beatIndex,
+        noteIndex: n.noteIndex,
+        pickDirection: ((_a = timeline[n.subdivisionStart]) == null ? void 0 : _a.pickDirection) || "down"
+      };
+    });
+    const UPBOW_W = 24.2;
+    const UPBOW_H = 39;
+    const DOWNBOW_W = 32;
+    const DOWNBOW_H = 33;
+    const TARGET_H = 12;
+    const MARGIN = 3;
+    const NOTE_HEAD_HALF_HEIGHT = 5;
+    attacksWithPicks.forEach((attackInfo) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(attackInfo.measureIndex)) return;
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === attackInfo.measureIndex && np.chordIndex === attackInfo.chordIndex && np.beatIndex === attackInfo.beatIndex && np.noteIndex === attackInfo.noteIndex
+      );
+      if (notePos) {
+        const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
+        const stemDirection = hasStem && notePos.stemTopY < notePos.y ? "up" : "down";
+        const placeAbove = stemDirection === "down";
+        const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+        const isDown2 = attackInfo.pickDirection === "down";
+        const oh = isDown2 ? DOWNBOW_H : UPBOW_H;
+        const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
+        const scale = TARGET_H / oh;
+        const tw = ow * scale;
+        const th = oh * scale;
+        const finalY = placeAbove ? noteHeadEdgeY - MARGIN - th : noteHeadEdgeY + MARGIN;
+        const finalX = notePos.x - tw / 2;
+        const bbox = { x: finalX, y: finalY, width: tw, height: th };
+        placeAndSizeManager.registerElement("pick-stroke", bbox, 7, {
+          direction: isDown2 ? "down" : "up",
+          exactX: notePos.x,
+          exactY: placeAbove ? finalY + th : finalY
+        });
+      }
+    });
+  }
+  /**
+   * Rendering of pick-strokes (down/up) using user-provided paths.
+   * - Global strict alternation (Down, Up, Down, ...)
+   * - Subdivision detected on the ENTIRE block (auto) or forced (8/16)
+   * - Placement relative to stems: stems-down => ABOVE; stems-up => BELOW
+   * - Collisions managed via PlaceAndSizeManager (vertical first)
+   */
+  drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices) {
+    const mode = options.pickStrokes;
+    if (!mode) return;
+    const step = this.detectGlobalSubdivision(grid);
+    const timeline = [];
+    const notesOnTimeline = [];
+    let currentSubdivision = 0;
+    grid.measures.forEach((measure, measureIndex) => {
+      const segments = measure.chordSegments || [];
+      segments.forEach((segment, chordIndex) => {
+        segment.beats.forEach((beat, beatIndex) => {
+          beat.notes.forEach((note, noteIndex) => {
+            const noteDuration = note.value;
+            const dottedMultiplier = note.dotted ? 1.5 : 1;
+            const subdivisionCount = Math.round(step / noteDuration * dottedMultiplier);
+            const isAttack = !note.isRest && !note.tieEnd && !note.tieFromVoid;
+            notesOnTimeline.push({
+              measureIndex,
+              chordIndex,
+              beatIndex,
+              noteIndex,
+              subdivisionStart: currentSubdivision,
+              isAttack
+            });
+            currentSubdivision += subdivisionCount;
+          });
+        });
+      });
+    });
+    let isDown = true;
+    for (let i = 0; i < currentSubdivision; i++) {
+      timeline.push({
+        pickDirection: isDown ? "down" : "up",
+        subdivisionIndex: i
+      });
+      isDown = !isDown;
+    }
+    const attacksWithPicks = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
+      var _a;
+      return {
+        ...n,
+        pickDirection: ((_a = timeline[n.subdivisionStart]) == null ? void 0 : _a.pickDirection) || "down"
+      };
+    });
+    const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";
+    const UPBOW_ORIG_X = 101.4;
+    const UPBOW_ORIG_Y = 4.1;
+    const UPBOW_W = 24.2;
+    const UPBOW_H = 39;
+    const DOWNBOW_PATH = "m 99,44 -2,0 L 97,11 l 32,0 0,33 L 127,44 127,25 99,25 z";
+    const DOWNBOW_ORIG_X = 97;
+    const DOWNBOW_ORIG_Y = 11;
+    const DOWNBOW_W = 32;
+    const DOWNBOW_H = 33;
+    const TARGET_H = 12;
+    const MARGIN = 3;
+    let globalVerticalOffset = 0;
+    const drawSymbol = (isDown2, anchorX, noteHeadEdgeY, placeAbove) => {
+      const d = isDown2 ? DOWNBOW_PATH : UPBOW_PATH;
+      const ow = isDown2 ? DOWNBOW_W : UPBOW_W;
+      const oh = isDown2 ? DOWNBOW_H : UPBOW_H;
+      const origX = isDown2 ? DOWNBOW_ORIG_X : UPBOW_ORIG_X;
+      const origY = isDown2 ? DOWNBOW_ORIG_Y : UPBOW_ORIG_Y;
+      const scale = TARGET_H / oh;
+      const tw = ow * scale;
+      const th = oh * scale;
+      let countingOffset = 0;
+      if (options.countingMode) {
+        countingOffset = NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+      }
+      const effectiveMargin = placeAbove ? MARGIN : options.countingMode ? MARGIN - 2 : MARGIN;
+      const baseY = placeAbove ? noteHeadEdgeY - effectiveMargin - th - countingOffset : noteHeadEdgeY + effectiveMargin + countingOffset;
+      const finalY = baseY + globalVerticalOffset;
+      const finalX = anchorX - tw / 2;
+      const translateX = finalX - origX * scale;
+      const translateY = finalY - origY * scale;
+      const g = document.createElementNS(SVG_NS, "g");
+      g.setAttribute("transform", `translate(${translateX.toFixed(2)}, ${translateY.toFixed(2)}) scale(${scale.toFixed(4)})`);
+      g.setAttribute("data-pick-stroke", "true");
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "#000");
+      path.setAttribute("stroke", "none");
+      g.appendChild(path);
+      svg.appendChild(g);
+      const bbox = { x: finalX, y: finalY, width: tw, height: th };
+      placeAndSizeManager.registerElement("pick-stroke", bbox, 7, {
+        direction: isDown2 ? "down" : "up",
+        exactX: anchorX,
+        exactY: placeAbove ? finalY + th : finalY
+      });
+    };
+    attacksWithPicks.forEach((attackInfo) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(attackInfo.measureIndex)) return;
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === attackInfo.measureIndex && np.chordIndex === attackInfo.chordIndex && np.beatIndex === attackInfo.beatIndex && np.noteIndex === attackInfo.noteIndex
+      );
+      if (notePos) {
+        const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
+        const stemDirection = hasStem && notePos.stemTopY < notePos.y ? "up" : "down";
+        const placeAbove = stemDirection === "down";
+        const NOTE_HEAD_HALF_HEIGHT = 5;
+        const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+        const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+        const isDown2 = attackInfo.pickDirection === "down";
+        drawSymbol(isDown2, notePos.x, noteHeadEdgeY, placeAbove);
+      }
+    });
+  }
+  /**
+   * Detection of minimum subdivision across the entire block.
+   * Rule: if the slightest effective attack corresponds to 16 (or shorter), return 16; otherwise 8.
+   */
+  detectGlobalSubdivision(grid) {
+    var _a;
+    let hasSixteenth = false;
+    for (const measure of grid.measures) {
+      const groupBase = {};
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const prev = (_a = groupBase[gid]) != null ? _a : 0;
+              groupBase[gid] = Math.max(prev, n.value);
+            }
+          }
+        }
+      }
+      for (const seg of measure.chordSegments || []) {
+        for (const beat of seg.beats) {
+          for (const n of beat.notes) {
+            if (n.isRest || n.tieEnd || n.tieFromVoid) continue;
+            let eff = n.value;
+            if (n.tuplet) {
+              const gid = n.tuplet.groupId;
+              const base = groupBase[gid] || n.value;
+              eff = Math.max(eff, base);
+            }
+            if (eff >= 16) {
+              hasSixteenth = true;
+              break;
+            }
+          }
+          if (hasSixteenth) break;
+        }
+        if (hasSixteenth) break;
+      }
+      if (hasSixteenth) break;
+    }
+    return hasSixteenth ? 16 : 8;
+  }
+  /**
+   * Translate finger symbol from English to target language if needed.
+   * @param symbol - Original symbol (t, tu, h, hu, p, pu, m, mu)
+   * @param language - Target language ('en' or 'fr')
+   * @returns Translated symbol
+   */
+  translateFingerSymbol(symbol, language) {
+    if (!language || language === "en") return symbol;
+    const translations = {
+      "t": "p",
+      "tu": "pu",
+      "h": "m",
+      "hu": "mu"
+    };
+    return translations[symbol] || symbol;
+  }
+  /**
+   * Draw fingerstyle symbols on notes.
+   * Uses StrumPatternRenderer for pattern logic with 3-level priority:
+   * 1. Explicit symbols (user-defined in notation)
+   * 2. Predefined patterns (from FINGER_PATTERNS)
+   * 3. Automatic alternation (fallback)
+   */
+  drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices) {
+    const fingerMode = options.fingerMode;
+    if (!fingerMode) return;
+    const notesWithDirections = StrumPatternRenderer.assignDirections(grid, {
+      mode: "finger",
+      language: fingerMode
+      // 'en' or 'fr'
+    });
+    const LETTER_FONT_SIZE = NOTATION.PATTERN_LETTER_FONT_SIZE;
+    const ARROW_FONT_SIZE = NOTATION.PATTERN_ARROW_FONT_SIZE;
+    const MARGIN = NOTATION.PATTERN_MARGIN;
+    const NOTE_HEAD_HALF_HEIGHT = NOTATION.PATTERN_NOTE_HEAD_HALF_HEIGHT;
+    notesWithDirections.forEach((noteInfo) => {
+      if (allowedMeasureIndices && !allowedMeasureIndices.has(noteInfo.measureIndex)) return;
+      const notePos = notePositions.find(
+        (np) => np.measureIndex === noteInfo.measureIndex && np.chordIndex === noteInfo.chordIndex && np.beatIndex === noteInfo.beatIndex && np.noteIndex === noteInfo.noteIndex
+      );
+      if (!notePos || !noteInfo.assignedSymbol) return;
+      const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
+      const stemDirection = hasStem && notePos.stemTopY < notePos.y ? "up" : "down";
+      const placeAbove = stemDirection === "down";
+      const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
+      const noteHeadEdgeY = placeAbove ? noteHeadTop : noteHeadBottom;
+      const symbol = noteInfo.assignedSymbol;
+      let letter;
+      let arrow;
+      if (symbol.endsWith("u")) {
+        letter = symbol.slice(0, -1);
+        arrow = "\u2191";
+      } else if (symbol.endsWith("d")) {
+        letter = symbol.slice(0, -1);
+        arrow = "\u2193";
+      } else {
+        letter = symbol;
+        arrow = "";
+      }
+      let countingOffset = 0;
+      if (options.countingMode) {
+        countingOffset = NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
+      }
+      const effectiveMargin = placeAbove ? MARGIN : -5;
+      const textY = placeAbove ? noteHeadEdgeY - effectiveMargin - countingOffset : noteHeadEdgeY + effectiveMargin + ARROW_FONT_SIZE + countingOffset;
+      const letterWidth = LETTER_FONT_SIZE * 0.6;
+      const spacing = 1;
+      const letterX = notePos.x - letterWidth / 2 - spacing / 2;
+      const arrowX = notePos.x + letterWidth / 2 + spacing / 2;
+      const letterText = document.createElementNS(SVG_NS, "text");
+      letterText.setAttribute("x", letterX.toFixed(2));
+      letterText.setAttribute("y", textY.toFixed(2));
+      letterText.setAttribute("font-family", TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+      letterText.setAttribute("font-size", LETTER_FONT_SIZE.toString());
+      letterText.setAttribute("font-weight", TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+      letterText.setAttribute("text-anchor", "middle");
+      letterText.setAttribute("fill", "#000");
+      letterText.setAttribute("data-finger-symbol", "letter");
+      letterText.textContent = letter;
+      svg.appendChild(letterText);
+      if (arrow) {
+        const arrowText = document.createElementNS(SVG_NS, "text");
+        arrowText.setAttribute("x", arrowX.toFixed(2));
+        arrowText.setAttribute("y", textY.toFixed(2));
+        arrowText.setAttribute("font-family", TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+        arrowText.setAttribute("font-size", ARROW_FONT_SIZE.toString());
+        arrowText.setAttribute("font-weight", TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+        arrowText.setAttribute("text-anchor", "middle");
+        arrowText.setAttribute("fill", "#000");
+        arrowText.setAttribute("data-finger-symbol", "arrow");
+        arrowText.textContent = arrow;
+        svg.appendChild(arrowText);
+      }
+    });
+  }
+  /**
+   * Draw a measure number at the top-left of a measure.
+   * Used for measure numbering display.
+   * 
+   * @param svg - Parent SVG element
+   * @param measurePosition - Position info for the measure
+   * @param number - Measure number to display
+   */
+  drawMeasureNumber(svg, measurePosition, number) {
+    const x = measurePosition.x + LAYOUT.BASE_LEFT_PADDING + NOTATION.MEASURE_NUMBER_X_OFFSET;
+    const y = measurePosition.y + NOTATION.MEASURE_NUMBER_Y_OFFSET;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("x", x.toString());
+    text.setAttribute("y", y.toString());
+    text.setAttribute("font-size", NOTATION.MEASURE_NUMBER_FONT_SIZE.toString());
+    text.setAttribute("font-family", TYPOGRAPHY.DEFAULT_FONT_FAMILY);
+    text.setAttribute("font-weight", TYPOGRAPHY.DEFAULT_FONT_WEIGHT_BOLD);
+    text.setAttribute("fill", NOTATION.MEASURE_NUMBER_COLOR);
+    text.textContent = number.toString();
+    svg.appendChild(text);
+  }
+  /**
+   * Résout les liaisons qui traversent les lignes (cross-line ties).
+   * Marque les notes avec tieToVoid/tieFromVoid pour un rendu correct ligne par ligne.
+   */
+  resolveCrossLineTies(renderLines) {
+    const allNotes = [];
+    renderLines.forEach((line, lineIndex) => {
+      line.measures.forEach((measure) => {
+        const segments = measure.chordSegments || [{ beats: measure.beats }];
+        segments.forEach((seg) => {
+          seg.beats.forEach((beat) => {
+            beat.notes.forEach((note) => {
+              allNotes.push({ note, lineIndex });
+            });
+          });
+        });
+      });
+    });
+    for (let i = 0; i < allNotes.length; i++) {
+      const current = allNotes[i];
+      if (current.note.tieStart) {
+        for (let j = i + 1; j < allNotes.length; j++) {
+          const target = allNotes[j];
+          if (target.note.tieEnd) {
+            if (current.lineIndex !== target.lineIndex) {
+              current.note.tieToVoid = true;
+              target.note.tieFromVoid = true;
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+};
+
+// src/analyzer/CountingAnalyzer.ts
+var CountingAnalyzer = class {
+  /**
+   * Analyze and annotate all notes with counting information.
+   * 
+   * @param measures - All measures in the grid
+   * @param timeSignature - Time signature (e.g., { beats: 4, beatValue: 4 })
+   */
+  static analyzeCounting(measures, timeSignature) {
+    measures.forEach((measure) => {
+      this.analyzeMeasure(measure, timeSignature);
+    });
+  }
+  /**
+   * Analyze a single measure and assign counting to its notes.
+   * Counting restarts at 1 for each measure.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   */
+  static analyzeMeasure(measure, timeSignature) {
+    const segments = measure.chordSegments || [];
+    if (segments.length === 0) return;
+    if (this.shouldUseUserDefinedBeats(measure, timeSignature)) {
+      this.analyzeWithUserDefinedBeats(measure, timeSignature);
+    } else {
+      this.analyzeWithMathematicalBeats(measure, timeSignature);
+    }
+  }
+  /**
+   * Determine if we should use user-defined beats (spaces) or mathematical grouping.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   * @returns true if user-defined beats should be used
+   */
+  static shouldUseUserDefinedBeats(measure, timeSignature) {
+    if (this.isIrregularMeter(timeSignature)) {
+      return true;
+    }
+    return this.hasUnequalBeatDurations(measure, timeSignature);
+  }
+  /**
+   * Check if time signature is irregular (not standard binary/ternary).
+   * 
+   * @param timeSignature - Time signature
+   * @returns true if irregular (5/8, 7/8, 11/8, etc.)
+   */
+  static isIrregularMeter(timeSignature) {
+    const { numerator, denominator } = timeSignature;
+    if (denominator <= 4) {
+      return false;
+    }
+    if (denominator >= 8 && [3, 6, 9, 12].includes(numerator)) {
+      return false;
+    }
+    return true;
+  }
+  /**
+   * Check if the measure has beats with unequal durations.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   * @returns true if beats have different durations
+   */
+  static hasUnequalBeatDurations(measure, timeSignature) {
+    const segments = measure.chordSegments || [];
+    const beatDurations = [];
+    segments.forEach((segment) => {
+      segment.beats.forEach((beat) => {
+        const duration = this.calculateBeatDurationInSubdivisions(beat, timeSignature);
+        beatDurations.push(duration);
+      });
+    });
+    if (beatDurations.length <= 1) {
+      return false;
+    }
+    const firstDuration = beatDurations[0];
+    const hasUnequal = beatDurations.some((d) => Math.abs(d - firstDuration) > 0.01);
+    return hasUnequal;
+  }
+  /**
+   * Calculate beat duration in smallest subdivision units.
+   * 
+   * @param beat - Beat to measure
+   * @param timeSignature - Time signature
+   * @returns Duration in subdivision units
+   */
+  static calculateBeatDurationInSubdivisions(beat, timeSignature) {
+    const subdivisionUnit = 16;
+    let totalDuration = 0;
+    beat.notes.forEach((note) => {
+      let duration = subdivisionUnit / note.value;
+      if (note.dotted) {
+        duration *= 1.5;
+      }
+      totalDuration += duration;
+    });
+    return totalDuration;
+  }
+  /**
+   * Analyze measure using user-defined beats (respects spaces).
+   * Counts based on metric unit position (noires in 4/4, croches in 5/8).
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   */
+  static analyzeWithUserDefinedBeats(measure, timeSignature) {
+    const segments = measure.chordSegments || [];
+    const metricUnit = timeSignature.denominator;
+    const subdivisionUnit = 16;
+    const subdivisionsPerMetricUnit = subdivisionUnit / metricUnit;
+    let measureSubdivisionPosition = 0;
+    let currentMetricUnitSubdivisionStart = 0;
+    segments.forEach((segment) => {
+      segment.beats.forEach((beat) => {
+        const smallestValue = Math.max(...beat.notes.map((n) => n.value));
+        const useAndNotation = smallestValue === 8 && beat.notes.every((n) => n.value <= 8 && !n.isRest);
+        beat.notes.forEach((note, noteIndex) => {
+          const isFirstNoteOfBeat = noteIndex === 0;
+          const metricNumber = Math.floor(measureSubdivisionPosition / subdivisionsPerMetricUnit) + 1;
+          const isOnMetricBoundary = measureSubdivisionPosition % subdivisionsPerMetricUnit === 0;
+          const positionInMetricUnit = measureSubdivisionPosition - currentMetricUnitSubdivisionStart + 1;
+          if (isOnMetricBoundary) {
+            note.countingLabel = metricNumber.toString();
+            note.countingSize = note.tieEnd ? "s" : "t";
+            currentMetricUnitSubdivisionStart = measureSubdivisionPosition;
+          } else {
+            if (useAndNotation && positionInMetricUnit === subdivisionsPerMetricUnit / 2 + 1) {
+              note.countingLabel = "&";
+              note.countingSize = note.isRest ? "s" : "m";
+            } else {
+              note.countingLabel = positionInMetricUnit.toString();
+              note.countingSize = note.isRest ? "s" : "m";
+            }
+          }
+          let noteDuration = subdivisionUnit / note.value;
+          if (note.dotted) {
+            noteDuration *= 1.5;
+          }
+          measureSubdivisionPosition += noteDuration;
+        });
+      });
+    });
+  }
+  /**
+   * Analyze measure using mathematical beat grouping (backward compatible).
+   * Groups notes into beats based on time signature.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   */
+  static analyzeWithMathematicalBeats(measure, timeSignature) {
+    const beats = this.groupNotesByBeats(measure, timeSignature);
+    beats.forEach((beat, beatIndex) => {
+      const beatNumber = beatIndex + 1;
+      this.assignCountingToBeat(beat, beatNumber, timeSignature);
+    });
+  }
+  /**
+   * Group all notes in a measure by their beats.
+   * 
+   * @param measure - Measure to analyze
+   * @param timeSignature - Time signature
+   * @returns Array of beats, each containing notes and metadata
+   */
+  static groupNotesByBeats(measure, timeSignature) {
+    const segments = measure.chordSegments || [];
+    const beats = [];
+    const subdivisionUnit = this.findSmallestNoteValue(measure);
+    const subdivisionsPerBeat = subdivisionUnit / timeSignature.beatUnit;
+    let currentSubdivision = 0;
+    segments.forEach((segment) => {
+      segment.beats.forEach((beat) => {
+        beat.notes.forEach((note) => {
+          const beatIndex = Math.floor(currentSubdivision / subdivisionsPerBeat);
+          if (!beats[beatIndex]) {
+            beats[beatIndex] = {
+              notes: [],
+              startSubdivision: beatIndex * subdivisionsPerBeat,
+              hasSmallestValue: 4
+            };
+          }
+          beats[beatIndex].notes.push(note);
+          if (note.value > beats[beatIndex].hasSmallestValue) {
+            beats[beatIndex].hasSmallestValue = note.value;
+          }
+          const noteSubdivisions = this.calculateNoteSubdivisions(note, timeSignature.beatUnit, subdivisionUnit);
+          currentSubdivision += noteSubdivisions;
+        });
+      });
+    });
+    return beats;
+  }
+  /**
+   * Assign counting labels to all notes in a beat.
+   * 
+   * @param beat - Beat information
+   * @param beatNumber - Beat number (1, 2, 3, 4...)
+   * @param timeSignature - Time signature
+   */
+  static assignCountingToBeat(beat, beatNumber, timeSignature) {
+    const smallestInBeat = beat.hasSmallestValue;
+    let useAndNotation = false;
+    let useNumericSubdivision = false;
+    if (smallestInBeat <= 8 && smallestInBeat > 4) {
+      useAndNotation = true;
+    } else if (smallestInBeat > 8) {
+      useNumericSubdivision = true;
+    }
+    let subdivisionCounter = 1;
+    beat.notes.forEach((note, index) => {
+      if (index === 0) {
+        note.countingNumber = beatNumber;
+        note.countingLabel = beatNumber.toString();
+        note.countingSize = note.isRest ? "s" : "t";
+      } else {
+        if (useAndNotation) {
+          note.countingLabel = "&";
+          note.countingNumber = void 0;
+        } else if (useNumericSubdivision) {
+          subdivisionCounter++;
+          note.countingLabel = subdivisionCounter.toString();
+          note.countingNumber = subdivisionCounter;
+        } else {
+          note.countingLabel = "";
+          note.countingNumber = void 0;
+        }
+        note.countingSize = note.isRest ? "s" : "m";
+      }
+    });
+  }
+  /**
+   * Find the smallest note value in a measure.
+   * 
+   * @param measure - Measure to analyze
+   * @returns Smallest note value (e.g., 8 for eighth notes, 16 for sixteenth notes)
+   */
+  static findSmallestNoteValue(measure) {
+    var _a;
+    let smallest = 4;
+    (_a = measure.chordSegments) == null ? void 0 : _a.forEach((segment) => {
+      segment.beats.forEach((beat) => {
+        beat.notes.forEach((note) => {
+          if (note.value > smallest) {
+            smallest = note.value;
+          }
+        });
+      });
+    });
+    return smallest;
+  }
+  /**
+   * Calculate how many subdivisions a note occupies.
+   * 
+   * @param note - Note element
+   * @param beatValue - Beat value from time signature (denominator)
+   * @param subdivisionUnit - Smallest note value in measure
+   * @returns Number of subdivisions this note occupies
+   * 
+   * @example
+   * // In 4/4 with 16th notes (subdivisionUnit=16):
+   * // Quarter note (4): 16/4 = 4 subdivisions
+   * // Eighth note (8): 16/8 = 2 subdivisions
+   * // Sixteenth note (16): 16/16 = 1 subdivision
+   */
+  static calculateNoteSubdivisions(note, beatValue, subdivisionUnit) {
+    let subdivisions = subdivisionUnit / note.value;
+    if (note.dotted) {
+      subdivisions *= 1.5;
+    }
+    return Math.round(subdivisions);
   }
 };
 
 // main.ts
 var ChordGridPlugin = class extends import_obsidian.Plugin {
   /**
-   * Méthode appelée lors du chargement du plugin.
+   * Method called when the plugin is loaded.
    * 
-   * Enregistre le processeur de blocs de code pour le langage `chordgrid`.
-   * Ce processeur :
-   * 1. Parse le contenu du bloc avec ChordGridParser
-   * 2. Valide la durée des mesures par rapport à la signature temporelle
-   * 3. Affiche les erreurs de validation le cas échéant
-   * 4. Rend la grille en SVG avec SVGRenderer
+   * Registers the code block processor for the `chordgrid` language.
+   * This processor:
+   * 1. Parses the block content with ChordGridParser
+   * 2. Validates measure durations against the time signature
+   * 3. Displays validation errors if any
+   * 4. Renders the grid as SVG with SVGRenderer
    * 
-   * En cas d'erreur de parsing, affiche un message d'erreur formaté.
+   * In case of parsing error, displays a formatted error message.
    */
   async onload() {
     console.log("Loading Chord Grid Plugin");
@@ -2601,13 +7038,24 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             const pre = el.createEl("pre", { cls: "chord-grid-error" });
             pre.setText("Rhythm validation errors:\n" + result.errors.map((e) => e.message).join("\n"));
           }
+          if (result.countingMode) {
+            CountingAnalyzer.analyzeCounting(result.measures, result.grid.timeSignature);
+          }
           const renderer = new SVGRenderer();
-          const svg = renderer.render(grid);
+          const svg = renderer.render(grid, {
+            stemsDirection: result.stemsDirection,
+            displayRepeatSymbol: result.displayRepeatSymbol,
+            pickStrokes: result.pickMode,
+            fingerMode: result.fingerMode,
+            measuresPerLine: result.measuresPerLine,
+            measureNumbering: result.measureNumbering,
+            countingMode: result.countingMode
+          });
           el.appendChild(svg);
         } catch (err) {
           const error = err;
           el.createEl("pre", {
-            text: `Erreur: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,
+            text: `Error: ${(_a = error == null ? void 0 : error.message) != null ? _a : String(err)}`,
             cls: "chord-grid-error"
           });
         }
@@ -2615,9 +7063,9 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
     );
   }
   /**
-   * Méthode appelée lors du déchargement du plugin.
+   * Method called when the plugin is unloaded.
    * 
-   * Permet de nettoyer les ressources si nécessaire.
+   * Allows cleaning up resources if necessary.
    */
   onunload() {
     console.log("Unloading Chord Grid Plugin");

@@ -1,25 +1,25 @@
 /**
  * @file main.ts
- * @description Plugin principal pour Obsidian permettant le rendu de grilles d'accords avec notation rythmique.
+ * @description Main Obsidian plugin for rendering chord grids with rhythmic notation.
  * 
- * Ce plugin permet d'afficher des grilles d'accords en notation musicale avec des symboles rythmiques
- * (noires, croches, etc.) dans des blocs de code Obsidian utilisant le langage `chordgrid`.
+ * This plugin allows displaying chord grids in musical notation with rhythmic symbols
+ * (quarter notes, eighth notes, etc.) in Obsidian code blocks using the `chordgrid` language.
  * 
- * Fonctionnalités principales :
- * - Parsing de grilles d'accords en notation textuelle
- * - Rendu SVG des mesures avec barres de mesure, notes, silences, ligatures et liaisons
- * - Support de signatures temporelles variées (4/4, 3/4, 6/8, etc.)
- * - Validation de la durée des mesures
- * - Gestion des reprises et des barres de mesure spéciales
+ * Main features:
+ * - Parsing of chord grids in textual notation
+ * - SVG rendering of measures with bar lines, notes, rests, beams, and ties
+ * - Support for various time signatures (4/4, 3/4, 6/8, etc.)
+ * - Measure duration validation
+ * - Support for repeats and special bar lines
  * 
  * @example
  * ```chordgrid
  * 4/4 ||: Am[88 4 4 88] | C[2 4 4] :||
  * ```
  * 
- * @see {@link ChordGridParser} pour le parsing de la notation textuelle
- * @see {@link SVGRenderer} pour le rendu graphique des grilles
- * @see README.md pour la documentation complète de la syntaxe
+ * @see {@link ChordGridParser} for textual notation parsing
+ * @see {@link SVGRenderer} for graphical rendering of grids
+ * @see README.md for complete syntax documentation
  * 
  * @author MathieuCGit
  * @version 1.0.0
@@ -28,26 +28,27 @@
 import { Plugin } from 'obsidian';
 import { ChordGridParser } from './src/parser/ChordGridParser';
 import { SVGRenderer } from './src/renderer/SVGRenderer';
-// DebugLogger supprimé pour release utilisateur
+import { CountingAnalyzer } from './src/analyzer/CountingAnalyzer';
+// DebugLogger removed for user release
 
 /**
- * Plugin Obsidian pour le rendu de grilles d'accords.
+ * Obsidian plugin for chord grid rendering.
  * 
- * Enregistre un processeur de blocs de code markdown pour le langage `chordgrid`,
- * qui parse et rend les grilles d'accords en format SVG.
+ * Registers a markdown code block processor for the `chordgrid` language,
+ * which parses and renders chord grids in SVG format.
  */
 export default class ChordGridPlugin extends Plugin {
   /**
-   * Méthode appelée lors du chargement du plugin.
+   * Method called when the plugin is loaded.
    * 
-   * Enregistre le processeur de blocs de code pour le langage `chordgrid`.
-   * Ce processeur :
-   * 1. Parse le contenu du bloc avec ChordGridParser
-   * 2. Valide la durée des mesures par rapport à la signature temporelle
-   * 3. Affiche les erreurs de validation le cas échéant
-   * 4. Rend la grille en SVG avec SVGRenderer
+   * Registers the code block processor for the `chordgrid` language.
+   * This processor:
+   * 1. Parses the block content with ChordGridParser
+   * 2. Validates measure durations against the time signature
+   * 3. Displays validation errors if any
+   * 4. Renders the grid as SVG with SVGRenderer
    * 
-   * En cas d'erreur de parsing, affiche un message d'erreur formaté.
+   * In case of parsing error, displays a formatted error message.
    */
   async onload() {
     console.log('Loading Chord Grid Plugin');
@@ -56,30 +57,43 @@ export default class ChordGridPlugin extends Plugin {
       'chordgrid',
       (source, el, ctx) => {
         try {
-          // DebugLogger supprimé
+          // DebugLogger removed
 
           const parser = new ChordGridParser();
           const result = parser.parse(source);
           const grid = result.grid;
 
-          // DebugLogger supprimé
+          // DebugLogger removed
 
           // If there are validation errors, render them (but still render the grid)
           if (result.errors && result.errors.length > 0) {
-            // DebugLogger supprimé
+            // DebugLogger removed
             const pre = el.createEl('pre', { cls: 'chord-grid-error' });
             pre.setText('Rhythm validation errors:\n' + result.errors.map(e => e.message).join('\n'));
           }
 
-          // DebugLogger supprimé
+          // Apply counting analysis if counting mode is enabled
+          if (result.countingMode) {
+            CountingAnalyzer.analyzeCounting(result.measures, result.grid.timeSignature);
+          }
+
+          // DebugLogger removed
           const renderer = new SVGRenderer();
-          const svg = renderer.render(grid);
+          const svg = renderer.render(grid, {
+            stemsDirection: result.stemsDirection,
+            displayRepeatSymbol: result.displayRepeatSymbol,
+            pickStrokes: result.pickMode,
+            fingerMode: result.fingerMode,
+            measuresPerLine: result.measuresPerLine,
+            measureNumbering: result.measureNumbering,
+            countingMode: result.countingMode
+          });
           el.appendChild(svg);
         } catch (err) {
-          // DebugLogger supprimé
+          // DebugLogger removed
           const error = err as Error;
           el.createEl('pre', {
-            text: `Erreur: ${error?.message ?? String(err)}`,
+            text: `Error: ${error?.message ?? String(err)}`,
             cls: 'chord-grid-error'
           });
         }
@@ -88,9 +102,9 @@ export default class ChordGridPlugin extends Plugin {
   }
 
   /**
-   * Méthode appelée lors du déchargement du plugin.
+   * Method called when the plugin is unloaded.
    * 
-   * Permet de nettoyer les ressources si nécessaire.
+   * Allows cleaning up resources if necessary.
    */
   onunload() {
     console.log('Unloading Chord Grid Plugin');

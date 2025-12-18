@@ -1,65 +1,189 @@
-# Chord Grid Plugin for Obsidian
+# 🎵 Chord Grid for Obsidian
 
-[Français](./README.fr.md)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
+[![Tests](https://img.shields.io/badge/tests-429%20passing-brightgreen.svg)](#)
 
-> Display clean chord grids with precise rhythmic notation rendered as crisp, scalable SVG inside your Obsidian notes.
+> **Transform simple text notation into beautiful, professional chord charts with rhythmic notation—right inside your Obsidian notes.**
 
-<!-- Badges (manual style to avoid external services) -->
-**Version:** 2.1.0 · **License:** GPL-3.0 · **Status:** Stable
+[🇫🇷 Version française](./README.fr.md) | [📖 Full Documentation](./documentation/) | [🐛 Report Bug](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/issues)
 
-**Latest Release:** [v2.1.0](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases/tag/v2.1.0) - **NEW: Collision management system for professional-quality layout**
+**For this entry**
+````markdown
+```chordgrid
+show% measure-num count pick
+4/4 
+| Em[4 88 4 88] | D[%] | % | Em[%] 
+| Em[4 88] G[4 88] | C[4 88] G[4 88] | G[4 88 4 88] | C[4 88] G[4 88]
+|2/4 G[4 -4] | 4/4 C[4 88 4 88] | % | G[%] 
+| G[4 88] Em[4 88] | 2/4 G[4 88] | 4/4 D[4 88 88 88] | Em[%]
+```
+````
+**Get this result**
 
-This plugin parses a lightweight text syntax and turns it into structured musical measures (chords, rhythm groups, ties, rests), then renders them with automatic beaming logic using a clean 3‑stage pipeline: **Parser → Analyzer → Renderer**.
+<img width="778" height="462" alt="image" src="https://github.com/user-attachments/assets/f1af29a3-db21-4969-a855-e4a22e892394" />
 
-## Installation
+---
 
-### Quick (Recommended via Community Plugins)
-1. Open Obsidian → Settings → Community plugins → Browse
-2. Search for "Chord Grid" (once published) and install
-3. Enable the plugin
+## What is Chord Grid?
 
-### Manual (Developer / Local Build)
-1. Create a `chord-grid` folder under `.obsidian/plugins/`
-2. Copy / clone repository contents into that folder
-3. Install dependencies & build (see Development)
-4. Enable in Obsidian: Settings → Community plugins
+**The problem:** Musicians need to share chord charts with precise rhythm information, but traditional notation software is heavy, rigid, and doesn't integrate with note-taking workflows.
 
-### Update / Upgrade
-Re-run `npm run build` after pulling new changes. If you encounter rendering issues after updating, disable & re-enable the plugin to refresh cached code.
+**The solution:** Chord Grid lets you write chord progressions in a simple, intuitive text format and instantly renders them as clean, scalable SVG diagrams. Perfect for composers, teachers, students, and anyone documenting music in Obsidian.
 
-## Usage
+**Built for musicians** who want the precision of musical notation with the simplicity of plain text.
 
-In your Obsidian notes, create a fenced code block with the `chordgrid` language:
+---
+
+## ✨ Key Features
+
+- 🎼 **Professional notation** - Automatic beaming, ties, tuplets, and dotted notes
+- ⚡ **Lightning fast** - Write chords as text, see results instantly
+- 🎯 **Precise rhythm** - Support for complex time signatures (4/4, 6/8, 5/8, 7/8, 12/8...)
+- 🔄 **Repeat notation** - Repeat signs, volta brackets, measure symbols (%)
+- ✨ **Transposition tool** - Quickly transpose chord grid by using transpose:+/-
+- 📚 **Pedagogical tools** - Optional counting numbers for rhythm learning
+- 🎸 **Guitar/Bass friendly** - Pick strokes (↓↑) and finger strum patterns (Thumb, Hand)
+- 📐 **Smart layout** - Automatic collision detection and element positioning
+- 📱 **Responsive** - Scales beautifully on any screen size
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+1. Open **Obsidian → Settings → Community plugins**
+2. Disable **Safe Mode**
+3. Click **Browse** and search for **"Chord Grid"**
+4. Click **Install**, then **Enable**
+
+### Your First Chord Chart Without Rhythm
+
+Create a code block with the `chordgrid` language:
 
 ````markdown
 ```chordgrid
-4/4 ||: Am[88 4 4 88] | C[88 4 4 88] :||
+4/4 | C | G | Am | F / G |
 ```
 ````
-<img width="592" height="173" alt="image" src="https://github.com/user-attachments/assets/c876d0c9-e121-44d9-92e0-6baddd0433c5" />
+<img width="781" height="110" alt="image" src="https://github.com/user-attachments/assets/b7185c58-4b49-43ab-a70f-63e9ae53caa3" />
 
-### Syntax
+That's it! You just created your first chord chart.
 
-**Time signature:** `4/4`, `3/4`, `6/8`, `12/8`, etc.
+---
+Want to add a repeat bar? No worries!
+````markdown
+```chordgrid
+4/4 ||: C | G | Am | F / G :||
+```
+````
+<img width="780" height="112" alt="image" src="https://github.com/user-attachments/assets/ef3c8586-329e-45e1-b3c0-be580f7a88c3" />
 
-**Grouping modes (v2.1+):** Control automatic beam grouping behavior
-- `4/4 binary` - Force grouping by 2 eighth notes (every 1.0 quarter note)
-- `6/8 ternary` - Force grouping by 3 eighth notes (every 1.5 quarter notes)
-- `4/4 noauto` - Disable auto-grouping entirely; user controls via spaces
-- Default (no keyword) - Auto-detection based on time signature:
-  - Binary: denominators ≤ 4 (2/4, 3/4, 4/4, 5/4, etc.)
-  - Ternary: denominators ≥ 8 with numerators 3, 6, 9, or 12 (6/8, 9/8, 12/8)
-  - Irregular: other meters (5/8, 7/8, 11/8) - no auto-grouping, space-controlled
+---
 
-**Bar lines:**
-- `|` : Single bar
-- `||` : Double bar end of grid
-- `||:` : Start repeat
-- `:||` : End repeat
+Now let's say we need to change the last measure to a different chord while keeping the previous ones:
 
-**Chords:** Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
+````markdown
+```chordgrid
+4/4 ||: C | G | Am |.1-3 F / G :||.4 Bb |
+```
+````
 
-**Rhythm in brackets (note values):**
+<img width="772" height="108" alt="image" src="https://github.com/user-attachments/assets/d3ac34af-edbd-48a5-a92b-827eb2e1d9ee" />
+
+---
+
+Now let's add this awesome rhythm strum pattern so we don't forget it!
+````markdown
+```chordgrid
+4/4 ||: C[8.16 88 4 168.] | G | Am |.1-3 F / G :||.4 Bb |
+```
+````
+<img width="781" height="216" alt="image" src="https://github.com/user-attachments/assets/84d62d3e-92e3-48d3-92c0-198f7efccfda" />
+
+---
+
+OK, not bad, but I'd really like to fit all the chords on the same line! You can use `measures-per-line:` to specify the number of measures per line
+````markdown
+```chordgrid
+measures-per-line:5
+4/4 ||: C[8.16 88 4 168.] | G | Am |.1-3 F / G :||.4 Bb |
+```
+````
+<img width="779" height="125" alt="image" src="https://github.com/user-attachments/assets/e43e80a0-70fd-4695-a274-a898f4d08564" />
+
+---
+
+Ah yes! That's better, but as a guitarist, I'd like to see the pick strokes. Can I? **Sure!** Just use the `pick` keyword
+````markdown
+```chordgrid
+measures-per-line:5 pick
+4/4 ||: C[8.16 88 4 168.] | G | Am |.1-3 F / G :||.4 Bb |
+```
+````
+<img width="774" height="131" alt="image" src="https://github.com/user-attachments/assets/2fbb51b9-00e0-4912-ba97-66c9e8511902" />
+
+---
+
+Nice! Now I'd like to apply this rhythm pattern to the following measures. I could copy/paste the rhythm pattern... or?
+
+````markdown
+```chordgrid
+measures-per-line:5 pick
+4/4 ||: C[8.16 88 4 168.] | G[%] | Am[%] |.1-3 F / G :||.4 Bb[8.16 88 4 168.] |
+```
+````
+<img width="774" height="131" alt="image" src="https://github.com/user-attachments/assets/7e251cda-acf8-4c39-8833-dee4d0a26df3" />
+
+---
+
+Wow! Amazing! But now there's too much information in each measure. Can I make this cleaner? Yes, use `show%`
+
+````markdown
+```chordgrid
+measures-per-line:5 pick show%
+4/4 ||: C[8.16 88 4 168.] | G[%] | Am[%] |.1-3 F / G :||.4 Bb[8.16 88 4 168.] |
+```
+````
+<img width="780" height="133" alt="image" src="https://github.com/user-attachments/assets/fcf26a64-60c9-4860-832a-cac612802d91" />
+
+---
+
+Finally, I think I'll play this rhythm with fingers instead of a pick. Can I? **Sure!** Use `finger` instead of `pick`
+````markdown
+```chordgrid
+measures-per-line:5 finger show%
+4/4 ||: C[8.16 88 4 168.] | G[%] | Am[%] |.1-3 F / G :||.4 Bb[8.16 88 4 168.] |
+```
+````
+<img width="782" height="134" alt="image" src="https://github.com/user-attachments/assets/48ab7d5e-b37c-4d88-b684-801b3f0e77e7" />
+
+## 🎓 Advanced Features
+
+Need more power? ChordGrid supports advanced notation:
+
+- **🔢 Pedagogical counting** - Add `count` directive for rhythm learning numbers
+- **🎯 Pick/Finger patterns** - Detailed stroke notation (`pick`/`finger` directives)
+- **🎭 Tuplets** - Triplets `{8 8 8}3:2`, quintuplets `{16 16 16 16 16}5:4`
+- **🔄 Volta brackets** - First/second endings `1.|2.`
+- **📐 Custom layouts** - Control measures per line with `measures-per-line:N`
+- **🎨 Stem direction** - `stems-up` (default) or `stems-down`
+- **🎼 Complex meters** - Support for 5/8, 7/8, 11/8, and custom time signatures
+- **📏 Empty measures** - Repeat symbols `%` for quick notation
+
+---
+
+## 📖 Full Syntax
+
+### Time Signature
+
+`4/4`, `3/4`, `6/8`, `12/8`, etc.
+
+### Chords
+Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
+
+### Rhythm in brackets (note values)
 - `1` = Whole note (ronde)
 - `2` = Half note (blanche)
 - `4` = Quarter note (noire)
@@ -68,7 +192,7 @@ In your Obsidian notes, create a fenced code block with the `chordgrid` language
 - `32` = Thirty-second note (triple-croche)
 - `64` = Sixty-fourth note (quadruple-croche)
 
-**Rests (Silences):**
+### Rests (Silences)
 Add a `-` prefix before any note value to create a rest:
 - `-1` = Whole rest (pause)
 - `-2` = Half rest (demi-pause)
@@ -78,313 +202,206 @@ Add a `-` prefix before any note value to create a rest:
 - `-32` = Thirty-second rest
 - `-64` = Sixty-fourth rest
 
-Example: `C[4 -4 88_4]` = quarter note, quarter rest, two eighth notes with the last eight note tied to the last quarter note.
+````markdown
+  ````chordgrid
+  C[4 -4 88 _16-161616]
+  ```
+````
+<img width="328" height="96" alt="image" src="https://github.com/user-attachments/assets/98ce95eb-97ed-47bd-9086-e5b1f063adc8" />
 
-<img width="283" height="153" alt="image" src="https://github.com/user-attachments/assets/37859674-5513-4d12-a3de-e601843c7a22" />
+#### BE CAREFUL
+:warning: **If you want to keep beams grouped by beat, <ins>pay attention to space placement</ins>. For example:**:warning:
+````markdown
+  ```chordgrid
+  C[4 88_] G[_88 4]
+  ```
+````
+<img width="420" height="139" alt="image" src="https://github.com/user-attachments/assets/41c47045-f34d-488c-a217-01f60b0e96bc" />
+
+is different from
+````markdown
+  ```chordgrid
+  C[4 88_]G[_88 4]
+  ```
+````
+<img width="422" height="146" alt="image" src="https://github.com/user-attachments/assets/73bf71b5-7b61-4233-b2b1-a474f49fab1c" />
 
 
-> **Important**: Rests break beam groups. For example, `[88-88]` creates two separate beam groups with a rest in between.
-
-**Rhythmic grouping:**
-- Numbers grouped together represent one beat (e.g., `88` = 2 eighth notes in the same beat, with connected beams)
-- Numbers separated by spaces represent different beaming groups
-- Use a simple dot to create dotted notes. For example 4. is a quarter note dotted, 8. is a eight note dotted.
-
-**Ties (Liaisons):**
+### Ties (Liaisons)
 - Use underscore `_` to create ties between notes
 - `_` **after** a note = note starts a tie (sends/emits)
 - `_` **before** a note = note receives a tie (receives/ends)
 - Examples:
-  - `[88_4]` = tie between last eighth note and quarter note
-  - `[2 4_88_]` = tie from quarter to two eighths
-  - `C[2 4_88_] | [_8]` = tie across measure boundary (last eighth of measure 1 tied to first eighth of measure 2)
-  - `{8_8_8}3` = all three notes of triplet tied together
+  - `[88_ 4]` = tie between last eighth note and quarter note
+  - `[2 4_ 88_]` = tie from quarter to two eighths
+  - `C[2 4_ 88_] | [_8]` = tie across measure boundary (last eighth of measure 1 tied to first eighth of measure 2)
+  - `{8_ 8_ 8}3` = all three notes of triplet tied together
   - `4_{8 8 8}3` = quarter note tied to first note of triplet
   - `{8 8 8_}3 4` = last note of triplet tied to following quarter
   - `| 4_ | {_8 8 8}3 |` = cross-measure tie into tuplet
 
-**Tuplets (v2.1+):**
-Tuplets allow grouping notes to play N notes in the time normally occupied by a different number. Syntax: `{notes}N` where N is the tuplet number.
 
-- **Compact notation** (notes together): `{888}3` = triplet with all notes beamed together
-- **Spaced notation** (notes separated): `{8 8 8}3` = triplet with independent flags
-- **Multi-level beaming**: `{161616 161616}6` = 6 sixteenth notes grouped as 2×3, with level-1 beam connecting all 6, and level-2 beams in two segments
-- **Ties within tuplets**: `{8_8_8}3` = triplet with all notes tied
-- **Ties crossing tuplet boundaries**: 
-  - `4_{8 8 8}3` = quarter tied into tuplet
-  - `{8 8 8_}3 4` = tuplet tied to following note
-  - `| 4_ | {_8 8 8}3 |` = cross-measure tie into tuplet
-- **Complex tie patterns**: `4_{8_8_8}3_4` = continuous tie through entire tuplet
+### Stem Direction
+Control the direction of note stems following musical notation standards
+- `stems-up` or `stem-up` (default) - You'll probably never need to use this.
+- `stems-down` or `stem-down` - Stems point downward
 
-Examples:
-- `{888}3` = eighth note triplet (fully beamed)
-- `{8 8 8}3` = eighth note triplet (separate flags)
-- `{444}3` = quarter note triplet
-- `{8 -8 8}3` = triplet with rest in the middle
-- `{161616}3` = sixteenth note triplet
-- `{161616 161616}6` = sextuplet with advanced multi-level beaming
-- `{8_8_8}3` = triplet with all notes tied (legato)
-- `{8_8 8}3` = triplet with first two notes tied
-- Full measure in 4/4: `| [{888}3 {888}3 {888}3 {888}3] |`
+- Example:
+````markdown
+  ```chordgrid
+  stems-down
+  4/4 | C[88 4 4 4] | G[4 4 2] |
+  ```
+````
+<img width="780" height="148" alt="image" src="https://github.com/user-attachments/assets/2c6a243d-efc2-499c-bdbf-f04a0289b550" />
 
-Notes on syntax:
-- Use `_` to indicate a tie. Underscores may appear at the end or start of a rhythm group to tie across measures/lines (e.g. `C[2 4_88_] | [_8]`).
-- Rests: prefix a value with `-` (e.g. `-4` for a quarter rest). Rests break beam groups.
-- Dotted notes use `.` immediately after the number (e.g. `4.`).
-- Whitespace influences beaming: placing a space between numbers separates beam groups; a space before a chord token may break a beam group across the chord.
+### Pick Stroke Markers
+Display alternating down/up pick strokes above or below notes for rhythmic subdivision practice.
+You can use either `pick`, `picks`, or `picks-auto`
+````markdown
+  ```chordgrid
+  pick
+  4/4 | C[88 4 4 4] | G[4 4 2] |
+  ```
+````
+<img width="772" height="156" alt="image" src="https://github.com/user-attachments/assets/ddf57484-584e-46a9-ade1-201d0179e65a" />
 
-#### Glossary (Quick Reference)
-| Term | Meaning |
-|------|---------|
-| Beat | Logical pulse grouping inside a measure |
-| Beam | Horizontal bar connecting stems of short notes (8th or smaller) |
-| Beamlet | Partial beam/stub for isolated short notes inside complex groups |
-| Tie | Curved line extending a note’s duration into the next note (same pitch implied) |
-| Rest | Silence occupying rhythmic duration |
-| Segment | Portion of measure tied to one chord symbol |
-| Dotted note | Note with trailing `.` increasing duration by 50% |
+### Repeat measures content
+Display repeated measures content using notation shortcuts
+- `%` - Shorthand to repeat the previous measure's rhythm with the same chords
+- `Chord[%]` - Repeat previous rhythm with a new chord
 
-#### Advanced Syntax Highlights
+````markdown
+  ```chordgrid
+  4/4 | Am[88 4 88 4] | % | Dm[%] | G[%]
+  ```
+````
+  <img width="776" height="112" alt="image" src="https://github.com/user-attachments/assets/2b6bf698-c524-4dc8-977e-a8173e6fa3d1" />
+
+You can shorten the repeated content even more by using the `show%` directive. It displays a visual repeat symbol (%) instead of rendering the full rhythm
+
+````markdown
+  ```chordgrid
+  show%
+  4/4 | Am[88 4 88 4] | % | Dm[%] | G[%]
+  ```
+````
+<img width="781" height="114" alt="image" src="https://github.com/user-attachments/assets/95a7cd8a-896f-44aa-8709-4b018561d617" />
+
+### Volta brackets
+Create first/second endings for repeated sections
+- `|.1-3` : Start volta bracket for repetitions 1, 2, and 3
+- `|.4` : Start volta bracket for repetition 4 (or any single number)
+- `|.1,2,3` : Alternative syntax using commas
+- `|.` : Explicitly mark the end of a volta bracket (optional)
+- Volta brackets automatically span until:
+  - The next volta starts (e.g., `|.1-3 ... :||.4`)
+  - A repeat start marker `||:` is encountered
+  - An explicit end marker `|.` is placed
+- Visual appearance:
+  - Closed brackets (before `:||`): bracket with hooks on both ends
+  - Open brackets (after `:||`): bracket with hook on left only (ending/coda)
+
+First example: volta 1-3 covers one measure, volta 4 covers one measure
+  ````markdown
+  ```chordgrid
+  4/4 ||: C[4 4 4 4] |.1-3 G[4 4 4 4] :||.4 Am[4 4 4 4] ||
+  ```
+  ````
+  <img width="785" height="118" alt="image" src="https://github.com/user-attachments/assets/0be7d119-4a4d-43f8-a2b3-de3a5ef58310" />
+
+Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to Am using `|.` marker
+  ````markdown
+  ```chordgrid
+  4/4 ||: C[4 88_ 4 4] | % |.1-3 G[%] | % :||.4 G[4 4 4 4] |. Am[16168 81616 4 88] ||
+  ```
+  ````
+  <img width="773" height="211" alt="image" src="https://github.com/user-attachments/assets/51136327-2286-4381-84e4-08bb64d40e10" />
+
+#### Advanced Syntax Examples
 | Pattern | Effect |
 |---------|-------|
 | `88` | Two beamed eighths (same beat) |
 | `8 8` | Two separate eighths (space splits beams) |
 | `4.` | Dotted quarter ( = quarter + eighth ) |
 | `16.32` | Beamlet direction adapts (analyzer path) |
-| `4_88_ | [_8]` | Tie across measure boundary |
+| `4_ 88_ \| [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
+| `%` | Repeat previous measure's rhythm |
+| `Chord[%]` | Repeat rhythm with new chord |
+| `show%` | Display visual repeat symbol instead of full rhythm |
+| `picks` | Enable pick stroke rendering with automatic or forced subdivision |
 | `{888}3` | Eighth note triplet (fully beamed) |
 | `{8 8 8}3` | Eighth note triplet (separate flags) |
 | `{161616 161616}6` | Sextuplet with multi-level beaming (2×3) |
-| `{8_8_8}3` | Triplet with all notes tied together |
+| `{8_ 8_ 8}3` | Triplet with all notes tied together but no beaming ( look at spaces) |
 | `4_{8 8 8}3` | Quarter note tied to first note of triplet |
 | `{8 8 8_}3 4` | Last note of triplet tied to quarter |
-| `| 4_ | {_8 8 8}3 |` | Cross-measure tie into tuplet |
+| `\| 4_ \| {_8 8 8}3 \|` | Cross-measure tie into tuplet |
+| `\|.1-3` | Start volta bracket for endings 1, 2, 3 |
+| `\|.` | Explicitly mark end of volta bracket |
+| `\|.1,2,3` | Alternative comma syntax for volta |
 
-### Examples
+## 🛠️ Development
 
-**Simple 4/4 measure:**
-```chordgrid
-4/4 | G[4 4 4 4] |
-```
+### Building from Source
 
-**Chart with repeats:**
-```chordgrid
-4/4 ||: Am[88 4 4 88] | Dm[2 4 4] | G[4 4 2] | C[1] :||
-```
-
-**Mixed rhythms:**
-```chordgrid
-4/4 | C[8888 4 4] | G[4 88 4 8] |
-```
-
-**Multiple lines:**
-```chordgrid
-4/4 ||: C[4 4 4 4] | F[4 4 4 4] | G[4 4 4 4] | C[2 2] |
-    Am[88 88 4 4] | Dm[4 4 2] | G7[16161616 4 4] | C[1] :||
-```
-
-**Chords with dotted notes**
-```chordgrid
-4/4 | C[4. 8 4 4] | D[8.16 88 4. 8] | Em[168. 4 4 88] | C[16816 4 16168 81616]  |
-```
-
-**Chords with rests**
-```chordgrid
-4/4 | C[4 -4 4 4] | G[-2 4 4] | Am[88 -8 8 4] | F[4 4 -2] |
-```
-
-**Tied chords**
-```chordgrid
-4/4 | C[2 4_88_] | [_8] G[8 4 4 4] | Am[88_4 4 88_] | [_4] Dm[2.] | C[4 4 4_88_] | [_88 4] D[4 4] |
-```
-
-**Tuplets (v2.1+)**
-```chordgrid
-4/4 | C[{888}3 4] | G[{161616}3 {161616}3] | Am[{444}3] | F[{888}3 {888}3 {888}3] |
-```
-
-**Tuplets with ties (v2.1+)**
-```chordgrid
-4/4 | C[{8_8_8}3 4] | G[4_{8 8 8}3] | Am[{8 8 8_}3 4] | F[4_{8_8_8}3_4] |
-```
-
-**Cross-measure ties with tuplets (v2.1+)**
-```chordgrid
-4/4 | C[4 4 4 4_] | D[{_8 8 8}3 4 4 4] | G[4 4 4 4_] | Am[{_8 8 8_}3 _4 4 4] |
-```
-
-NOTE: If you want to keep beam grouped by beat take care of space placement. For example
-```chordgrid
-[_8] G[8 4 4 4]
-```
-is different from
-```chordgrid
-[_8]G[8 4 4 4]
-```
-The space just before the G breaks the beam.
-
-### Troubleshooting
-| Symptom | Possible Cause | Fix |
-|---------|----------------|-----|
-| Measure flagged invalid | Total durations ≠ time signature | Recount values; dotted adds 50% |
-| Beam unexpectedly broken | Space or rest present | Remove space / ensure no `-` rest |
-| Tie not drawn across line | Analyzer/TieManager pending resolution | Ensure `_` at end & start groups |
-| Debug panel absent | Plugin disabled or logger suppressed | Re-enable plugin; check settings |
-
-## Development
-
-### Prerequisites
-- Node.js (LTS recommended)
-- npm
-
-### Setup
 ```bash
+# Clone repository
+git clone https://github.com/MathieuCGit/ChordGrid_for_Obsidian.git
+cd ChordGrid_for_Obsidian
+
+# Install dependencies
 npm install
-npm run dev   # Watch build (esbuild)
-npm run build # Production build (type-check + bundle)
-```
 
-### Testing
-Core parser tests:
-```bash
+# Build plugin
+npm run build
+
+# Run tests
 npm test
 ```
-Additional analyzer / integration scripts (run manually):
-```bash
-ts-node ./test/run_analyzer_tests.ts
-ts-node ./test/run_integration_analyzer.ts
+
+### Project Structure
+
+```
+ChordGrid_for_Obsidian/
+├── src/
+│   ├── parser/          # Syntax parsing
+│   ├── analyzer/        # Musical analysis (beams, counting)
+│   ├── renderer/        # SVG rendering
+│   └── models/          # Data structures
+├── test/                # 46 test suites (315 tests)
+├── documentation/       # Technical docs
+└── README.md           # You are here!
 ```
 
-### Contributing (Summary)
-Please see `CONTRIBUTING.md` for full guidelines (style, branching, adding features, test requirements).
+---
 
-### Structure
-```
-chord-grid/
-├── main.ts          # Main plugin code
-├── manifest.json    # Plugin metadata
-├── package.json     # npm dependencies
-└── tsconfig.json    # TypeScript configuration
-```
+## 🤝 Contributing
 
-## Features
+Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation:
 
-- ✅ Vector SVG rendering
-- ✅ Chord charts with rhythmic notation
-- ✅ **CollisionManager system** (v2.1.0) – intelligent element placement avoiding overlaps
-- ✅ **Dynamic time signature spacing** (v2.1.0) – automatic width calculation and adaptive padding
-- ✅ **Dotted note collision avoidance** (v2.1.0) – tie curves raised automatically
-- ✅ Automatic eighth note beaming by beat (analyzer-driven)
-- ✅ **Analyzer-based cross-segment beaming** (v2.0.0) – continuous beams across chord boundaries
-- ✅ **Tuplets & complex time signatures** (v2.1.0) – triplets, quintuplets, customizable ratios
-- ✅ Repeat bars & barline types
-- ✅ Time signature support (12+ signatures: 2/4, 3/4, 4/4, 5/4, 7/4, 5/8, 6/8, 7/8, 9/8, 11/8, 12/8, 15/16)
-- ✅ 4 measures per line (automatic, with manual line breaks)
-- ✅ Dynamic measure width based on rhythmic density
-- ✅ Dotted notes, ties, rests
-- ✅ **Inline Debug Logger** (v1.1.0) – collapsible debug panel
-- ✅ **Improved beam rendering** for complex rhythmic patterns with multi-level support
-- 🚧 Planned: grace notes, articulations, dynamics, export formats
+1. 📖 Read the [Contributing Guide](./documentation/CONTRIBUTING.md)
+2. 🏗️ Check the [Architecture Documentation](./documentation/ARCHITECTURE.md)
+3. 🐛 Browse [existing issues](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/issues)
+4. 💬 Start a [discussion](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/discussions)
 
-## Debugging
+---
 
-The plugin includes a built-in debug logger that displays detailed information directly in your notes. Click on "🐛 Debug Logs" above any chord grid to see:
+## 📝 License
 
-- Parsing steps and results
-- Layout calculations
-- Beam detection and rendering
-- Tie detection and matching
-- Note positions and properties
+This plugin is released under the **GPL-3.0 License**. See [LICENSE](./LICENSE) for details.
 
-For more information, see [DEBUG_LOGGER.md](DEBUG_LOGGER.md).
+---
 
-## Current Limitations
+## 🙏 Acknowledgments
 
-- No dynamics, articulations, grace notes yet
-- No export to PDF/PNG/MIDI yet
-- Complex time signatures under implementation
+Built with passion for the music and Obsidian communities.
 
-### Roadmap (High Level)
-| Milestone | Highlights |
-|-----------|-----------|
-| v1.x Maintenance | Stability, bug fixes, doc polish |
-| v2.0 Analyzer Core | ✅ Full Parser → Analyzer → Renderer separation, unified beaming |
-| v2.1 Tuplets & Collision Management | ✅ Complete tuplet implementation (triplets, quintuplets, customizable ratios), complex time signatures (12+), intelligent collision avoidance system |
-| v2.2 Grace Notes & Ornaments | Extend duration model for grace notes and musical ornaments |
-| v2.3 Dynamics & Articulation | Symbol layer, extensible rendering decorators |
-| v2.4 Export Layer | PNG / SVG clean export + optional MIDI proof-of-concept |
-| v3.0 Interactive Editing | In-note editing handles, real-time validation |
+**Author:** [Mathieu CONAN](https://github.com/MathieuCGit)
 
-## Architecture (v2.1 – ✅ Complete with Collision Management)
+---
 
-The rendering pipeline uses a clean 3-stage architecture with intelligent collision detection:
+**Enjoying Chord Grid?** ⭐ Star the repository to show your support!
 
-1. **Parser** (`ChordGridParser`) – Performs syntactic parsing of the chord grid into structured measures and segments (tokens, rhythm groups, ties, rests, whitespace awareness, tuplets).
-2. **Analyzer** (`MusicAnalyzer`) – Computes musical semantics, especially beam groups that may span chord segment boundaries. Produces `BeamGroup[]` with `NoteReference` entries pointing back to parsed notes.
-3. **Renderer** (`SVGRenderer` + sub-renderers) – Draws notes/stems/ties and uses analyzer-driven beams for proper cross-segment beaming. **CollisionManager** ensures intelligent element placement.
-
-#### Key Components (v2.1)
-
-**CollisionManager**: Central system managing spatial conflicts between rendered elements
-- Tracks bounding boxes for all visual elements (chords, notes, stems, tuplets, rests, time signatures, dots, ties)
-- Priority-based resolution (fixed elements vs. mobile elements)
-- Collision detection using axis-aligned bounding boxes (AABB) with configurable margins
-- `findFreePosition()` algorithm with spiral search pattern
-- Smart positioning for tuplet numbers, chord symbols, and tie curves
-- Automatic adjustment: tie curves raised when overlapping dotted note dots
-
-**Dynamic Spacing**: Adaptive layout system
-- Time signature width calculated based on content (numerator/denominator length)
-- Responsive left padding prevents overlap with first measure
-- Measure widths computed from rhythmic density (more notes = wider measure)
-- Tighter, more professional spacing (factor 0.53, margin 4px)
-
-#### Mermaid diagram
-
-```mermaid
-flowchart TD
-    A[Chordgrid notation] --> B[Parser\nChordGridParser]
-    B --> C[Analyzer\nMusicAnalyzer]
-    C --> D[Collision Manager\nElement Registration]
-    D --> E[AnalyzerBeamOverlay]
-    E --> F[Renderer\nSVGRenderer + Measure/Note/Rest]
-    F --> G[Collision Resolution\nAdjustments]
-    G --> H[SVG output]
-```
-
-### Why the analyzer?
-Previously, beams could not cross chord boundaries even when musically continuous (e.g. `[8]G[8]`). The analyzer flattens measure notes, respects rests and whitespace, and builds multi‑level beam groups (8/16/32/64) including correct beamlet direction for dotted values.
-
-### Why the CollisionManager?
-Professional music notation requires precise spacing to avoid visual conflicts. The CollisionManager:
-- Prevents time signatures from overlapping the first measure
-- Positions tuplet numbers above chord symbols automatically
-- Adjusts tie curves to avoid dotted note dots
-- Maintains clean, readable layouts across all rhythmic densities
-- Enables future enhancements (dynamics, articulations) without manual spacing
-
-### Cross-segment beaming examples
-
-```chordgrid
-4/4 | C[8]G[8] Am[88 4 4] |
-```
-The two isolated eighths before the space will beam together if there is no space between `]G[`.
-
-```chordgrid
-4/4 | C[8] G[8] Am[88 4 4] |
-```
-Here the space before `G` breaks the beam, producing two separate single stems.
-
-### Planned next steps
-* Comprehensive documentation for CollisionManager API
-* Performance profiling for large grids (100+ measures)
-* Extend collision system for dynamics and articulations
-* Grace notes with duration model extension
-* Snapshot tests for SVG rendering consistency
-* Export hooks (PNG/PDF/MIDI)
-
-## License
-
-Licensed under **GNU GPL-3.0**. See `LICENSE` for full text. (The `package.json` has been aligned to GPL-3.0.)

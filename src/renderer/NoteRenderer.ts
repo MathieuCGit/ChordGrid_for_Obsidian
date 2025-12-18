@@ -1,484 +1,705 @@
 /**
  * @file NoteRenderer.ts
- * @description Rendu SVG des notes et de leurs ligatures.
+ * @description SVG rendering of musical note elements.
  * 
- * Cette classe gère le rendu graphique des notes musicales dans un beat,
- * incluant :
- * - Les têtes de notes (slash notation)
- * - Les hampes (stems)
- * - Les crochets individuels (flags) pour notes non groupées
- * - Les ligatures (beams) reliant plusieurs notes
- * - Les points pour notes pointées
- * - Les silences (délégués à RestRenderer)
- * 
- * Les ligatures peuvent avoir plusieurs niveaux (croches, doubles-croches, etc.)
- * et sont calculées automatiquement selon la valeur des notes.
- * 
- * @see {@link RestRenderer} pour le rendu des silences
+ * This renderer is responsible for:
+ * - Note heads (diamond, slash)
+ * - Stems with direction up/down
+ * - Flags for isolated notes
+ * - Dots for dotted notes
+ * - Recording metadata in PlaceAndSizeManager
  */
 
-import { Beat, BeamGroup, NoteElement } from '../parser/type';
+import { NoteElement, Beat } from '../parser/type';
+import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { RestRenderer } from './RestRenderer';
-import { SVG_NS } from './constants';
+import { SVG_NS, NOTATION, VISUAL } from './constants';
 
 /**
- * Classe de rendu des notes et ligatures d'un beat.
+ * Position of a note with metadata for ties.
+ */
+export interface NotePosition {
+    x: number;
+    y: number;
+    headLeftX?: number;
+    headRightX?: number;
+    measureIndex: number;
+    chordIndex: number;
+    beatIndex: number;
+    noteIndex: number;
+    segmentNoteIndex?: number;
+    tieStart?: boolean;
+    tieEnd?: boolean;
+    globalTimeIndex?: number;
+    tieToVoid?: boolean;
+    tieFromVoid?: boolean;
+    stemTopY?: number;
+    stemBottomY?: number;
+    value?: number;
+    countingNumber?: number;
+    countingLabel?: string;
+    countingSize?: 't' | 'm' | 's';
+}
+
+/**
+ * Class responsible for rendering musical notes.
  */
 export class NoteRenderer {
-  // expected fields
-  private beat: Beat;
-  private x: number;
-  private y: number;
-  private NOTE_Y = 40;
-  private restRenderer = new RestRenderer();
+    private restRenderer: RestRenderer;
+    private stemsDirection: 'up' | 'down';
+    private placeAndSizeManager?: PlaceAndSizeManager;
 
-  /**
-   * Constructeur du renderer de notes.
-   * 
-   * @param beat - Beat contenant les notes à rendre
-   * @param x - Position X de départ du beat
-   * @param y - Position Y de départ du beat
-   */
-  constructor(beat?: Beat, x?: number, y?: number) {
-    // allow zero-arg construction for type-checking scenarios; assign when provided
-    this.beat = beat as Beat ?? { notes: [], hasBeam: false, beamGroups: [] };
-    this.x = x ?? 0;
-    this.y = y ?? 0;
-  }
-  
-  /**
-   * Dessine un groupe de ligatures reliant plusieurs notes.
-   * 
-   * Calcule le nombre de niveaux de ligatures nécessaires selon les valeurs
-   * des notes (croches = 1 niveau, doubles-croches = 2 niveaux, etc.).
-   * 
-   * @param svg - Élément SVG parent
-   * @param group - Groupe de ligature avec indices de début et fin
-   * @param spacing - Espacement de base entre notes (pour compatibilité)
-   * @param notePositions - Positions X précalculées de chaque note
-   */
-  private drawBeamGroup(svg: SVGElement, group: BeamGroup, spacing: number, notePositions: number[]) {
-    // group.startIndex et group.endIndex sont les VRAIS indices dans beat.notes
-    const notes = this.beat.notes.slice(group.startIndex, group.endIndex + 1);
-    const startX = notePositions[group.startIndex];
-    const endX = notePositions[group.endIndex];
-    
-    console.log(`Dessiner ligature du groupe:`, {
-      startIndex: group.startIndex,
-      endIndex: group.endIndex,
-      notes: notes.map(n => ({ value: n.value, isRest: n.isRest })),
-      startX,
-      endX,
-      width: endX - startX,
-      notePositions: notePositions.slice(group.startIndex, group.endIndex + 1)
-    });
-    
-    // Calculer le nombre de ligatures nécessaires
-    const maxBeams = Math.max(...notes.map(n => this.getBeamCount(n.value)));
-    
-    console.log(`Nombre max de niveaux de ligature : ${maxBeams}`);
-    
-    for (let beamLevel = 0; beamLevel < maxBeams; beamLevel++) {
-      console.log(`Dessiner niveau ${beamLevel + 1} de ligature`);
-      // Calculer l'espacement moyen dans ce groupe pour les beams
-      const avgSpacing = notePositions.length > group.startIndex + 1 
-        ? (notePositions[group.endIndex] - notePositions[group.startIndex]) / (group.endIndex - group.startIndex)
-        : spacing;
-      this.drawBeamLevel(svg, notes, startX, avgSpacing, beamLevel);
+    constructor(
+        stemsDirection: 'up' | 'down' = 'up',
+        placeAndSizeManager?: PlaceAndSizeManager
+    ) {
+        this.stemsDirection = stemsDirection;
+        this.placeAndSizeManager = placeAndSizeManager;
+        this.restRenderer = new RestRenderer();
     }
-  }
-  
-  /**
-   * Rend le beat complet avec toutes ses notes, silences et ligatures.
-   * 
-   * Cette méthode principale :
-   * 1. Dessine chaque note ou silence
-   * 2. Ajoute les hampes et crochets individuels si nécessaire
-   * 3. Dessine les groupes de ligatures pour les notes groupées
-   * 4. Dessine les brackets de tuplets si présents
-   * 
-   * @param svg - Élément SVG parent
-   */
-  render(svg: SVGElement) {
-    const baseNoteSpacing = 20;
-    
-    // Détecter les groupes de tuplets
-    const tupletGroups = this.detectTupletGroups();
-    
-    console.log('Rendu beat:', {
-      notes: this.beat.notes.map(n => ({ value: n.value, isRest: n.isRest, tuplet: n.tuplet })),
-      hasBeam: this.beat.hasBeam,
-      beamGroups: this.beat.beamGroups,
-      tupletGroups
-    });
-    
-    // Calculer les positions X de chaque note en tenant compte des tuplets
-    const notePositions = this.calculateNotePositions(baseNoteSpacing, tupletGroups);
-    
-    // Dessiner toutes les notes/silences
-    this.beat.notes.forEach((element, i) => {
-      const x = notePositions[i];
-      const y = this.y + this.NOTE_Y;
-      
-      console.log(`Rendu élément ${i}:`, { 
-        value: element.value, 
-        isRest: element.isRest,
-        x, y 
-      });
-      
-      if (element.isRest) {
-        this.restRenderer.drawRest(svg, element, x, y);
-      } else {
-        this.drawSlashNotehead(svg, x, y);
-        
-        if (element.dotted) {
-          this.drawDot(svg, x + 12, y - 4);
-        }
-        
-        if (element.value >= 2) {
-          this.drawStem(svg, x, y);
-        }
-        
-        // Crochets individuels si pas dans un groupe de ligature
-        if (element.value >= 8 && !this.isInBeamGroup(i)) {
-          this.drawIndividualFlags(svg, element, x, y);
-        }
-      }
-    });
-    
-    // Dessiner les ligatures par groupe
-    for (const group of this.beat.beamGroups) {
-      console.log(`Traiter groupe de ligature:`, group);
-      this.drawBeamGroup(svg, group, baseNoteSpacing, notePositions);
-    }
-    
-    // Dessiner les brackets de tuplets
-    for (const tupletGroup of tupletGroups) {
-      this.drawTupletBracket(svg, tupletGroup, notePositions);
-    }
-  }
 
-  private isInBeamGroup(noteIndex: number): boolean {
-    return this.beat.beamGroups.some(group => 
-      noteIndex >= group.startIndex && 
-      noteIndex <= group.endIndex
-    );
-  }
-
-  // --- Minimal helper stubs so TypeScript typechecks ---
-  private getBeamCount(value: number): number {
-    if (value >= 32) return 3;
-    if (value >= 16) return 2;
-    if (value >= 8) return 1;
-    return 0;
-  }
-
-  private drawBeamLevel(svg: SVGElement, notes: NoteElement[], startX: number, spacing: number, beamLevel: number) {
-    const level = beamLevel + 1; // Convertir en niveau 1-based pour la comparaison
-    const beamY = this.y + this.NOTE_Y - 25 - beamLevel * 5;
-    const stubLength = Math.max(8, spacing * 0.4);
-    
-    console.log(`=== Niveau ${level} de ligature ===`);
-    console.log('Notes:', notes.map((n, i) => ({ index: i, value: n.value, beamCount: this.getBeamCount(n.value) })));
-    
-    // Étape 1 : Dessiner les segments continus entre notes ayant ce niveau
-    let segStartIndex: number | null = null;
-    
-    for (let i = 0; i <= notes.length; i++) {
-      const noteBeamCount = i < notes.length ? this.getBeamCount(notes[i].value) : 0;
-      const hasThisLevel = noteBeamCount >= level;
-      
-      if (hasThisLevel && segStartIndex === null) {
-        segStartIndex = i;
-        console.log(`  Démarrage segment continu à l'index ${i}`);
-      } else if (!hasThisLevel && segStartIndex !== null) {
-        const segEnd = i - 1;
-        
-        // Ne dessiner que si le segment contient au moins 2 notes
-        if (segEnd > segStartIndex) {
-          const segStartX = startX + segStartIndex * spacing - 3;
-          const segEndX = startX + segEnd * spacing - 3;
-          
-          console.log(`  Dessin segment continu de ${segStartIndex} à ${segEnd} (X: ${segStartX} -> ${segEndX})`);
-          
-          const beam = document.createElementNS(SVG_NS, 'line');
-          beam.setAttribute('x1', String(segStartX));
-          beam.setAttribute('y1', String(beamY));
-          beam.setAttribute('x2', String(segEndX));
-          beam.setAttribute('y2', String(beamY));
-          beam.setAttribute('stroke', '#000');
-          beam.setAttribute('stroke-width', '2');
-          svg.appendChild(beam);
-        }
-        
-        segStartIndex = null;
-      }
+    /**
+     * Draws a diamond note head.
+     */
+    private drawDiamondNoteHead(svg: SVGElement, x: number, y: number, hollow: boolean): void {
+        const diamond = document.createElementNS(SVG_NS, 'polygon');
+        const points = [
+            [x, y - NOTATION.DIAMOND_SIZE],
+            [x + NOTATION.DIAMOND_SIZE, y],
+            [x, y + NOTATION.DIAMOND_SIZE],
+            [x - NOTATION.DIAMOND_SIZE, y]
+        ];
+        diamond.setAttribute('points', points.map(p => `${p[0]},${p[1]}`).join(' '));
+        diamond.setAttribute('fill', hollow ? 'white' : 'black');
+        diamond.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        diamond.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THIN));
+        svg.appendChild(diamond);
     }
-    
-    // Étape 2 : Dessiner les segments partiels (stubs)
-    for (let i = 0; i < notes.length; i++) {
-      const noteBeamCount = this.getBeamCount(notes[i].value);
-      const hasLevel = noteBeamCount >= level;
-      
-      if (!hasLevel) continue;
-      
-      const leftBeamCount = (i - 1 >= 0) ? this.getBeamCount(notes[i - 1].value) : 0;
-      const rightBeamCount = (i + 1 < notes.length) ? this.getBeamCount(notes[i + 1].value) : 0;
-      
-      const leftHasLevel = leftBeamCount >= level;
-      const rightHasLevel = rightBeamCount >= level;
-      
-      console.log(`  Note ${i}: beamCount=${noteBeamCount}, leftHas=${leftHasLevel}, rightHas=${rightHasLevel}`);
-      
-      // Si les deux voisins ont ce niveau, le segment continu a déjà été dessiné
-      if (leftHasLevel && rightHasLevel) {
-        console.log(`    -> Segment continu déjà dessiné`);
-        continue;
-      }
-      
-      const stemX = startX + i * spacing - 3;
-      
-      // Cas 1 : Aucun voisin n'a ce niveau (note complètement isolée)
-      if (!leftHasLevel && !rightHasLevel) {
-        console.log(`    -> Note isolée, stub vers ${i < notes.length - 1 ? 'droite' : 'gauche'}`);
-        if (i < notes.length - 1) {
-          const stubEndX = stemX + stubLength;
-          const beam = document.createElementNS(SVG_NS, 'line');
-          beam.setAttribute('x1', String(stemX));
-          beam.setAttribute('y1', String(beamY));
-          beam.setAttribute('x2', String(stubEndX));
-          beam.setAttribute('y2', String(beamY));
-          beam.setAttribute('stroke', '#000');
-          beam.setAttribute('stroke-width', '2');
-          svg.appendChild(beam);
+
+    /**
+     * Draws a cross-shaped note head for ghost notes.
+     */
+    private drawCrossNoteHead(svg: SVGElement, x: number, y: number): void {
+        const size = NOTATION.GHOST_CROSS_SIZE;
+        
+        // First diagonal line: top-left to bottom-right (\)
+        const line1 = document.createElementNS(SVG_NS, 'line');
+        line1.setAttribute('x1', (x - size).toString());
+        line1.setAttribute('y1', (y - size).toString());
+        line1.setAttribute('x2', (x + size).toString());
+        line1.setAttribute('y2', (y + size).toString());
+        line1.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        line1.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THIN));
+        svg.appendChild(line1);
+        
+        // Second diagonal line: top-right to bottom-left (/)
+        const line2 = document.createElementNS(SVG_NS, 'line');
+        line2.setAttribute('x1', (x + size).toString());
+        line2.setAttribute('y1', (y - size).toString());
+        line2.setAttribute('x2', (x - size).toString());
+        line2.setAttribute('y2', (y + size).toString());
+        line2.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        line2.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_THIN));
+        svg.appendChild(line2);
+    }
+
+    /**
+     * Draws a slash bar (note head for values >= 4).
+     */
+    private drawSlash(svg: SVGElement, x: number, y: number): void {
+        const slash = document.createElementNS(SVG_NS, 'line');
+        slash.setAttribute('x1', (x + NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('y1', (y - NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('x2', (x - NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('y2', (y + NOTATION.SLASH_LENGTH / 2).toString());
+        slash.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        slash.setAttribute('stroke-width', String(VISUAL.STROKE_WIDTH_EXTRA_THICK));
+        svg.appendChild(slash);
+    }
+
+    /**
+     * Draws a stem oriented according to stemsDirection.
+     * 
+     * @returns Stem coordinates: x, topY (highest point), bottomY (lowest point)
+     */
+    private drawStemWithDirection(
+        svg: SVGElement,
+        x: number,
+        y: number,
+        height: number,
+        direction: 'up' | 'down'
+    ): { x: number; topY: number; bottomY: number } {
+        // Stem position according to direction (standard music notation)
+        // Stems UP: to the right of the note head
+        // Stems DOWN: to the left of the note head
+        const stemStartX = direction === 'up' ? (x + NOTATION.SLASH_LENGTH / 2) : (x - NOTATION.SLASH_LENGTH / 2);
+
+        let stemStartY: number, stemEndY: number;
+        if (direction === 'up') {
+            // Stems upward: starts from the TOP of the note head and goes up
+            stemStartY = y - NOTATION.SLASH_LENGTH / 2;
+            stemEndY = stemStartY - height;
         } else {
-          const stubEndX = stemX - stubLength;
-          const beam = document.createElementNS(SVG_NS, 'line');
-          beam.setAttribute('x1', String(stemX));
-          beam.setAttribute('y1', String(beamY));
-          beam.setAttribute('x2', String(stubEndX));
-          beam.setAttribute('y2', String(beamY));
-          beam.setAttribute('stroke', '#000');
-          beam.setAttribute('stroke-width', '2');
-          svg.appendChild(beam);
+            // Stems downward: starts from the BOTTOM of the note head and goes down
+            stemStartY = y + NOTATION.SLASH_LENGTH / 2;
+            stemEndY = stemStartY + height;
         }
-        continue;
-      }
-      
-      // Cas 2 : Fin de segment (voisin gauche a le niveau mais pas le droit)
-      if (leftHasLevel && !rightHasLevel && i > 0) {
-        console.log(`    -> Fin de segment, stub vers gauche`);
-        const stubEndX = stemX - stubLength;
-        const beam = document.createElementNS(SVG_NS, 'line');
-        beam.setAttribute('x1', String(stemX));
-        beam.setAttribute('y1', String(beamY));
-        beam.setAttribute('x2', String(stubEndX));
-        beam.setAttribute('y2', String(beamY));
-        beam.setAttribute('stroke', '#000');
-        beam.setAttribute('stroke-width', '2');
-        svg.appendChild(beam);
-      }
-      
-      // Cas 3 : Début de segment (voisin droit a le niveau mais pas le gauche)
-      if (!leftHasLevel && rightHasLevel && i < notes.length - 1) {
-        console.log(`    -> Début de segment, stub vers droite`);
-        const stubEndX = stemX + stubLength;
-        const beam = document.createElementNS(SVG_NS, 'line');
-        beam.setAttribute('x1', String(stemX));
-        beam.setAttribute('y1', String(beamY));
-        beam.setAttribute('x2', String(stubEndX));
-        beam.setAttribute('y2', String(beamY));
-        beam.setAttribute('stroke', '#000');
-        beam.setAttribute('stroke-width', '2');
-        svg.appendChild(beam);
-      }
+
+        const stem = document.createElementNS(SVG_NS, 'line');
+        stem.setAttribute('x1', stemStartX.toString());
+        stem.setAttribute('y1', stemStartY.toString());
+        stem.setAttribute('x2', stemStartX.toString());
+        stem.setAttribute('y2', stemEndY.toString());
+        stem.setAttribute('stroke', VISUAL.COLOR_BLACK);
+        stem.setAttribute('stroke-width', String(VISUAL.STEM_STROKE_WIDTH));
+        svg.appendChild(stem);
+
+        // Return actual top and bottom values
+        return {
+            x: stemStartX,
+            topY: Math.min(stemStartY, stemEndY),
+            bottomY: Math.max(stemStartY, stemEndY)
+        };
     }
-  }
 
-  private drawSlashNotehead(svg: SVGElement, x: number, y: number) {
-    // Use slash like in main_2025
-    const slashLength = 10;
-    const slash = document.createElementNS(SVG_NS, 'line');
-    slash.setAttribute('x1', (x + slashLength/2).toString());
-    slash.setAttribute('y1', (y - slashLength/2).toString());
-    slash.setAttribute('x2', (x - slashLength/2).toString());
-    slash.setAttribute('y2', (y + slashLength/2).toString());
-    slash.setAttribute('stroke', '#000');
-    slash.setAttribute('stroke-width', '2.5');
-    svg.appendChild(slash);
-  }
-
-  private drawDot(svg: SVGElement, x: number, y: number) {
-    const c = document.createElementNS(SVG_NS, 'circle');
-    c.setAttribute('cx', String(x));
-    c.setAttribute('cy', String(y));
-    c.setAttribute('r', '1.5');
-    c.setAttribute('fill', 'black');
-    svg.appendChild(c);
-  }
-
-  private drawStem(svg: SVGElement, x: number, y: number) {
-    const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('x1', String(x - 3)); // Attach to left side of slash
-    line.setAttribute('y1', String(y + 5)); // Start below slash
-    line.setAttribute('x2', String(x - 3));
-    line.setAttribute('y2', String(y - 25)); // Match main_2025 height
-    line.setAttribute('stroke', '#000');
-    line.setAttribute('stroke-width', '1.5');
-    svg.appendChild(line);
-  }
-
-  private drawIndividualFlags(svg: SVGElement, element: NoteElement, x: number, y: number) {
-    const stemX = x - 3;
-    const stemTopY = y - 25;
-    const count = element.value === 16 ? 2 : element.value === 32 ? 3 : element.value === 64 ? 4 : 1;
-    
-    for (let i = 0; i < count; i++) {
-      const flagY = stemTopY + i * 5;
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M ${stemX} ${flagY} Q ${stemX - 8} ${flagY - 4} ${stemX - 6} ${flagY - 10}`);
-      path.setAttribute('stroke', '#000');
-      path.setAttribute('stroke-width', '1.5');
-      path.setAttribute('fill', 'none');
-      svg.appendChild(path);
+    /**
+     * Dessine des crochets (flags) sur une hampe pour les notes isolées.
+     */
+    private drawFlag(
+        svg: SVGElement,
+        stem: { x: number; topY: number; bottomY: number },
+        count: number,
+        direction: 'up' | 'down'
+    ): void {
+        const flagSpacing = 10;
+        for (let i = 0; i < count; i++) {
+            const flag = document.createElementNS(SVG_NS, 'path');
+            if (direction === 'up') {
+                const attachY = stem.topY + i * flagSpacing;
+                flag.setAttribute('d', `M ${stem.x} ${attachY} Q ${stem.x + 10} ${attachY + 5} ${stem.x + 8} ${attachY + 12}`);
+            } else {
+                const attachY = stem.bottomY - i * flagSpacing;
+                flag.setAttribute('d', `M ${stem.x} ${attachY} Q ${stem.x - 10} ${attachY - 5} ${stem.x - 8} ${attachY - 12}`);
+            }
+            flag.setAttribute('stroke', '#000');
+            flag.setAttribute('stroke-width', '2');
+            flag.setAttribute('fill', 'none');
+            svg.appendChild(flag);
+        }
     }
-  }
 
-  /**
-   * Détecte tous les groupes de tuplets dans le beat.
-   * Retourne un tableau de groupes avec startIndex, endIndex, et count.
-   */
-  private detectTupletGroups(): Array<{
-    startIndex: number, 
-    endIndex: number, 
-    count: number, 
-    groupId: string,
-    ratio?: {numerator: number, denominator: number}
-  }> {
-    const groups: Array<{
-      startIndex: number, 
-      endIndex: number, 
-      count: number, 
-      groupId: string,
-      ratio?: {numerator: number, denominator: number}
-    }> = [];
-    const seenGroups = new Set<string>();
-    
-    this.beat.notes.forEach((note, i) => {
-      if (note.tuplet && !seenGroups.has(note.tuplet.groupId)) {
-        seenGroups.add(note.tuplet.groupId);
+    /**
+     * Dessine un point pour une note pointée.
+     */
+    private drawDot(svg: SVGElement, x: number, y: number, nv: NoteElement): void {
+        const dot = document.createElementNS(SVG_NS, 'circle');
+        dot.setAttribute('cx', (x + NOTATION.DOT_X_OFFSET).toString());
+        dot.setAttribute('cy', (y - NOTATION.DOT_Y_OFFSET).toString());
+        dot.setAttribute('r', NOTATION.DOT_RADIUS.toString());
+        dot.setAttribute('fill', '#000');
+        dot.setAttribute('data-cg-dot', '1');
+        svg.appendChild(dot);
+
+        if (this.placeAndSizeManager) {
+            const cx = x + NOTATION.DOT_X_OFFSET;
+            const cy = y - NOTATION.DOT_Y_OFFSET;
+            this.placeAndSizeManager.registerElement('dot', {
+                x: cx - 2,
+                y: cy - 2,
+                width: 4,
+                height: 4
+            }, 9, {
+                value: nv.value,
+                dotted: true,
+                exactX: cx,
+                exactY: cy
+            });
+        }
+    }
+
+    /**
+     * Dessine une note unique sans ligature (pour path analyzer).
+     * Les ligatures sont gérées par BeamRenderer.
+     * 
+     * @returns Coordonnées de la hampe si elle existe
+     */
+    public drawSingleNoteWithoutBeam(
+        svg: SVGElement,
+        nv: NoteElement,
+        x: number,
+        staffLineY: number,
+        drawFlagsForIsolated: boolean = false
+    ): { stemTopY?: number; stemBottomY?: number; stemX?: number } {
+        // Silences gérés par RestRenderer
+        if (nv.isRest) {
+            this.restRenderer.drawRest(svg, nv, x, staffLineY, this.stemsDirection);
+            return {};
+        }
+
+        let stemInfo: { x: number; topY: number; bottomY: number } | undefined;
+
+        // Ghost notes: cross-shaped note head for all values
+        if (nv.isGhost) {
+            this.drawCrossNoteHead(svg, x, staffLineY);
+            // All ghost notes (except whole notes) get stems
+            if (nv.value >= 2) {
+                stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+                
+                // Crochets pour ghost notes isolées (non ligaturées) >= 8
+                if (drawFlagsForIsolated && nv.value >= 8) {
+                    const level = nv.value >= 64 ? 4 :
+                                 nv.value >= 32 ? 3 :
+                                 nv.value >= 16 ? 2 :
+                                 nv.value >= 8 ? 1 : 0;
+                    if (level > 0 && stemInfo) {
+                        this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+                    }
+                }
+            }
+        }
+        // Ronde (valeur 1) : diamond creux sans hampe
+        else if (nv.value === 1) {
+            this.drawDiamondNoteHead(svg, x, staffLineY, true);
+        }
+        // Blanche (valeur 2) : diamond creux avec hampe
+        else if (nv.value === 2) {
+            this.drawDiamondNoteHead(svg, x, staffLineY, true);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+        }
+        // Notes ligaturables (>= 8) : slash + hampe (+ flags si isolée)
+        else {
+            this.drawSlash(svg, x, staffLineY);
+            stemInfo = this.drawStemWithDirection(svg, x, staffLineY, NOTATION.STEM_HEIGHT, this.stemsDirection);
+
+            // Crochets pour notes isolées (non ligaturées)
+            if (drawFlagsForIsolated) {
+                const level = nv.value >= 64 ? 4 :
+                             nv.value >= 32 ? 3 :
+                             nv.value >= 16 ? 2 :
+                             nv.value >= 8 ? 1 : 0;
+                if (level > 0 && stemInfo) {
+                    this.drawFlag(svg, stemInfo, level, this.stemsDirection);
+                }
+            }
+        }
+
+        // Point pour note pointée
+        if (nv.dotted) {
+            this.drawDot(svg, x, staffLineY, nv);
+        }
+
+        return stemInfo ? {
+            stemTopY: stemInfo.topY,
+            stemBottomY: stemInfo.bottomY,
+            stemX: stemInfo.x
+        } : {};
+    }
+
+    /**
+     * Dessine un temps (beat) complet avec toutes ses notes.
+     * 
+     * @param svg - Élément SVG parent
+     * @param beat - Temps à dessiner
+     * @param beatX - Position X du début du temps
+     * @param staffLineY - Position Y de la ligne de portée
+     * @param beatWidth - Largeur allouée au temps
+     * @param measureIndex - Index de la mesure
+     * @param chordIndex - Index du segment d'accord
+     * @param beatIndex - Index du temps
+     * @param notePositions - Tableau pour collecter les positions des notes
+     * @param segmentNoteCursor - Compteurs de notes par segment
+     * @param beamedAtLevel1 - Set des notes en ligature niveau 1
+     * @returns Position X de la première note, ou null si aucune
+     */
+    public drawBeat(
+        svg: SVGElement,
+        beat: Beat,
+        beatX: number,
+        staffLineY: number,
+        beatWidth: number,
+        measureIndex: number,
+        chordIndex: number,
+        beatIndex: number,
+        notePositions: NotePosition[],
+        segmentNoteCursor: number[],
+        beamedAtLevel1?: Set<string>
+    ): number | null {
+        const noteCount = beat.notes.length;
+        if (noteCount === 0) return null;
+
+        const innerLeft = 10;
+        const innerRight = 10;
+        const startX = beatX + innerLeft;
+        const endX = beatX + beatWidth - innerRight;
+        const availableWidth = endX - startX;
+
+        // Positionnement des notes avec espacement tuplet-aware
+        const notePositionsX: number[] = [];
+        let firstNoteX: number | null = null;
+
+        // Calcul des espacements désirés
+        const gapCount = noteCount - 1;
+        const desiredGaps: number[] = [];
         
-        // Trouver le début et la fin du groupe
-        const groupNotes = this.beat.notes.filter((n, idx) => 
-          n.tuplet && n.tuplet.groupId === note.tuplet!.groupId
-        );
-        
-        const startIndex = this.beat.notes.findIndex(n => 
-          n.tuplet && n.tuplet.groupId === note.tuplet!.groupId
-        );
-        const endIndex = startIndex + groupNotes.length - 1;
-        
-        groups.push({
-          startIndex,
-          endIndex,
-          count: note.tuplet.count,
-          groupId: note.tuplet.groupId,
-          ratio: note.tuplet.ratio
+        for (let i = 0; i < gapCount; i++) {
+            const currentNote = beat.notes[i];
+            const nextNote = beat.notes[i + 1];
+            const currentIsRest = currentNote.isRest;
+            const nextIsRest = nextNote.isRest;
+            const minGap = 20;
+            let gap = currentIsRest || nextIsRest ? minGap + 4 : minGap;
+            desiredGaps.push(gap);
+        }
+
+        const totalDesiredGap = desiredGaps.reduce((a, b) => a + b, 0);
+        const scale = gapCount > 0 ? Math.min(1, availableWidth / totalDesiredGap) : 1;
+        const finalGaps = desiredGaps.map(g => g * scale);
+
+        let cursorX = startX;
+        for (let i = 0; i < noteCount; i++) {
+            notePositionsX.push(cursorX);
+            if (i < gapCount) cursorX += finalGaps[i];
+        }
+
+        // Rendu de chaque note
+        beat.notes.forEach((nv, noteIndex) => {
+            let noteX: number;
+            
+            // Cas spécial : pause de ronde centrée
+            if (noteCount === 1 && nv.isRest && nv.value === 1) {
+                noteX = beatX + beatWidth / 2;
+            } else {
+                noteX = notePositionsX[noteIndex];
+            }
+
+            // Silences
+            if (nv.isRest) {
+                this.restRenderer.drawRest(svg, nv, noteX, staffLineY, this.stemsDirection);
+                
+                // Enregistrer la position du silence pour le système de counting
+                notePositions.push({
+                    x: noteX,
+                    y: staffLineY,
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    noteIndex,
+                    segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+                    value: nv.value,
+                    countingNumber: nv.countingNumber,
+                    countingLabel: nv.countingLabel,
+                    countingSize: nv.countingSize
+                });
+                
+                if (firstNoteX === null) firstNoteX = noteX;
+                return;
+            }
+
+            // Notes avec éventuelle ligature niveau 1
+            const localIndexInSegment = segmentNoteCursor[chordIndex];
+            const isInPrimaryBeam = beamedAtLevel1?.has(`${chordIndex}:${localIndexInSegment}`) ?? false;
+            const needsFlag = nv.value >= 8 && !isInPrimaryBeam;
+
+            const stemCoords = this.drawSingleNoteWithoutBeam(svg, nv, noteX, staffLineY, needsFlag);
+            if (firstNoteX === null) firstNoteX = noteX;
+
+            // Calcul des bords de la tête de note
+            let headLeftX: number, headRightX: number;
+            if (nv.value === 1 || nv.value === 2) {
+                const diamondSize = 6;
+                headLeftX = noteX - diamondSize;
+                headRightX = noteX + diamondSize;
+            } else {
+                const slashHalf = 10 / 2;
+                headLeftX = noteX - slashHalf;
+                headRightX = noteX + slashHalf;
+            }
+
+            const hasStem = nv.value >= 2;
+            const stemTopY = stemCoords.stemTopY;
+            const stemBottomY = stemCoords.stemBottomY;
+            const stemX = stemCoords.stemX;
+
+            // Enregistrement de la position de la note
+            notePositions.push({
+                x: noteX,
+                y: staffLineY,
+                headLeftX,
+                headRightX,
+                measureIndex,
+                chordIndex,
+                beatIndex,
+                noteIndex,
+                segmentNoteIndex: segmentNoteCursor[chordIndex]++,
+                tieStart: !!nv.tieStart,
+                tieEnd: !!nv.tieEnd,
+                tieToVoid: !!nv.tieToVoid,
+                tieFromVoid: !!nv.tieFromVoid,
+                globalTimeIndex: measureIndex * 1000000 + chordIndex * 10000 + beatIndex * 100 + noteIndex,
+                stemTopY,
+                stemBottomY,
+                value: nv.value,
+                countingNumber: nv.countingNumber,
+                countingLabel: nv.countingLabel,
+                countingSize: nv.countingSize
+            });
+
+            // Enregistrement dans PlaceAndSizeManager
+            if (this.placeAndSizeManager) {
+                // Tête de note
+                const noteHeadBBox = {
+                    x: headLeftX,
+                    y: staffLineY - 12,
+                    width: headRightX - headLeftX,
+                    height: 24
+                };
+                this.placeAndSizeManager.registerElement('note', noteHeadBBox, 6, {
+                    value: nv.value,
+                    dotted: nv.dotted,
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    noteIndex,
+                    exactX: noteX,
+                    exactY: staffLineY
+                });
+
+                // Hampe
+                if (hasStem && stemTopY !== undefined && stemBottomY !== undefined && stemX !== undefined) {
+                    const stemBBox = {
+                        x: stemX - 1.5,
+                        y: stemTopY,
+                        width: 3,
+                        height: stemBottomY - stemTopY
+                    };
+
+                    this.placeAndSizeManager.registerElement('stem', stemBBox, 5, {
+                        measureIndex,
+                        chordIndex,
+                        beatIndex,
+                        noteIndex,
+                        canCollide: true,
+                        stem: {
+                            centerX: stemX,
+                            centerY: (stemTopY + stemBottomY) / 2,
+                            topY: stemTopY,
+                            bottomY: stemBottomY,
+                            direction: this.stemsDirection
+                        }
+                    });
+                }
+            }
         });
-      }
-    });
-    
-    return groups;
-  }
 
-  /**
-   * Calcule les positions X de chaque note en tenant compte des tuplets.
-   * Les notes dans un tuplet sont plus rapprochées (espacement réduit à 75%).
-   */
-  private calculateNotePositions(
-    baseSpacing: number, 
-    tupletGroups: Array<{startIndex: number, endIndex: number}>
-  ): number[] {
-    const positions: number[] = [];
-    let currentX = this.x;
-    
-    for (let i = 0; i < this.beat.notes.length; i++) {
-      // Vérifier si cette note est dans un tuplet
-      const inTuplet = tupletGroups.some(g => i >= g.startIndex && i <= g.endIndex);
-      const spacing = inTuplet ? baseSpacing * 0.75 : baseSpacing;
-      
-      positions.push(currentX);
-      currentX += spacing;
-    }
-    
-    return positions;
-  }
+        // Render tuplet brackets if any
+        const tupletGroups = this.detectTupletGroups(beat);
+        tupletGroups.forEach(tupletGroup => {
+            this.drawTupletBracket(svg, tupletGroup, beat, notePositions, measureIndex, chordIndex, beatIndex);
+        });
 
-  /**
-   * Dessine le bracket de tuplet avec son chiffre au-dessus du groupe de notes.
-   * Si un ratio explicite est fourni (N:M), il sera affiché au lieu du simple count.
-   */
-  private drawTupletBracket(
-    svg: SVGElement, 
-    tupletGroup: {
-      startIndex: number, 
-      endIndex: number, 
-      count: number,
-      ratio?: {numerator: number, denominator: number}
-    }, 
-    notePositions: number[]
-  ) {
-    const startX = notePositions[tupletGroup.startIndex];
-    const endX = notePositions[tupletGroup.endIndex];
-    const bracketY = this.y + this.NOTE_Y - 35; // Au-dessus des hampes
-    
-    // Ligne horizontale du bracket
-    const bracket = document.createElementNS(SVG_NS, 'line');
-    bracket.setAttribute('x1', String(startX));
-    bracket.setAttribute('y1', String(bracketY));
-    bracket.setAttribute('x2', String(endX));
-    bracket.setAttribute('y2', String(bracketY));
-    bracket.setAttribute('stroke', '#000');
-    bracket.setAttribute('stroke-width', '1');
-    svg.appendChild(bracket);
-    
-    // Petites barres verticales aux extrémités
-    const leftBar = document.createElementNS(SVG_NS, 'line');
-    leftBar.setAttribute('x1', String(startX));
-    leftBar.setAttribute('y1', String(bracketY));
-    leftBar.setAttribute('x2', String(startX));
-    leftBar.setAttribute('y2', String(bracketY + 5));
-    leftBar.setAttribute('stroke', '#000');
-    leftBar.setAttribute('stroke-width', '1');
-    svg.appendChild(leftBar);
-    
-    const rightBar = document.createElementNS(SVG_NS, 'line');
-    rightBar.setAttribute('x1', String(endX));
-    rightBar.setAttribute('y1', String(bracketY));
-    rightBar.setAttribute('x2', String(endX));
-    rightBar.setAttribute('y2', String(bracketY + 5));
-    rightBar.setAttribute('stroke', '#000');
-    rightBar.setAttribute('stroke-width', '1');
-    svg.appendChild(rightBar);
-    
-    // Chiffre du tuplet centré
-    // Si un ratio explicite est fourni (ex: 5:4), l'afficher au lieu du count
-    const centerX = (startX + endX) / 2;
-    const text = document.createElementNS(SVG_NS, 'text');
-    text.setAttribute('x', String(centerX));
-    text.setAttribute('y', String(bracketY - 3));
-    text.setAttribute('font-size', '10');
-    text.setAttribute('font-weight', 'bold');
-    text.setAttribute('text-anchor', 'middle');
-    
-    if (tupletGroup.ratio) {
-      // Afficher le ratio explicite N:M
-      text.textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
-    } else {
-      // Afficher seulement le count (comportement par défaut)
-      text.textContent = String(tupletGroup.count);
+        return firstNoteX;
     }
-    
-    svg.appendChild(text);
-  }
+
+    /**
+     * Détecte tous les groupes de tuplets dans le beat.
+     * Retourne un tableau de groupes avec startIndex, endIndex, count et ratio.
+     */
+    private detectTupletGroups(beat: Beat): Array<{
+        startIndex: number,
+        endIndex: number,
+        count: number,
+        groupId: string,
+        ratio?: {numerator: number, denominator: number},
+        explicitRatio?: boolean
+    }> {
+        const groups: Array<{
+            startIndex: number,
+            endIndex: number,
+            count: number,
+            groupId: string,
+            ratio?: {numerator: number, denominator: number},
+            explicitRatio?: boolean
+        }> = [];
+        const seenGroups = new Set<string>();
+
+        beat.notes.forEach((note, i) => {
+            if (note.tuplet && !seenGroups.has(note.tuplet.groupId)) {
+                seenGroups.add(note.tuplet.groupId);
+
+                // Trouver le début et la fin du groupe
+                const groupNotes = beat.notes.filter((n, idx) =>
+                    n.tuplet && n.tuplet.groupId === note.tuplet!.groupId
+                );
+
+                const startIndex = beat.notes.findIndex(n =>
+                    n.tuplet && n.tuplet.groupId === note.tuplet!.groupId
+                );
+                const endIndex = startIndex + groupNotes.length - 1;
+
+                groups.push({
+                    startIndex,
+                    endIndex,
+                    count: note.tuplet.count,
+                    groupId: note.tuplet.groupId,
+                    ratio: note.tuplet.ratio,
+                    explicitRatio: note.tuplet.explicitRatio
+                });
+            }
+        });
+
+        return groups;
+    }
+
+    /**
+     * Dessine le bracket de tuplet avec son chiffre au-dessus du groupe de notes.
+     * Si un ratio explicite est fourni (N:M), il sera affiché au lieu du simple count.
+     */
+    private drawTupletBracket(
+        svg: SVGElement,
+        tupletGroup: {
+            startIndex: number,
+            endIndex: number,
+            count: number,
+            ratio?: {numerator: number, denominator: number},
+            explicitRatio?: boolean
+        },
+        beat: Beat,
+        notePositions: NotePosition[],
+        measureIndex: number,
+        chordIndex: number,
+        beatIndex: number
+    ) {
+        // Find the actual note positions for this tuplet group
+        const groupNotePositions: NotePosition[] = [];
+        for (let i = tupletGroup.startIndex; i <= tupletGroup.endIndex; i++) {
+            const notePos = notePositions.find(np =>
+                np.measureIndex === measureIndex &&
+                np.chordIndex === chordIndex &&
+                np.beatIndex === beatIndex &&
+                np.noteIndex === i
+            );
+            if (notePos) {
+                groupNotePositions.push(notePos);
+            }
+        }
+
+        if (groupNotePositions.length === 0) return;
+
+        const firstNote = groupNotePositions[0];
+        const lastNote = groupNotePositions[groupNotePositions.length - 1];
+
+        // Use stem positions if available, otherwise use note center
+        const startX = firstNote.stemTopY !== undefined ? (firstNote.x + NOTATION.SLASH_LENGTH / 2) : firstNote.x;
+        const endX = lastNote.stemTopY !== undefined ? (lastNote.x + NOTATION.SLASH_LENGTH / 2) : lastNote.x;
+
+        // Find the highest stem top (lowest Y value since Y increases downward)
+        const highestStemTop = Math.min(...groupNotePositions
+            .filter(np => np.stemTopY !== undefined)
+            .map(np => np.stemTopY!));
+
+        // Position bracket above the highest stem with clearance
+        const bracketY = highestStemTop - 9;
+
+        // Ligne horizontale du bracket
+        const bracket = document.createElementNS(SVG_NS, 'line');
+        bracket.setAttribute('x1', String(startX));
+        bracket.setAttribute('y1', String(bracketY));
+        bracket.setAttribute('x2', String(endX));
+        bracket.setAttribute('y2', String(bracketY));
+        bracket.setAttribute('stroke', '#000');
+        bracket.setAttribute('stroke-width', '1');
+        svg.appendChild(bracket);
+
+        // Petites barres verticales aux extrémités
+        const leftBar = document.createElementNS(SVG_NS, 'line');
+        leftBar.setAttribute('x1', String(startX));
+        leftBar.setAttribute('y1', String(bracketY));
+        leftBar.setAttribute('x2', String(startX));
+        leftBar.setAttribute('y2', String(bracketY + 5));
+        leftBar.setAttribute('stroke', '#000');
+        leftBar.setAttribute('stroke-width', '1');
+        svg.appendChild(leftBar);
+
+        const rightBar = document.createElementNS(SVG_NS, 'line');
+        rightBar.setAttribute('x1', String(endX));
+        rightBar.setAttribute('y1', String(bracketY));
+        rightBar.setAttribute('x2', String(endX));
+        rightBar.setAttribute('y2', String(bracketY + 5));
+        rightBar.setAttribute('stroke', '#000');
+        rightBar.setAttribute('stroke-width', '1');
+        svg.appendChild(rightBar);
+
+        // Register tuplet bracket in collision manager
+        if (this.placeAndSizeManager) {
+            this.placeAndSizeManager.registerElement(
+                'tuplet-bracket',
+                {
+                    x: startX,
+                    y: bracketY,
+                    width: endX - startX,
+                    height: 5
+                },
+                10, // High priority (fixed element)
+                {
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    tuplet: {
+                        topY: bracketY,
+                        bottomY: bracketY + 5
+                    }
+                }
+            );
+        }
+
+        // Si un ratio explicite est fourni (ex: 5:4), l'afficher au lieu du count
+        const centerX = (startX + endX) / 2;
+        const text = document.createElementNS(SVG_NS, 'text');
+        text.setAttribute('x', String(centerX));
+        text.setAttribute('y', String(bracketY - 3));
+        text.setAttribute('font-size', '12');
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('text-anchor', 'middle');
+
+        let textContent: string;
+        if (tupletGroup.explicitRatio && tupletGroup.ratio) {
+            // Afficher le ratio explicite N:M seulement si l'utilisateur l'a écrit
+            textContent = `${tupletGroup.ratio.numerator}:${tupletGroup.ratio.denominator}`;
+        } else {
+            // Afficher seulement le count (comportement par défaut)
+            textContent = String(tupletGroup.count);
+        }
+        text.textContent = textContent;
+
+        svg.appendChild(text);
+
+        // Register tuplet number/text in collision manager (this is the critical one for chord collision)
+        if (this.placeAndSizeManager) {
+            // Estimate text width based on content length
+            const charWidth = 7; // Approximate width per character at font-size 12
+            const estimatedWidth = textContent.length * charWidth;
+            const textHeight = 12; // Font size
+            
+            this.placeAndSizeManager.registerElement(
+                'tuplet-number',
+                {
+                    x: centerX - estimatedWidth / 2,
+                    y: bracketY - 3 - textHeight, // y is baseline, so subtract height for top
+                    width: estimatedWidth,
+                    height: textHeight
+                },
+                10, // High priority (fixed element)
+                {
+                    measureIndex,
+                    chordIndex,
+                    beatIndex,
+                    tuplet: {
+                        centerX,
+                        topY: bracketY - 3 - textHeight,
+                        text: textContent
+                    }
+                }
+            );
+        }
+    }
 }

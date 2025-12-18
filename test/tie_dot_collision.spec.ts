@@ -1,5 +1,5 @@
 import { SVGRenderer } from '../src/renderer/SVGRenderer';
-import { CollisionManager } from '../src/renderer/CollisionManager';
+import { PlaceAndSizeManager } from '../src/renderer/PlaceAndSizeManager';
 import { TieManager } from '../src/utils/TieManager';
 
 describe('Tie rendering with dotted notes', () => {
@@ -31,10 +31,10 @@ describe('Tie rendering with dotted notes', () => {
 
   it('raises tie control point to avoid dotted note dot overlap', () => {
     const renderer = new SVGRenderer();
-    const collisionManager = new CollisionManager();
+    const placeAndSizeManager = new PlaceAndSizeManager();
 
     // Simulate a dotted note dot near the tie path
-    collisionManager.registerElement('dot', { x: 108, y: 74, width: 4, height: 4 }, 9, { value: 4, dotted: true });
+    placeAndSizeManager.registerElement('dot', { x: 108, y: 74, width: 4, height: 4 }, 9, { value: 4, dotted: true });
 
     const fakeSvg = new FakeElement('svg') as unknown as SVGElement & { __dynamicLineStartPadding?: number };
     fakeSvg.__dynamicLineStartPadding = 40;
@@ -94,7 +94,7 @@ describe('Tie rendering with dotted notes', () => {
         400,
         tieManager,
         measurePositions,
-        collisionManager
+        placeAndSizeManager
       );
     } finally {
       (global as any).document = previousDocument;
@@ -114,8 +114,13 @@ describe('Tie rendering with dotted notes', () => {
 
     const controlY = parseFloat(parts[5]);
 
-    // Baseline control point without dot avoidance would be min(75, 85) - 8 = 67.
-    const expectedRaisedControlY = 61;
+    // With stems down and new edge logic: both start/end use edge='right'
+    // Start: anchor=77 (80-3), clearance=3.5 → startY = 77 - 3.5 = 73.5
+    // End: anchor=77 (80-3), clearance=-1 → endY = 77 - (-1) = 78
+    // Baseline control point: min(73.5, 78) - 8 = 65.5
+    // With dot avoidance adjustment: no adjustment needed as tie is already clear
+    const expectedRaisedControlY = 65.5;
     expect(controlY).toBeCloseTo(expectedRaisedControlY, 5);
   });
 });
+

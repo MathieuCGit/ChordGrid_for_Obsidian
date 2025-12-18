@@ -3,21 +3,21 @@ import { Note } from './Note';
 
 /**
  * @file Beat.ts
- * @description Représentation d'un beat (temps musical) dans une mesure.
+ * @description Representation of a beat (musical time unit) in a measure.
  * 
- * Un beat est une unité de temps musicale qui contient une ou plusieurs notes
- * ou silences. Les notes d'un même beat peuvent être liées par des ligatures
- * (beams) pour indiquer leur regroupement rythmique.
+ * A beat is a musical time unit that contains one or more notes or rests.
+ * Notes within the same beat can be connected by beams to indicate their
+ * rhythmic grouping.
  * 
- * Propriétés :
- * - notes : Tableau de notes/silences dans ce beat
- * - hasBeam : Indique si les notes sont liées par une ligature
- * - beamGroups : Groupes de ligature pour les notes de ce beat
- * - chord : Accord associé à ce beat (optionnel)
+ * Properties:
+ * - notes: Array of notes/rests in this beat
+ * - hasBeam: Indicates if notes are connected by a beam
+ * - beamGroups: Beam groups for the notes in this beat
+ * - chord: Associated chord for this beat (optional)
  * 
  * @example
  * ```typescript
- * // Beat avec deux croches liées
+ * // Beat with two eighth notes connected by a beam
  * const beat = new Beat([
  *   { value: 8, dotted: false, isRest: false },
  *   { value: 8, dotted: false, isRest: false }
@@ -31,10 +31,10 @@ export class Beat implements IBeat {
   chord?: string;
 
   /**
-   * Constructeur d'un beat.
+   * Constructor for a beat.
    * 
-   * @param notes - Tableau de notes/silences pour ce beat
-   * @param chord - Accord associé (optionnel)
+   * @param notes - Array of notes/rests for this beat
+   * @param chord - Associated chord (optional)
    */
   constructor(notes: NoteElement[] = [], chord?: string) {
     this.notes = notes.map(n => new Note(n));
@@ -44,16 +44,16 @@ export class Beat implements IBeat {
   }
 
   /**
-   * Calcule la durée totale du beat en unités de noires (quarter-notes).
+   * Calculate the total duration of the beat in quarter-note units.
    * 
-   * Parcourt toutes les notes du beat et additionne leurs durées.
-   * Prend en compte les notes pointées (multipliées par 1.5).
+   * Iterates through all notes in the beat and sums their durations.
+   * Takes dotted notes into account (multiplied by 1.5).
    * 
-   * @returns Durée totale en quarter-notes
+   * @returns Total duration in quarter-notes
    * 
    * @example
-   * // Beat avec une croche (1/2 noire) et une croche pointée (3/4 noire)
-   * // retourne 1.25 noires
+   * // Beat with one eighth note (1/2 quarter) and one dotted eighth (3/4 quarter)
+   * // returns 1.25 quarter-notes
    */
   totalQuarterNotes(): number {
     return this.notes.reduce((sum, n) => {
