@@ -341,8 +341,8 @@ You can use the x just after a note value to get a X note head instead of the cl
 | `4_ 88_ \| [_8]` | Tie across measure boundary |
 | `C[8]G[8]` | Cross‑segment beaming if no space (analyzer) |
 | `C[8] G[8]` | Space blocks beam |
-| `%` | Repeat previous measure's rhythm |
-| `Chord[%]` | Repeat rhythm with new chord |
+| `%` | Repeat previous measure's chord AND rhythm |
+| `Chord[%]` | Repeat ONLY rhythm with NEW chord |
 | `show%` | Display visual repeat symbol instead of full rhythm |
 | `picks` | Enable pick stroke rendering with automatic or forced subdivision |
 | `{888}3` | Eighth note triplet (fully beamed) |
