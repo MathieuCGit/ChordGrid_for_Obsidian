@@ -48,7 +48,7 @@
 
 2. Copy them to your Obsidian vault's plugin folder:
    ```
-   <your-vault>/.obsidian/plugins/chord-grid/
+   <your-vault>/.obsidian/plugins/chordgrid/
    ```
 
 3. Enable "Chord Grid" in Obsidian Settings → Community Plugins
