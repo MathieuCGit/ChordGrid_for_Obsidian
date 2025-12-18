@@ -318,6 +318,18 @@ Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to A
   ````
   <img width="773" height="211" alt="image" src="https://github.com/user-attachments/assets/51136327-2286-4381-84e4-08bb64d40e10" />
 
+### Strike, percussive notation
+You can use the x just after a note value to get a X note head instead of the classic slash notation.
+
+  ````markdown
+  ```chordgrid
+  4/4 | Em[4 8x]G[8_4 4x] | D[4 8x]C[8_4 4x] 
+  ```
+  ````
+<img width="1189" height="222" alt="image" src="https://github.com/user-attachments/assets/fecec35d-7be9-4b0c-8eec-4ad0143c8f7c" />
+
+
+
 #### Advanced Syntax Examples
 | Pattern | Effect |
 |---------|-------|
@@ -342,6 +354,7 @@ Second example: volta 1-3 covers two measures before `:||`, volta 4 extends to A
 | `\|.1-3` | Start volta bracket for endings 1, 2, 3 |
 | `\|.` | Explicitly mark end of volta bracket |
 | `\|.1,2,3` | Alternative comma syntax for volta |
+| `8x` | This 8th note will hace a X note head instead of standard slash |
 
 ## 🛠️ Development
 
