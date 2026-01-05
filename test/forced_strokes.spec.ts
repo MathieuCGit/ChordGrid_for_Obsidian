@@ -245,12 +245,12 @@ describe('Forced Pick and Finger Strokes', () => {
       const renderer = new SVGRenderer();
       const svg = renderer.render(result.grid, { fingerMode: 'en' });
 
-      // Extract finger symbol texts
-      const textElements = svg.querySelectorAll('text[data-finger-symbol="true"]');
-      expect(textElements.length).toBe(4);
+      // Extract finger symbol texts (letter + arrow elements)
+      const letterElements = svg.querySelectorAll('text[data-finger-symbol="letter"]');
+      expect(letterElements.length).toBe(4);
 
       const symbols: string[] = [];
-      textElements.forEach(text => {
+      letterElements.forEach(text => {
         symbols.push(text.textContent || '');
       });
 
@@ -265,9 +265,9 @@ describe('Forced Pick and Finger Strokes', () => {
       const renderer = new SVGRenderer();
       const svg = renderer.render(result.grid, { fingerMode: 'en' });
 
-      const textElements = svg.querySelectorAll('text[data-finger-symbol="true"]');
+      const letterElements = svg.querySelectorAll('text[data-finger-symbol="letter"]');
       const symbols: string[] = [];
-      textElements.forEach(text => {
+      letterElements.forEach(text => {
         symbols.push(text.textContent || '');
       });
 
@@ -281,9 +281,9 @@ describe('Forced Pick and Finger Strokes', () => {
       const renderer = new SVGRenderer();
       const svg = renderer.render(result.grid, { fingerMode: 'fr' });
 
-      const textElements = svg.querySelectorAll('text[data-finger-symbol="true"]');
+      const letterElements = svg.querySelectorAll('text[data-finger-symbol="letter"]');
       const symbols: string[] = [];
-      textElements.forEach(text => {
+      letterElements.forEach(text => {
         symbols.push(text.textContent || '');
       });
 
@@ -332,11 +332,11 @@ describe('Forced Pick and Finger Strokes', () => {
       const result = parser.parse(input);
 
       const notes = result.measures[0].chordSegments![0].beats.flatMap(b => b.notes);
-      expect(notes).toHaveLength(4);
+      expect(notes).toHaveLength(8);
       expect(notes[0].fingerSymbol).toBe('td');
       expect(notes[1].fingerSymbol).toBe('hu');
-      expect(notes[2].fingerSymbol).toBe('pd');
-      expect(notes[3].fingerSymbol).toBe('mu');
+      expect(notes[2].fingerSymbol).toBe('td');
+      expect(notes[3].fingerSymbol).toBe('hu');
     });
 
     test('should not confuse forced strokes with note values', () => {
@@ -373,7 +373,7 @@ describe('Forced Pick and Finger Strokes', () => {
     });
 
     test('should handle no mode specified (no forced strokes)', () => {
-      const input = '4/4| C[8d8u8td8hu8d8u8td8hu] |';
+      const input = '4/4| C[4d4u4td4hu] |';
       const result = parser.parse(input);
 
       const notes = result.measures[0].chordSegments![0].beats.flatMap(b => b.notes);

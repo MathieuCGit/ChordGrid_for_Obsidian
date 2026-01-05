@@ -450,7 +450,7 @@ var _ChordGridParser = class _ChordGridParser {
     let lastExplicitMeasure = null;
     for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
       const line = lines[lineIndex2];
-      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature);
+      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure;
       if (measures.length > 0 && lineIndex2 < lines.length - 1) {
@@ -657,7 +657,7 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature) {
+  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature, pickMode, fingerMode) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
@@ -873,7 +873,7 @@ var _ChordGridParser = class _ChordGridParser {
             const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
             const isLastSegment = segmentIndex === lastSegmentWithRhythmIndex;
             const effectiveTS = measureTimeSignature || globalTimeSignature;
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS);
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
             chordSegments.push({
               chord,
               // use the current chord
@@ -917,7 +917,7 @@ var _ChordGridParser = class _ChordGridParser {
         } else if (trimmedText.length > 0) {
           const rhythm = trimmedText;
           const effectiveTS = measureTimeSignature || globalTimeSignature;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, fingerMode);
           chordSegments.push({
             chord: "",
             beats: parsedBeats,
@@ -1222,7 +1222,7 @@ var BeamAndTieAnalyzer = class {
       lastBeamableNotes: []
     };
   }
-  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature) {
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature, pickMode, fingerMode) {
     var _a, _b, _c, _d, _e, _f, _g;
     const beats = [];
     let currentBeat = [];
@@ -1296,11 +1296,11 @@ var BeamAndTieAnalyzer = class {
                 }
                 let note2;
                 if (group[k] === "-") {
-                  note2 = this.parseNote(group, k + 1);
+                  note2 = this.parseNote(group, k + 1, pickMode, fingerMode);
                   note2.isRest = true;
                   k += ((_a = note2.length) != null ? _a : 0) + 1;
                 } else {
-                  note2 = this.parseNote(group, k);
+                  note2 = this.parseNote(group, k, pickMode, fingerMode);
                   k += (_b = note2.length) != null ? _b : 0;
                 }
                 if (pendingTieFromPrevious) {
@@ -1375,12 +1375,12 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "-") {
-        const note2 = this.parseNote(rhythmStr, i);
+        const note2 = this.parseNote(rhythmStr, i, pickMode, fingerMode);
         currentBeat.push(note2);
         i += (_e = note2.length) != null ? _e : 0;
         continue;
       }
-      const note = this.parseNote(rhythmStr, i);
+      const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
@@ -1406,7 +1406,7 @@ var BeamAndTieAnalyzer = class {
       this.tieContext.pendingTieToVoid = true;
     }
   }
-  parseNote(rhythmStr, startIndex) {
+  parseNote(rhythmStr, startIndex, pickMode, fingerMode) {
     let isRest = false;
     let offset = startIndex;
     if (rhythmStr[startIndex] === "-") {
@@ -1430,15 +1430,44 @@ var BeamAndTieAnalyzer = class {
         let fingerSymbol;
         let pickDirection;
         const afterValue = rhythmStr.substring(offset + len);
-        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
-        if (symbolMatch) {
-          const sym = symbolMatch[1];
-          if (sym === "d" || sym === "u") {
-            pickDirection = sym;
-          } else {
-            fingerSymbol = sym;
+        if (pickMode) {
+          const pickMatch = /^(d|u)/.exec(afterValue);
+          if (pickMatch) {
+            pickDirection = pickMatch[1];
+            len += pickMatch[0].length;
           }
-          len += symbolMatch[0].length;
+        } else if (fingerMode) {
+          const fingerMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
+          if (fingerMatch) {
+            let sym = fingerMatch[1];
+            if (sym === "d") {
+              sym = "td";
+            } else if (sym === "u") {
+              sym = "tu";
+            }
+            if (sym === "pd") {
+              sym = "td";
+            } else if (sym === "pu") {
+              sym = "tu";
+            } else if (sym === "md") {
+              sym = "hd";
+            } else if (sym === "mu") {
+              sym = "hu";
+            }
+            fingerSymbol = sym;
+            len += fingerMatch[0].length;
+          }
+        } else {
+          const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
+          if (symbolMatch) {
+            const sym = symbolMatch[1];
+            if (sym === "d" || sym === "u") {
+              pickDirection = sym;
+            } else {
+              fingerSymbol = sym;
+            }
+            len += symbolMatch[0].length;
+          }
         }
         const totalLen = offset - startIndex + len;
         return {
@@ -6494,10 +6523,13 @@ var SVGRenderer = class {
       isDown = !isDown;
     }
     const attacksWithPicks = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
-      var _a;
+      var _a, _b, _c, _d;
+      const note = (_c = (_b = (_a = grid.measures[n.measureIndex].chordSegments) == null ? void 0 : _a[n.chordIndex]) == null ? void 0 : _b.beats[n.beatIndex]) == null ? void 0 : _c.notes[n.noteIndex];
+      const forcedDirection = note == null ? void 0 : note.pickDirection;
+      const direction = forcedDirection ? forcedDirection === "d" || forcedDirection === "down" ? "down" : "up" : ((_d = timeline[n.subdivisionStart]) == null ? void 0 : _d.pickDirection) || "down";
       return {
         ...n,
-        pickDirection: ((_a = timeline[n.subdivisionStart]) == null ? void 0 : _a.pickDirection) || "down"
+        pickDirection: direction
       };
     });
     const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";
