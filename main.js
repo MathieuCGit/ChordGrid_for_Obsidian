@@ -1431,9 +1431,14 @@ var BeamAndTieAnalyzer = class {
         let pickDirection;
         const afterValue = rhythmStr.substring(offset + len);
         if (pickMode) {
-          const pickMatch = /^(d|u)/.exec(afterValue);
+          const pickMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
           if (pickMatch) {
-            pickDirection = pickMatch[1];
+            let sym = pickMatch[1];
+            if (sym.endsWith("u")) {
+              pickDirection = "u";
+            } else if (sym.endsWith("d") || sym === "d") {
+              pickDirection = "d";
+            }
             len += pickMatch[0].length;
           }
         } else if (fingerMode) {

@@ -1714,10 +1714,17 @@ class BeamAndTieAnalyzer {
         const afterValue = rhythmStr.substring(offset + len);
         // Context-aware parsing based on pickMode and fingerMode
         if (pickMode) {
-          // PICK MODE: only accept d/u as pickDirection
-          const pickMatch = /^(d|u)/.exec(afterValue);
+          // PICK MODE: accept d/u and also normalize complex suffixes (md/mu/pd/pu/hd/hu/td/tu → d/u)
+          // This allows using finger notation in pick mode without rewriting
+          const pickMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
           if (pickMatch) {
-            pickDirection = pickMatch[1] as 'd' | 'u';
+            let sym = pickMatch[1];
+            // Normalize all "up" suffixes to 'u', all "down" suffixes to 'd'
+            if (sym.endsWith('u')) {
+              pickDirection = 'u';
+            } else if (sym.endsWith('d') || sym === 'd') {
+              pickDirection = 'd';
+            }
             len += pickMatch[0].length;
           }
         } else if (fingerMode) {

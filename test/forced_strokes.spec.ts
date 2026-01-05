@@ -41,18 +41,24 @@ describe('Forced Pick and Finger Strokes', () => {
       expect(notes[3].pickDirection).toBe('d');
     });
 
-    test('should NOT parse td/tu/pd/pu as valid in pick mode', () => {
+    test('should parse and normalize td/tu/pd/pu in pick mode (v2.2+)', () => {
       const input = 'pick\n4/4| C[4td4tu4pd4pu] |';
       const result = parser.parse(input);
 
       const notes = result.measures[0].chordSegments![0].beats.flatMap(b => b.notes);
       
-      // td, tu, pd, pu should not be recognized as pickDirection in pick mode
-      // They should either be ignored or parsed as fingerSymbol (which shouldn't be used in pick mode)
-      expect(notes[0].pickDirection).toBeUndefined();
-      expect(notes[1].pickDirection).toBeUndefined();
-      expect(notes[2].pickDirection).toBeUndefined();
-      expect(notes[3].pickDirection).toBeUndefined();
+      // v2.2+: td, tu, pd, pu are now normalized to d/u in pick mode
+      // This allows using finger notation in pick mode without rewriting
+      expect(notes[0].pickDirection).toBe('d');  // td → d
+      expect(notes[1].pickDirection).toBe('u');  // tu → u
+      expect(notes[2].pickDirection).toBe('d');  // pd → d
+      expect(notes[3].pickDirection).toBe('u');  // pu → u
+      
+      // fingerSymbol should NOT be set in pick mode
+      expect(notes[0].fingerSymbol).toBeUndefined();
+      expect(notes[1].fingerSymbol).toBeUndefined();
+      expect(notes[2].fingerSymbol).toBeUndefined();
+      expect(notes[3].fingerSymbol).toBeUndefined();
     });
 
     test('should mix forced and automatic pick strokes', () => {
