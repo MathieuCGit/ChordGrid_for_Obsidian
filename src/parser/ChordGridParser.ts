@@ -325,7 +325,7 @@ export class ChordGridParser {
     
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature);
+      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure; // Preserve for next line
       
@@ -631,7 +631,7 @@ export class ChordGridParser {
     return { timeSignature: result.grid.timeSignature, measures };
   }
   
-  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature): { measures: Measure[], lastExplicitMeasure: Measure | null } {
+  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, fingerMode?: 'en' | 'fr'): { measures: Measure[], lastExplicitMeasure: Measure | null } {
     // Skip time signature on first line
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, '');
@@ -976,7 +976,7 @@ export class ChordGridParser {
             const isLastSegment = (segmentIndex === lastSegmentWithRhythmIndex);
             const effectiveTS = measureTimeSignature || globalTimeSignature;
 
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS);
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
             
             // Create a segment for each chord/rhythm group
             chordSegments.push({
@@ -1062,7 +1062,7 @@ export class ChordGridParser {
           // Rhythm-only mode: parse as rhythm without chord
           const rhythm = trimmedText;
           const effectiveTS = measureTimeSignature || globalTimeSignature;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, fingerMode);
           
           chordSegments.push({
             chord: '',
@@ -1428,7 +1428,9 @@ class BeamAndTieAnalyzer {
     isLastMeasureOfLine: boolean,
     hasSignificantSpace: boolean = false,
     isLastSegment: boolean = true,
-    effectiveTimeSignature?: TimeSignature
+    effectiveTimeSignature?: TimeSignature,
+    pickMode?: boolean,
+    fingerMode?: 'en' | 'fr'
   ): Beat[] {
     // NOTE: we should NOT overwrite lastGroupHasSpace here because the
     // continuity decision in createBeat must use the *previous* group's
@@ -1531,11 +1533,11 @@ class BeamAndTieAnalyzer {
                 // Parse chaque note du sous-groupe
                 let note: NoteElement;
                 if (group[k] === '-') {
-                  note = this.parseNote(group, k + 1);
+                  note = this.parseNote(group, k + 1, pickMode, fingerMode);
                   note.isRest = true;
                   k += (note.length ?? 0) + 1;
                 } else {
-                  note = this.parseNote(group, k);
+                  note = this.parseNote(group, k, pickMode, fingerMode);
                   k += (note.length ?? 0);
                 }
                 
@@ -1638,13 +1640,13 @@ class BeamAndTieAnalyzer {
       }
       // Handle rests (-) - let parseNote handle the '-' prefix
       if (rhythmStr[i] === '-') {
-        const note = this.parseNote(rhythmStr, i);
+        const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
         currentBeat.push(note);
         i += (note.length ?? 0);
         continue;
       }
       // Read a note value
-      const note = this.parseNote(rhythmStr, i);
+      const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
@@ -1677,7 +1679,7 @@ class BeamAndTieAnalyzer {
     }
   }
   
-  private parseNote(rhythmStr: string, startIndex: number): NoteElement {
+  private parseNote(rhythmStr: string, startIndex: number, pickMode?: boolean, fingerMode?: 'en' | 'fr'): NoteElement {
     // Check for rest prefix '-'
     let isRest = false;
     let offset = startIndex;
@@ -1710,18 +1712,52 @@ class BeamAndTieAnalyzer {
         let pickDirection: 'd' | 'u' | undefined;
         
         const afterValue = rhythmStr.substring(offset + len);
-        // Match: tu, hu, pu, mu first (2 chars), then t, h, p, m, d, u (1 char)
-        // Order matters! Longest matches first to avoid partial matching
-        // Note: We don't use (?!\d) because symbols can be followed by digits (e.g., "8h8tu")
-        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
-        if (symbolMatch) {
-          const sym = symbolMatch[1];
-          if (sym === 'd' || sym === 'u') {
-            pickDirection = sym;
-          } else {
-            fingerSymbol = sym;
+        // Context-aware parsing based on pickMode and fingerMode
+        if (pickMode) {
+          // PICK MODE: only accept d/u as pickDirection
+          const pickMatch = /^(d|u)/.exec(afterValue);
+          if (pickMatch) {
+            pickDirection = pickMatch[1] as 'd' | 'u';
+            len += pickMatch[0].length;
           }
-          len += symbolMatch[0].length;
+        } else if (fingerMode) {
+          // FINGER MODE: accept d/u/td/pd/tu/pu/hd/hu/md/mu as fingerSymbol
+          // Match longest first: td, pd, tu, pu, hd, hu, md, mu (2 chars), then d, u (1 char shortcuts)
+          const fingerMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
+          if (fingerMatch) {
+            let sym = fingerMatch[1];
+            // Normalize shortcuts: d→td, u→tu in finger mode
+            if (sym === 'd') {
+              sym = 'td';
+            } else if (sym === 'u') {
+              sym = 'tu';
+            }
+            // Normalize French/English: pd→td, pu→tu, md→hd, mu→hu
+            if (sym === 'pd') {
+              sym = 'td';
+            } else if (sym === 'pu') {
+              sym = 'tu';
+            } else if (sym === 'md') {
+              sym = 'hd';
+            } else if (sym === 'mu') {
+              sym = 'hu';
+            }
+            fingerSymbol = sym;
+            len += fingerMatch[0].length;
+          }
+        } else {
+          // NO MODE: keep old behavior for backward compatibility
+          // Match: tu, hu, pu, mu first (2 chars), then t, h, p, m, d, u (1 char)
+          const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
+          if (symbolMatch) {
+            const sym = symbolMatch[1];
+            if (sym === 'd' || sym === 'u') {
+              pickDirection = sym;
+            } else {
+              fingerSymbol = sym;
+            }
+            len += symbolMatch[0].length;
+          }
         }
 
         // Total length includes the optional '-' prefix
