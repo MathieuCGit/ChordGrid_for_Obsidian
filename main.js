@@ -496,14 +496,14 @@ var _ChordGridParser = class _ChordGridParser {
     let validationTimeSignature = timeSignature;
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
+      if (measure.timeSignature) {
+        validationTimeSignature = measure.timeSignature;
+      }
       if (measure.__isChordOnlyMode) {
         continue;
       }
       if (measure.__isEmpty) {
         continue;
-      }
-      if (measure.timeSignature) {
-        validationTimeSignature = measure.timeSignature;
       }
       const effectiveTimeSignature = validationTimeSignature;
       const expectedQuarterNotes = effectiveTimeSignature.numerator * (4 / effectiveTimeSignature.denominator);

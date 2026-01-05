@@ -409,6 +409,12 @@ export class ChordGridParser {
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       
+      // Update current time signature if this measure has an explicit change
+      // (do this BEFORE skipping validation, so chord-only measures update the tracker)
+      if (measure.timeSignature) {
+        validationTimeSignature = measure.timeSignature;
+      }
+      
       // Skip validation for chord-only measures (no rhythm notation)
       if ((measure as any).__isChordOnlyMode) {
         continue;
@@ -417,11 +423,6 @@ export class ChordGridParser {
       // Skip validation for empty measures (created with measures-per-line)
       if ((measure as any).__isEmpty) {
         continue;
-      }
-      
-      // Update current time signature if this measure has an explicit change
-      if (measure.timeSignature) {
-        validationTimeSignature = measure.timeSignature;
       }
       
       // Use current time signature for validation
