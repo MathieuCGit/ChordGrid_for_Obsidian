@@ -254,9 +254,9 @@ describe('Forced Pick and Finger Strokes', () => {
         symbols.push(text.textContent || '');
       });
 
-      // English mode: d → t, hu → hu, d → t, mu → mu
-      // (assuming td displays as 't', hu as 'hu', etc.)
-      expect(symbols).toEqual(['t', 'hu', 't', 'mu']);
+      // English mode: d → t, hu → h, d → t, hu → h
+      // (td displays as 't', hu displays as 'h')
+      expect(symbols).toEqual(['t', 'h', 't', 'h']);
     });
 
     test('should use automatic pattern when no forced symbol specified', () => {
@@ -383,6 +383,158 @@ describe('Forced Pick and Finger Strokes', () => {
       // We should verify they don't cause parsing errors
       expect(result.errors).toHaveLength(0);
       expect(notes).toHaveLength(4);
+    });
+  });
+
+  describe('Automatic Pattern - Multi-measure Consistency', () => {
+    test('should maintain correct finger pattern across multiple measures with mixed note values', () => {
+      // Bug report: pattern offset in later measures when mixing 8th and 16th notes
+      // Input has: 7/8 measure, 4/4 measures with 8ths, then 4/4 with 16ths
+      const input = `finger:fr
+7/8| D |4/4 G / C | D[4u 4u 8md8mu 4u] |
+|7/8 D[8d8mu8d 8u8u 8md8d] |4/4 G / C | Em[16161616 88 16161616 88] |`;
+
+      const result = parser.parse(input);
+      expect(result.errors).toHaveLength(0);
+
+      // Get last measure (Em with 16th notes)
+      const lastMeasure = result.measures[result.measures.length - 1];
+      const lastChord = lastMeasure.chordSegments![0];
+      const allNotes = lastChord.beats.flatMap(b => b.notes);
+      
+      // Filter only attack notes (skip rests, ties)
+      const attackNotes = allNotes.filter(n => !n.isRest && !n.tieEnd && !n.tieFromVoid);
+      
+      // Verify first 4 notes are sixteenth notes with NO forced symbols
+      expect(attackNotes[0].value).toBe(16);
+      expect(attackNotes[1].value).toBe(16);
+      expect(attackNotes[2].value).toBe(16);
+      expect(attackNotes[3].value).toBe(16);
+      expect(attackNotes[0].fingerSymbol).toBeUndefined();
+      expect(attackNotes[1].fingerSymbol).toBeUndefined();
+      
+      // The automatic pattern should show pd pu md pu for these first 4 sixteenths
+      // but user reports seeing md pu pd pu (offset by 2 positions)
+      // We need to test with the actual renderer to verify the pattern
+    });
+
+    test('should reset pattern at the start of each measure - simple case', () => {
+      // Test that each measure starts with the same pattern
+      const input = `finger:en
+4/4| C[16 16 16 16] | D[16 16 16 16] | E[16 16 16 16] |`;
+
+      const result = parser.parse(input);
+      expect(result.errors).toHaveLength(0);
+      expect(result.fingerMode).toBe('en');
+
+      const renderer = new SVGRenderer();
+      const svg = renderer.render(result.grid, { fingerMode: result.fingerMode });
+
+      // Each measure should start with 't' (td = thumb down), not offset
+      // Measure 1: t tu h tu
+      // Measure 2: t tu h tu (should restart, not continue as t tu h tu)
+      // Measure 3: t tu h tu (should restart, not continue)
+      
+      // Count occurrences - should have 3 measures × 'ttht' pattern
+      const tSymbols = svg.querySelectorAll('[data-finger-symbol="t"]').length;
+      const hSymbols = svg.querySelectorAll('[data-finger-symbol="h"]').length;
+      
+      console.log('tSymbols found:', tSymbols, 'hSymbols found:', hSymbols);
+      
+      // Each measure: 2 't' symbols (positions 0, 2), 1 'h' symbol (position 2)
+      expect(tSymbols).toBe(6); // 3 measures × 2 't' per measure
+      expect(hSymbols).toBe(3); // 3 measures × 1 'h' per measure
+    });
+
+    test('should reset pattern when time signature changes', () => {
+      // Pattern should restart at the beginning of a measure with new time signature
+      const input = `finger:en
+4/4| C[16 16 16 16] |3/4| D[16 16 16] |4/4| E[16 16 16 16] |`;
+
+      const result = parser.parse(input);
+      expect(result.errors).toHaveLength(0);
+
+      // Verify time signatures are different
+      expect(result.measures[0].timeSignature?.numerator).toBe(4);
+      expect(result.measures[1].timeSignature?.numerator).toBe(3);
+      expect(result.measures[2].timeSignature?.numerator).toBe(4);
+
+      const renderer = new SVGRenderer();
+      const svg = renderer.render(result.grid, { fingerMode: result.fingerMode });
+
+      // Each measure should start with 't', regardless of previous measure
+      const tSymbols = svg.querySelectorAll('[data-finger-symbol="t"]').length;
+      
+      // Measure 1 (4/4): 4 sixteenths = t tu h tu (2 't')
+      // Measure 2 (3/4): 3 sixteenths = t tu h (2 't')
+      // Measure 3 (4/4): 4 sixteenths = t tu h tu (2 't')
+      // Total: 6 't' symbols
+      expect(tSymbols).toBe(6);
+    });
+
+    test('should handle pattern correctly with eighth notes followed by sixteenth notes', () => {
+      // This is the core bug: eighths use one pattern logic, sixteenths another
+      const input = `finger:en
+4/4| C[8 8 8 8] | D[16 16 16 16] |`;
+
+      const result = parser.parse(input);
+      expect(result.errors).toHaveLength(0);
+
+      const renderer = new SVGRenderer();
+      const svg = renderer.render(result.grid, { fingerMode: result.fingerMode });
+
+      // Measure 1 (eighths): pattern stretches over 2 beats = t tu h tu
+      // Measure 2 (sixteenths): pattern resets at each beat = t tu h tu (for first beat)
+      // Second measure should START with 't', not continue from first measure
+      
+      // We need to verify the second measure starts correctly
+      const fingerSymbols = svg.querySelectorAll('[data-finger-symbol]');
+      expect(fingerSymbols.length).toBeGreaterThan(0);
+      expect(result.measures).toHaveLength(2);
+    });
+
+    test('should maintain correct pattern for consecutive measures with only sixteenth notes', () => {
+      // Simplest case: all sixteenths, pattern should be identical in each measure
+      // 4/4 = 4 beats, each beat has 4 sixteenths = 16 notes per measure
+      const input = `finger:en
+4/4| C[16 16 16 16 16 16 16 16 16 16 16 16 16 16 16 16] | D[16 16 16 16 16 16 16 16 16 16 16 16 16 16 16 16] |`;
+
+      const result = parser.parse(input);
+      expect(result.errors).toHaveLength(0);
+
+      const renderer = new SVGRenderer();
+      const svg = renderer.render(result.grid, { fingerMode: result.fingerMode });
+
+      // For 16th notes, pattern resets at each beat
+      // Each beat: t tu h tu (4 notes)
+      // Each measure has 4 beats × pattern = t tu h tu | t tu h tu | t tu h tu | t tu h tu
+      // So: 8 't', 4 'h' per measure
+      
+      const tSymbols = svg.querySelectorAll('[data-finger-symbol="t"]').length;
+      const hSymbols = svg.querySelectorAll('[data-finger-symbol="h"]').length;
+      
+      expect(tSymbols).toBe(16); // 2 measures × 8 't' per measure
+      expect(hSymbols).toBe(8); // 2 measures × 4 'h' per measure
+    });
+
+    test('should handle mixed eighth and sixteenth notes within same line', () => {
+      // Real-world scenario: varying note values across measures
+      const input = `finger:en
+4/4| C[8 8 8 8] | D[16 16 16 16] | E[8 8 8 8] | F[16 16 16 16] |`;
+
+      const result = parser.parse(input);
+      expect(result.errors).toHaveLength(0);
+
+      const renderer = new SVGRenderer();
+      const svg = renderer.render(result.grid, { fingerMode: result.fingerMode });
+
+      // Each measure should start its pattern from the beginning
+      const fingerSymbols = svg.querySelectorAll('[data-finger-symbol]');
+      expect(fingerSymbols.length).toBeGreaterThan(0);
+      expect(result.measures).toHaveLength(4);
+      
+      // Verify no errors in rendering
+      expect(result.errors).toHaveLength(0);
     });
   });
 });

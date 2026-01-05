@@ -32,6 +32,7 @@ interface NoteOnTimeline {
     beatIndex: number;
     noteIndex: number;
     subdivisionStart: number;
+    subdivisionInMeasure: number; // Position relative to current measure start
     isAttack: boolean;
     value: number;
     explicitSymbol?: string; // Explicit symbol from user (highest priority)
@@ -171,6 +172,7 @@ export class StrumPatternRenderer {
         let currentSubdivision = 0;
         
         grid.measures.forEach((measure, measureIndex) => {
+            let subdivisionInMeasure = 0; // Reset at each measure
             const segments = measure.chordSegments || [];
             segments.forEach((segment, chordIndex) => {
                 segment.beats.forEach((beat, beatIndex) => {
@@ -203,12 +205,14 @@ export class StrumPatternRenderer {
                             beatIndex,
                             noteIndex,
                             subdivisionStart: currentSubdivision,
+                            subdivisionInMeasure,
                             isAttack,
                             value: note.value,
                             explicitSymbol
                         });
                         
                         currentSubdivision += subdivisionCount;
+                        subdivisionInMeasure += subdivisionCount;
                     });
                 });
             });
@@ -249,7 +253,8 @@ export class StrumPatternRenderer {
         const subdivisionsPerBeat = globalStep / beatValue;
         
         // Build timeline with directions
-        const timeline: TimelineSlot[] = [];
+        // Use a Map to store direction/symbol for each note based on its position in measure
+        const timelineMap = new Map<number, TimelineSlot>();
         
         if (patternArray && config.mode === 'finger') {
             // PRIORITY LEVEL 2: Use predefined pattern
@@ -259,18 +264,25 @@ export class StrumPatternRenderer {
             const totalPatternSubdivisions = patternBeats * subdivisionsPerBeat;
             const subdivPerPatternElement = totalPatternSubdivisions / patternArray.length;
             
-            for (let i = 0; i < currentSubdivision; i++) {
-                // Find which pattern element this subdivision belongs to
-                const positionInPattern = i % totalPatternSubdivisions;
-                const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
-                const rawSymbol = patternArray[patternIndex];
-                
-                // Normalize pattern symbol to ensure consistency
-                const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || 'fr');
-                // Convert symbol to direction (symbols ending with 'u' are 'up')
-                const direction = normalizedSymbol.endsWith('u') ? 'up' : 'down';
-                timeline.push({ direction, subdivisionIndex: i, symbol: normalizedSymbol });
-            }
+            // Create entries for each note's position in its measure
+            notesOnTimeline.forEach(note => {
+                if (!timelineMap.has(note.subdivisionStart)) {
+                    // Use subdivisionInMeasure for pattern calculation
+                    const positionInPattern = note.subdivisionInMeasure % totalPatternSubdivisions;
+                    const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
+                    const rawSymbol = patternArray[patternIndex];
+                    
+                    // Normalize pattern symbol to ensure consistency
+                    const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || 'fr');
+                    // Convert symbol to direction (symbols ending with 'u' are 'up')
+                    const direction = normalizedSymbol.endsWith('u') ? 'up' : 'down';
+                    timelineMap.set(note.subdivisionStart, { 
+                        direction, 
+                        subdivisionIndex: note.subdivisionStart, 
+                        symbol: normalizedSymbol 
+                    });
+                }
+            });
         } else {
             // PRIORITY LEVEL 3: Automatic alternation (fallback)
             
@@ -289,38 +301,43 @@ export class StrumPatternRenderer {
             //    Pattern stretches over 2 BEATS
             //    - Example: 8pd 8pu 8md 8pu (4 subdivisions over 2 beats)
             
-            // Create timeline: pattern cycles based on subdivision position
-            for (let i = 0; i < currentSubdivision; i++) {
-                let direction: 'down' | 'up';
-                let symbol: string | undefined;
-                
-                if (config.mode === 'finger') {
-                    let patternIndex: number;
+            // Create timeline: pattern cycles based on subdivision position IN THE MEASURE
+            notesOnTimeline.forEach(note => {
+                if (!timelineMap.has(note.subdivisionStart)) {
+                    let direction: 'down' | 'up';
+                    let symbol: string | undefined;
                     
-                    if (globalStep > 8) {
-                        // Pattern resets at each beat
-                        const positionInBeat = i % subdivisionsPerBeat;
-                        patternIndex = positionInBeat % basePattern.length;
+                    if (config.mode === 'finger') {
+                        let patternIndex: number;
+                        
+                        if (globalStep > 8) {
+                            // Pattern resets at each beat
+                            // Use position within the measure, not global position
+                            const positionInBeat = note.subdivisionInMeasure % subdivisionsPerBeat;
+                            patternIndex = positionInBeat % basePattern.length;
+                        } else {
+                            // Pattern stretches over multiple beats
+                            // Still use position within measure for consistency
+                            patternIndex = note.subdivisionInMeasure % basePattern.length;
+                        }
+                        
+                        const rawSymbol = basePattern[patternIndex];
+                        symbol = this.normalizeFingerSymbol(rawSymbol, config.language || 'en');
+                        direction = symbol.endsWith('u') ? 'up' : 'down';
                     } else {
-                        // Pattern stretches over multiple beats
-                        patternIndex = i % basePattern.length;
+                        // Pick mode: simple down/up alternation
+                        // Use position within measure for consistency across measures
+                        const isDown = note.subdivisionInMeasure % 2 === 0;
+                        direction = isDown ? 'down' : 'up';
                     }
                     
-                    const rawSymbol = basePattern[patternIndex];
-                    symbol = this.normalizeFingerSymbol(rawSymbol, config.language || 'en');
-                    direction = symbol.endsWith('u') ? 'up' : 'down';
-                } else {
-                    // Pick mode: simple down/up alternation
-                    const isDown = i % 2 === 0;
-                    direction = isDown ? 'down' : 'up';
+                    timelineMap.set(note.subdivisionStart, {
+                        direction,
+                        subdivisionIndex: note.subdivisionStart,
+                        symbol
+                    });
                 }
-                
-                timeline.push({
-                    direction,
-                    subdivisionIndex: i,
-                    symbol
-                });
-            }
+            });
         }
         
         // Assign directions to attacks
@@ -348,8 +365,8 @@ export class StrumPatternRenderer {
                     };
                 }
                 
-                // PRIORITY LEVEL 2 or 3: Use timeline (pattern or automatic)
-                const timelineSlot = timeline[n.subdivisionStart];
+                // PRIORITY LEVEL 2 or 3: Use timeline map (pattern or automatic)
+                const timelineSlot = timelineMap.get(n.subdivisionStart);
                 const direction = timelineSlot?.direction || 'down';
                 const assignedSymbol = timelineSlot?.symbol; // Symbol already normalized in timeline
                 

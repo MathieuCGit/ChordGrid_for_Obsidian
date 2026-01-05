@@ -5146,6 +5146,7 @@ var StrumPatternRenderer = class {
     const notesOnTimeline = [];
     let currentSubdivision = 0;
     grid.measures.forEach((measure, measureIndex) => {
+      let subdivisionInMeasure = 0;
       const segments = measure.chordSegments || [];
       segments.forEach((segment, chordIndex) => {
         segment.beats.forEach((beat, beatIndex) => {
@@ -5168,11 +5169,13 @@ var StrumPatternRenderer = class {
               beatIndex,
               noteIndex,
               subdivisionStart: currentSubdivision,
+              subdivisionInMeasure,
               isAttack,
               value: note.value,
               explicitSymbol
             });
             currentSubdivision += subdivisionCount;
+            subdivisionInMeasure += subdivisionCount;
           });
         });
       });
@@ -5194,44 +5197,52 @@ var StrumPatternRenderer = class {
     }
     const beatValue = 4;
     const subdivisionsPerBeat = globalStep / beatValue;
-    const timeline = [];
+    const timelineMap = /* @__PURE__ */ new Map();
     if (patternArray && config.mode === "finger") {
       const totalPatternSubdivisions = patternBeats * subdivisionsPerBeat;
       const subdivPerPatternElement = totalPatternSubdivisions / patternArray.length;
-      for (let i = 0; i < currentSubdivision; i++) {
-        const positionInPattern = i % totalPatternSubdivisions;
-        const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
-        const rawSymbol = patternArray[patternIndex];
-        const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || "fr");
-        const direction = normalizedSymbol.endsWith("u") ? "up" : "down";
-        timeline.push({ direction, subdivisionIndex: i, symbol: normalizedSymbol });
-      }
+      notesOnTimeline.forEach((note) => {
+        if (!timelineMap.has(note.subdivisionStart)) {
+          const positionInPattern = note.subdivisionInMeasure % totalPatternSubdivisions;
+          const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
+          const rawSymbol = patternArray[patternIndex];
+          const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || "fr");
+          const direction = normalizedSymbol.endsWith("u") ? "up" : "down";
+          timelineMap.set(note.subdivisionStart, {
+            direction,
+            subdivisionIndex: note.subdivisionStart,
+            symbol: normalizedSymbol
+          });
+        }
+      });
     } else {
       const basePattern = ["t", "tu", "h", "tu"];
-      for (let i = 0; i < currentSubdivision; i++) {
-        let direction;
-        let symbol;
-        if (config.mode === "finger") {
-          let patternIndex;
-          if (globalStep > 8) {
-            const positionInBeat = i % subdivisionsPerBeat;
-            patternIndex = positionInBeat % basePattern.length;
+      notesOnTimeline.forEach((note) => {
+        if (!timelineMap.has(note.subdivisionStart)) {
+          let direction;
+          let symbol;
+          if (config.mode === "finger") {
+            let patternIndex;
+            if (globalStep > 8) {
+              const positionInBeat = note.subdivisionInMeasure % subdivisionsPerBeat;
+              patternIndex = positionInBeat % basePattern.length;
+            } else {
+              patternIndex = note.subdivisionInMeasure % basePattern.length;
+            }
+            const rawSymbol = basePattern[patternIndex];
+            symbol = this.normalizeFingerSymbol(rawSymbol, config.language || "en");
+            direction = symbol.endsWith("u") ? "up" : "down";
           } else {
-            patternIndex = i % basePattern.length;
+            const isDown = note.subdivisionInMeasure % 2 === 0;
+            direction = isDown ? "down" : "up";
           }
-          const rawSymbol = basePattern[patternIndex];
-          symbol = this.normalizeFingerSymbol(rawSymbol, config.language || "en");
-          direction = symbol.endsWith("u") ? "up" : "down";
-        } else {
-          const isDown = i % 2 === 0;
-          direction = isDown ? "down" : "up";
+          timelineMap.set(note.subdivisionStart, {
+            direction,
+            subdivisionIndex: note.subdivisionStart,
+            symbol
+          });
         }
-        timeline.push({
-          direction,
-          subdivisionIndex: i,
-          symbol
-        });
-      }
+      });
     }
     const result = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
       if (n.explicitSymbol) {
@@ -5250,7 +5261,7 @@ var StrumPatternRenderer = class {
           assignedSymbol: normalizedSymbol
         };
       }
-      const timelineSlot = timeline[n.subdivisionStart];
+      const timelineSlot = timelineMap.get(n.subdivisionStart);
       const direction = (timelineSlot == null ? void 0 : timelineSlot.direction) || "down";
       const assignedSymbol = timelineSlot == null ? void 0 : timelineSlot.symbol;
       return {
