@@ -2717,12 +2717,18 @@ var MeasureRenderer = class {
       this.drawChordOnlyMeasure(svg, measureIndex);
       return;
     }
+    const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+    const isLineStart = this.measure.__isLineStart;
+    const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
+    if (shouldDrawTimeSignatureBeforeBar) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
     if (this.measure.isRepeatStart) {
       this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+    } else if (measureIndex === 0 || isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+    if (hasInlineTimeSignature && !shouldDrawTimeSignatureBeforeBar) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
@@ -3045,20 +3051,26 @@ var MeasureRenderer = class {
   drawChordOnlyMeasure(svg, measureIndex) {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+    const isLineStart = this.measure.__isLineStart;
+    const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
+    if (shouldDrawTimeSignatureBeforeBar) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
     if (this.measure.isRepeatStart) {
       this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+    } else if (measureIndex === 0 || isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+    if (hasInlineTimeSignature && !shouldDrawTimeSignatureBeforeBar) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const segments = this.measure.chordSegments || [];
     const chordCount = segments.length;
     if (chordCount === 2) {
       let slashStartX = leftBarX + 5;
-      const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
-      if (hasInlineTimeSignature) {
+      const hasInlineTimeSignature2 = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+      if (hasInlineTimeSignature2) {
         slashStartX = leftBarX + LAYOUT.BASE_LEFT_PADDING + 20 + 40;
       }
       const slashStartY = this.y + 110;
@@ -3222,7 +3234,14 @@ var MeasureRenderer = class {
    * @param measureIndex - Measure index (for PlaceAndSizeManager)
    */
   drawTimeSignature(svg, timeSignature, measureIndex) {
-    const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20;
+    const isLineStart = this.measure.__isLineStart;
+    const shouldDrawBeforeBar = isLineStart && measureIndex > 0;
+    let timeSignatureX;
+    if (shouldDrawBeforeBar) {
+      timeSignatureX = this.x - 25;
+    } else {
+      timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20;
+    }
     const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
     this.timeSignatureRenderer.render(svg, {
       x: timeSignatureX,

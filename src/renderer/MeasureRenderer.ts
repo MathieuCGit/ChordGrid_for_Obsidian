@@ -113,15 +113,25 @@ export class MeasureRenderer {
             return;
         }
 
+        // Check if time signature should be displayed BEFORE the barline (line start behavior)
+        const hasInlineTimeSignature = (this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature;
+        const isLineStart = (this.measure as any).__isLineStart;
+        const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
+        
+        // Draw time signature BEFORE barline if it's a line start (not first measure)
+        if (shouldDrawTimeSignatureBeforeBar) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+        }
+
         // Draw left barline - check for repeat start first
         if ((this.measure as any).isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+        } else if (measureIndex === 0 || isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        // Draw time signature if marked for display (either changed or line start with different metric)
-        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+        // Draw time signature AFTER barline if it's NOT a line start (inline change within a line)
+        if (hasInlineTimeSignature && !shouldDrawTimeSignatureBeforeBar) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -544,15 +554,25 @@ export class MeasureRenderer {
         const leftBarX = this.x;
         const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
+        // Check if time signature should be displayed BEFORE the barline (line start behavior)
+        const hasInlineTimeSignature = (this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature;
+        const isLineStart = (this.measure as any).__isLineStart;
+        const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
+        
+        // Draw time signature BEFORE barline if it's a line start (not first measure)
+        if (shouldDrawTimeSignatureBeforeBar) {
+            this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+        }
+
         // Draw left barline
         if ((this.measure as any).isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+        } else if (measureIndex === 0 || isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
-        // Draw time signature if marked for display (either changed or line start with different metric)
-        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+        // Draw time signature AFTER barline if it's NOT a line start (inline change within a line)
+        if (hasInlineTimeSignature && !shouldDrawTimeSignatureBeforeBar) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -772,8 +792,20 @@ export class MeasureRenderer {
      * @param measureIndex - Measure index (for PlaceAndSizeManager)
      */
     private drawTimeSignature(svg: SVGElement, timeSignature: any, measureIndex: number): void {
-        // Position: just after the left barline, centered on staff line
-        const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20; // 20px from barline for better spacing
+        // Determine if this is a line-start time signature (drawn before barline)
+        const isLineStart = (this.measure as any).__isLineStart;
+        const shouldDrawBeforeBar = isLineStart && measureIndex > 0;
+        
+        let timeSignatureX: number;
+        if (shouldDrawBeforeBar) {
+            // Position BEFORE the barline (like global time signature)
+            // Place it centered between left edge and barline, approximately 30-40px left of barline
+            timeSignatureX = this.x - 25; // 25px before the barline
+        } else {
+            // Position AFTER the barline (inline change within a line)
+            timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20; // 20px from barline for better spacing
+        }
+        
         // CRITICAL FIX: Use staffLineY (measure's line Y + staff offset) for proper vertical centering
         // This ensures numerator appears above and denominator below the staff line
         const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
