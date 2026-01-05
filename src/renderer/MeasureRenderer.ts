@@ -563,7 +563,16 @@ export class MeasureRenderer {
         if (chordCount === 2) {
             // Special case: 2 chords with diagonal slash separator
             // Draw diagonal line from bottom-left to top-right
-            const slashStartX = leftBarX + 5;
+            // If there's an inline time signature, start the slash after it to avoid collision
+            let slashStartX = leftBarX + 5;
+            const hasInlineTimeSignature = (this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature;
+            
+            if (hasInlineTimeSignature) {
+                // Time signature is positioned at: this.x + BASE_LEFT_PADDING + 20
+                // Add approximately 40px for the time signature width (about 30px) + 10px margin
+                slashStartX = leftBarX + LAYOUT.BASE_LEFT_PADDING + 20 + 40;
+            }
+            
             const slashStartY = this.y + 110; // Near bottom of measure
             const slashEndX = rightBarX - 5;
             const slashEndY = this.y + LAYOUT.BASE_LEFT_PADDING; // Near top of measure

@@ -3056,7 +3056,11 @@ var MeasureRenderer = class {
     const segments = this.measure.chordSegments || [];
     const chordCount = segments.length;
     if (chordCount === 2) {
-      const slashStartX = leftBarX + 5;
+      let slashStartX = leftBarX + 5;
+      const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+      if (hasInlineTimeSignature) {
+        slashStartX = leftBarX + LAYOUT.BASE_LEFT_PADDING + 20 + 40;
+      }
       const slashStartY = this.y + 110;
       const slashEndX = rightBarX - 5;
       const slashEndY = this.y + LAYOUT.BASE_LEFT_PADDING;
