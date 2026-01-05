@@ -493,6 +493,7 @@ var _ChordGridParser = class _ChordGridParser {
       lines: renderedLines
     };
     const errors = [];
+    let validationTimeSignature = timeSignature;
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       if (measure.__isChordOnlyMode) {
@@ -501,7 +502,10 @@ var _ChordGridParser = class _ChordGridParser {
       if (measure.__isEmpty) {
         continue;
       }
-      const effectiveTimeSignature = measure.timeSignature || timeSignature;
+      if (measure.timeSignature) {
+        validationTimeSignature = measure.timeSignature;
+      }
+      const effectiveTimeSignature = validationTimeSignature;
       const expectedQuarterNotes = effectiveTimeSignature.numerator * (4 / effectiveTimeSignature.denominator);
       let foundQuarterNotes = 0;
       const countedTuplets = /* @__PURE__ */ new Set();
@@ -728,7 +732,8 @@ var _ChordGridParser = class _ChordGridParser {
             chordSegments: [],
             barline: bar,
             isLineBreak: false,
-            source: "(empty)"
+            source: "(empty)",
+            timeSignature: void 0
           };
           emptyMeasure.__isEmpty = true;
           if (pendingStartBarline === "||:") {
@@ -931,7 +936,6 @@ var _ChordGridParser = class _ChordGridParser {
         isLineBreak: false,
         source: anySource || text,
         timeSignature: measureTimeSignature
-        // Add time signature if detected
       };
       if (isChordOnlyMode) {
         newMeasure.__isChordOnlyMode = true;

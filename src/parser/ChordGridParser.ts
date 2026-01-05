@@ -403,6 +403,9 @@ export class ChordGridParser {
     // Validate measure durations against the time signature
     const errors: ValidationError[] = [];
 
+    // Track current time signature through the sequence of measures
+    let validationTimeSignature = timeSignature; // Start with global
+
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
       
@@ -416,8 +419,13 @@ export class ChordGridParser {
         continue;
       }
       
-      // Use measure's time signature if present, otherwise use global time signature
-      const effectiveTimeSignature = measure.timeSignature || timeSignature;
+      // Update current time signature if this measure has an explicit change
+      if (measure.timeSignature) {
+        validationTimeSignature = measure.timeSignature;
+      }
+      
+      // Use current time signature for validation
+      const effectiveTimeSignature = validationTimeSignature;
       const expectedQuarterNotes = effectiveTimeSignature.numerator * (4 / effectiveTimeSignature.denominator);
       
       let foundQuarterNotes = 0;
@@ -759,7 +767,8 @@ export class ChordGridParser {
             chordSegments: [],
             barline: bar,
             isLineBreak: false,
-            source: '(empty)'
+            source: '(empty)',
+            timeSignature: undefined
           };
           
           // Mark it as empty for special rendering
@@ -1071,7 +1080,7 @@ export class ChordGridParser {
         barline: bar,
         isLineBreak: false,
         source: anySource || text,
-        timeSignature: measureTimeSignature  // Add time signature if detected
+        timeSignature: measureTimeSignature
       };
       
       // Mark chord-only mode if detected
