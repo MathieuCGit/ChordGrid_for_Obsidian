@@ -355,7 +355,7 @@ Ajoutez des symboles de doigts après les valeurs de notes :
   ````markdown
   ```chordgrid
   finger:fr
-  4/4 | C[4pd4mu 4pd4mu] | G[8md8mu8md8mu 8md8mu8md8mu] |
+  4/4 | C[4pd 4mu 4pd 4mu] | G[8md8mu8md8mu 8md8mu8md8mu] |
   ```
   ````
   <img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/cf4b9647-94f8-466f-9266-838aa20af001" />
