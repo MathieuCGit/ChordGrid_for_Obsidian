@@ -141,6 +141,7 @@ export class ChordGridParser {
     let transposeSettings: { semitones: number, accidental?: '#' | 'b' } | undefined = undefined;
     let countingMode: boolean | undefined = undefined;
     let groupingModeDirective: GroupingMode | undefined = undefined;
+    let zoomPercent: number | undefined = undefined;
     
     // Scan initial lines for directives (stop when we find time signature or barline)
     let lineIndex = 0;
@@ -243,6 +244,18 @@ export class ChordGridParser {
       if (/\b(count|counting)\b/i.test(line)) {
         countingMode = true;
         line = line.replace(/\b(count|counting)\b\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for zoom directive
+      // Syntax: zoom:50% or zoom:75% or zoom:150%
+      const zoomMatch = /zoom:\s*(\d+)%?/i.exec(line);
+      if (zoomMatch) {
+        const percent = parseInt(zoomMatch[1], 10);
+        if (percent > 0 && percent <= 500) { // Limit to reasonable values (1% to 500%)
+          zoomPercent = percent;
+        }
+        line = line.replace(/zoom:\s*\d+%?\s*/i, '');
         hasAnyDirective = true;
       }
       
@@ -536,7 +549,7 @@ export class ChordGridParser {
       this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
 
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
   }
 
 

@@ -326,4 +326,6 @@ export interface ParseResult {
   measureNumbering?: { startNumber: number, interval: number, enabled: boolean };
   /** Counting mode for pedagogical beat counting */
   countingMode?: boolean;
+  /** Zoom level as percentage (e.g., 50, 75, 100, 150) */
+  zoomPercent?: number;
 }
