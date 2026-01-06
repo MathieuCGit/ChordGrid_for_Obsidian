@@ -329,6 +329,7 @@ var _ChordGridParser = class _ChordGridParser {
     let transposeSettings = void 0;
     let countingMode = void 0;
     let groupingModeDirective = void 0;
+    let zoomPercent = void 0;
     let lineIndex = 0;
     while (lineIndex < lines.length) {
       let line = lines[lineIndex].trim();
@@ -399,6 +400,21 @@ var _ChordGridParser = class _ChordGridParser {
       if (/\b(count|counting)\b/i.test(line)) {
         countingMode = true;
         line = line.replace(/\b(count|counting)\b\s*/i, "");
+        hasAnyDirective = true;
+      }
+      const zoomMatch = /zoom:\s*([\d.]+)%?/i.exec(line);
+      if (zoomMatch) {
+        const value = parseFloat(zoomMatch[1]);
+        let percent;
+        if (zoomMatch[1].includes(".") && value <= 5) {
+          percent = value * 100;
+        } else {
+          percent = value;
+        }
+        if (percent > 0 && percent <= 500) {
+          zoomPercent = percent;
+        }
+        line = line.replace(/zoom:\s*[\d.]+%?\s*/i, "");
         hasAnyDirective = true;
       }
       if (/^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.test(line)) {
@@ -575,7 +591,7 @@ var _ChordGridParser = class _ChordGridParser {
     if (transposeSettings) {
       this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
   }
   applyTransposition(measures, semitones, forceAccidental) {
     const allChords = [];
@@ -725,6 +741,10 @@ var _ChordGridParser = class _ChordGridParser {
         }
         const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
         const isNotFirstToken = ti > 0;
+        const isFirstTokenOnContinuationLine = ti === 0 && !isFirstLine;
+        if (isFirstTokenOnContinuationLine) {
+          continue;
+        }
         if (isIntentionalEmpty || measuresPerLine !== void 0 && isNotFirstToken) {
           const emptyMeasure = {
             beats: [],
@@ -5763,8 +5783,13 @@ var SVGRenderer = class {
     const totalHeight = height + topMarginForChords;
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
+    const zoomScale = options.zoomPercent && options.zoomPercent > 0 ? options.zoomPercent / 100 : 1;
+    const scaledWidth = width * zoomScale;
+    const scaledHeight = totalHeight * zoomScale;
     svg.setAttribute("viewBox", `0 ${-topMarginForChords} ${width} ${totalHeight}`);
     svg.setAttribute("xmlns", SVG_NS);
+    svg.style.width = `${scaledWidth}px`;
+    svg.style.height = `${scaledHeight}px`;
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
     const timeSignatureRenderer = new TimeSignatureRenderer(placeAndSizeManager);
     const tieManager = new TieManager();
@@ -7124,7 +7149,8 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
             fingerMode: result.fingerMode,
             measuresPerLine: result.measuresPerLine,
             measureNumbering: result.measureNumbering,
-            countingMode: result.countingMode
+            countingMode: result.countingMode,
+            zoomPercent: result.zoomPercent
           });
           el.appendChild(svg);
         } catch (err) {

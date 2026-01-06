@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-429%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen.svg)](#)
 
 > **Transform simple text notation into beautiful, professional chord charts with rhythmic notation—right inside your Obsidian notes.**
 
@@ -169,6 +169,7 @@ Need more power? ChordGrid supports advanced notation:
 - **🔄 Volta brackets** - First/second endings `1.|2.`
 - **📐 Custom layouts** - Control measures per line with `measures-per-line:N`
 - **🎨 Stem direction** - `stems-up` (default) or `stems-down`
+- **🔍 Zoom control** - Resize output with `zoom:50%`, `zoom:75%`, `zoom:150%`, etc.
 - **🎼 Complex meters** - Support for 5/8, 7/8, 11/8, and custom time signatures
 - **📏 Empty measures** - Repeat symbols `%` for quick notation
 
@@ -265,6 +266,30 @@ You can use either `pick`, `picks`, or `picks-auto`
   ```
 ````
 <img width="772" height="156" alt="image" src="https://github.com/user-attachments/assets/ddf57484-584e-46a9-ade1-201d0179e65a" />
+
+### Zoom Control
+Resize the entire chord grid output to fit your needs. Perfect for presentations, printing, or adjusting size in your notes.
+- Syntax: `zoom:XX%` where XX is any number from 1 to 500
+- `zoom:50%` - Reduce to half size (great for compact layouts)
+- `zoom:75%` - Slightly smaller (better readability in dense notes)
+- `zoom:100%` - Default size (or omit zoom directive)
+- `zoom:150%` - Larger display (better for presentations or printing)
+- `zoom:200%` - Double size
+
+````markdown
+  ```chordgrid
+  zoom:75%
+  4/4 | C[4 4 4 4] | G[4 4 4 4] | Am[4 4 4 4] | F[4 4 4 4] |
+  ```
+````
+
+You can combine zoom with other directives:
+````markdown
+  ```chordgrid
+  zoom:60% pick measures-per-line:4
+  4/4 ||: C[8.16 88 4 168.] | G[%] | Am[%] | F[%] :|| 
+  ```
+````
 
 ### Repeat measures content
 Display repeated measures content using notation shortcuts

@@ -141,6 +141,7 @@ export class ChordGridParser {
     let transposeSettings: { semitones: number, accidental?: '#' | 'b' } | undefined = undefined;
     let countingMode: boolean | undefined = undefined;
     let groupingModeDirective: GroupingMode | undefined = undefined;
+    let zoomPercent: number | undefined = undefined;
     
     // Scan initial lines for directives (stop when we find time signature or barline)
     let lineIndex = 0;
@@ -243,6 +244,31 @@ export class ChordGridParser {
       if (/\b(count|counting)\b/i.test(line)) {
         countingMode = true;
         line = line.replace(/\b(count|counting)\b\s*/i, '');
+        hasAnyDirective = true;
+      }
+      
+      // Check for zoom directive
+      // Syntax: zoom:50% or zoom:50 or zoom:0.5 (all three mean 50%)
+      // Supports: percentage (80%), integer (80), or decimal (0.8)
+      const zoomMatch = /zoom:\s*([\d.]+)%?/i.exec(line);
+      if (zoomMatch) {
+        const value = parseFloat(zoomMatch[1]);
+        let percent: number;
+        
+        // Determine format: decimal (0-5 with decimal point), or integer/percentage
+        // If value has decimal point and is <= 5, treat as decimal multiplier
+        if (zoomMatch[1].includes('.') && value <= 5) {
+          // Decimal format: 0.8 = 80%, 1.5 = 150%
+          percent = value * 100;
+        } else {
+          // Integer format: 80 = 80% or 80% = 80%
+          percent = value;
+        }
+        
+        if (percent > 0 && percent <= 500) { // Limit to reasonable values (1% to 500%)
+          zoomPercent = percent;
+        }
+        line = line.replace(/zoom:\s*[\d.]+%?\s*/i, '');
         hasAnyDirective = true;
       }
       
@@ -545,7 +571,7 @@ export class ChordGridParser {
       this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
 
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
   }
 
 
@@ -755,10 +781,18 @@ export class ChordGridParser {
         
         // Create empty measure if:
         // 1. The content has at least one space (intentional empty measure "| |")
-        // 2. OR it's not the first token (to avoid the leading space after time signature)
-        // 3. OR measures-per-line is specified (forced layout mode)
+        // 2. OR it's not the first token AND (measures-per-line is specified OR this is intentional)
+        // EXCEPT: Don't create an empty measure if this is the first token on a continuation
+        // line (to avoid creating an empty measure when a line ends with | and the next line
+        // starts with |)
         const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
         const isNotFirstToken = ti > 0;
+        const isFirstTokenOnContinuationLine = ti === 0 && !isFirstLine;
+        
+        // Skip first token on continuation lines to avoid empty measures between lines
+        if (isFirstTokenOnContinuationLine) {
+          continue;
+        }
         
         if (isIntentionalEmpty || (measuresPerLine !== undefined && isNotFirstToken)) {
           // Create an empty measure (no chords, no rhythm)

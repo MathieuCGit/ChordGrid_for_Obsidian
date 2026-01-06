@@ -86,7 +86,8 @@ export default class ChordGridPlugin extends Plugin {
             fingerMode: result.fingerMode,
             measuresPerLine: result.measuresPerLine,
             measureNumbering: result.measureNumbering,
-            countingMode: result.countingMode
+            countingMode: result.countingMode,
+            zoomPercent: result.zoomPercent
           });
           el.appendChild(svg);
         } catch (err) {

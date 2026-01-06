@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-429%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen.svg)](#)
 
 > **Transformez une simple notation textuelle en magnifiques grilles d'accords professionnelles avec notation rythmique—directement dans vos notes Obsidian.**
 
@@ -170,6 +170,7 @@ Besoin de plus de puissance ? ChordGrid supporte la notation avancée :
 - **🔄 Crochets de volta** - Première/deuxième fois `1.|2.`
 - **📐 Mises en page personnalisées** - Contrôlez les mesures par ligne avec `measures-per-line:N`
 - **🎨 Direction des hampes** - `stems-up` (par défaut) ou `stems-down`
+- **🔍 Contrôle du zoom** - Redimensionnez le rendu avec `zoom:50%`, `zoom:75%`, `zoom:150%`, etc.
 - **🎼 Métriques complexes** - Support pour 5/8, 7/8, 11/8 et signatures rythmiques personnalisées
 - **📏 Mesures vides** - Symboles de répétition `%` pour notation rapide
 
@@ -266,6 +267,30 @@ Vous pouvez utiliser soit `pick`, soit `picks`, soit `picks-auto`
   ```
 ````
 <img width="772" height="156" alt="image" src="https://github.com/user-attachments/assets/ddf57484-584e-46a9-ade1-201d0179e65a" />
+
+### Contrôle du Zoom
+Redimensionnez l'ensemble du rendu de la grille d'accords selon vos besoins. Parfait pour les présentations, l'impression ou l'ajustement de la taille dans vos notes.
+- Syntaxe : `zoom:XX%` où XX est n'importe quel nombre de 1 à 500
+- `zoom:50%` - Réduction à la moitié (idéal pour les mises en page compactes)
+- `zoom:75%` - Légèrement plus petit (meilleure lisibilité dans les notes denses)
+- `zoom:100%` - Taille par défaut (ou omettez la directive zoom)
+- `zoom:150%` - Affichage plus grand (mieux pour les présentations ou l'impression)
+- `zoom:200%` - Taille double
+
+````markdown
+  ```chordgrid
+  zoom:75%
+  4/4 | C[4 4 4 4] | G[4 4 4 4] | Am[4 4 4 4] | F[4 4 4 4] |
+  ```
+````
+
+Vous pouvez combiner le zoom avec d'autres directives :
+````markdown
+  ```chordgrid
+  zoom:60% pick measures-per-line:4
+  4/4 ||: C[8.16 88 4 168.] | G[%] | Am[%] | F[%] :|| 
+  ```
+````
 
 ### Répétition du contenu des mesures
 Affichez le contenu répété des mesures en utilisant des raccourcis de notation

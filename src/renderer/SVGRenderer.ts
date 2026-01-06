@@ -66,6 +66,8 @@ export interface RenderOptions {
   measureNumbering?: { startNumber: number, interval: number, enabled: boolean };
   /** Enable counting mode for pedagogical beat counting. Default false. */
   countingMode?: boolean;
+  /** Zoom level as percentage (e.g., 50, 75, 100, 150). Default 100 (no zoom). */
+  zoomPercent?: number;
   /** Enable debug logging for placement and collision detection. Default false. */
   debugPlacement?: boolean;
 }
@@ -497,8 +499,16 @@ export class SVGRenderer {
   svg.setAttribute('width', '100%');
   // Remove fixed height to allow CSS to control it - fixes Obsidian margin issues
   // svg.setAttribute('height', totalHeight.toString());
+  
+  // Apply zoom if specified
+  const zoomScale = (options.zoomPercent && options.zoomPercent > 0) ? options.zoomPercent / 100 : 1;
+  const scaledWidth = width * zoomScale;
+  const scaledHeight = totalHeight * zoomScale;
+  
   svg.setAttribute('viewBox', `0 ${-topMarginForChords} ${width} ${totalHeight}`);
   svg.setAttribute('xmlns', SVG_NS);
+  svg.style.width = `${scaledWidth}px`;
+  svg.style.height = `${scaledHeight}px`;
 
     // Initialize managers
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
