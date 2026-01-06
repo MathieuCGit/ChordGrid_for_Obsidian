@@ -354,7 +354,49 @@ Vous pouvez utiliser le x juste après une valeur de note pour obtenir une tête
   ````
 <img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/d63e9a1d-5e7b-4336-b671-f819b1a9945f" />
 
+### Forçage des Coups Médiator/Doigts (v2.2+)
+Remplacez les motifs automatiques en ajoutant des suffixes aux valeurs de notes :
 
+#### Mode Pick - Forcer les directions
+Ajoutez `d` (down/bas) ou `u` (up/haut) après une valeur de note :
+  ````markdown
+  ```chordgrid
+  pick
+  4/4 | C[8d8u8d8u 8d8u8d8u] | G[8u8u8d8d 8u8u8d8d] |
+  ```
+  ````
+<img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/0dd6d714-af2a-4622-b9c3-0d310156679a" />
+
+  
+#### Mode Finger - Forcer les symboles
+Ajoutez des symboles de doigts après les valeurs de notes :
+- `d` ou `td` = pouce bas
+- `u` ou `tu` = pouce haut  
+- `hd` = main bas
+- `hu` = main haut
+- `md`/`mu` = notation française (main down/up)
+- `pd`/`pu` = notation française (pouce down/up)
+
+  ````markdown
+  ```chordgrid
+  finger:fr
+  4/4 | C[4pd 4mu 4pd 4mu] | G[8md8mu8md8mu 8md8mu8md8mu] |
+  ```
+  ````
+  <img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/cf4b9647-94f8-466f-9266-838aa20af001" />
+
+
+#### Interopérabilité
+**Nouveau dans v2.2 :** Vous pouvez utiliser les suffixes de notation finger en mode pick ! Ils seront automatiquement normalisés en d/u simples :
+  ````markdown
+  ```chordgrid
+  pick
+  7/8| D |4/4 G / C | D[4u 4u 8md8mu 4u] |
+  ```
+  ````
+  Dans cet exemple, `8md8mu` sera interprété comme `8d8u` en mode pick. Cela vous permet de basculer entre les modes `pick` et `finger` sans réécrire votre notation !
+  
+<img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/91b6fbe7-51c4-4f98-9019-70ea6f7eeb16" />
 
 
 #### Exemples de Syntaxe Avancée

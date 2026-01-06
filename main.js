@@ -460,7 +460,7 @@ var _ChordGridParser = class _ChordGridParser {
     let lastExplicitMeasure = null;
     for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
       const line = lines[lineIndex2];
-      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature);
+      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure;
       if (measures.length > 0 && lineIndex2 < lines.length - 1) {
@@ -503,15 +503,19 @@ var _ChordGridParser = class _ChordGridParser {
       lines: renderedLines
     };
     const errors = [];
+    let validationTimeSignature = timeSignature;
     for (let mi = 0; mi < allMeasures.length; mi++) {
       const measure = allMeasures[mi];
+      if (measure.timeSignature) {
+        validationTimeSignature = measure.timeSignature;
+      }
       if (measure.__isChordOnlyMode) {
         continue;
       }
       if (measure.__isEmpty) {
         continue;
       }
-      const effectiveTimeSignature = measure.timeSignature || timeSignature;
+      const effectiveTimeSignature = validationTimeSignature;
       const expectedQuarterNotes = effectiveTimeSignature.numerator * (4 / effectiveTimeSignature.denominator);
       let foundQuarterNotes = 0;
       const countedTuplets = /* @__PURE__ */ new Set();
@@ -663,7 +667,7 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature) {
+  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature, pickMode, fingerMode) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
@@ -738,7 +742,8 @@ var _ChordGridParser = class _ChordGridParser {
             chordSegments: [],
             barline: bar,
             isLineBreak: false,
-            source: "(empty)"
+            source: "(empty)",
+            timeSignature: void 0
           };
           emptyMeasure.__isEmpty = true;
           if (pendingStartBarline === "||:") {
@@ -878,7 +883,7 @@ var _ChordGridParser = class _ChordGridParser {
             const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
             const isLastSegment = segmentIndex === lastSegmentWithRhythmIndex;
             const effectiveTS = measureTimeSignature || globalTimeSignature;
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS);
+            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
             chordSegments.push({
               chord,
               // use the current chord
@@ -922,7 +927,7 @@ var _ChordGridParser = class _ChordGridParser {
         } else if (trimmedText.length > 0) {
           const rhythm = trimmedText;
           const effectiveTS = measureTimeSignature || globalTimeSignature;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, fingerMode);
           chordSegments.push({
             chord: "",
             beats: parsedBeats,
@@ -941,7 +946,6 @@ var _ChordGridParser = class _ChordGridParser {
         isLineBreak: false,
         source: anySource || text,
         timeSignature: measureTimeSignature
-        // Add time signature if detected
       };
       if (isChordOnlyMode) {
         newMeasure.__isChordOnlyMode = true;
@@ -1228,7 +1232,7 @@ var BeamAndTieAnalyzer = class {
       lastBeamableNotes: []
     };
   }
-  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature) {
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature, pickMode, fingerMode) {
     var _a, _b, _c, _d, _e, _f, _g;
     const beats = [];
     let currentBeat = [];
@@ -1302,11 +1306,11 @@ var BeamAndTieAnalyzer = class {
                 }
                 let note2;
                 if (group[k] === "-") {
-                  note2 = this.parseNote(group, k + 1);
+                  note2 = this.parseNote(group, k + 1, pickMode, fingerMode);
                   note2.isRest = true;
                   k += ((_a = note2.length) != null ? _a : 0) + 1;
                 } else {
-                  note2 = this.parseNote(group, k);
+                  note2 = this.parseNote(group, k, pickMode, fingerMode);
                   k += (_b = note2.length) != null ? _b : 0;
                 }
                 if (pendingTieFromPrevious) {
@@ -1381,12 +1385,12 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "-") {
-        const note2 = this.parseNote(rhythmStr, i);
+        const note2 = this.parseNote(rhythmStr, i, pickMode, fingerMode);
         currentBeat.push(note2);
         i += (_e = note2.length) != null ? _e : 0;
         continue;
       }
-      const note = this.parseNote(rhythmStr, i);
+      const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
@@ -1412,7 +1416,7 @@ var BeamAndTieAnalyzer = class {
       this.tieContext.pendingTieToVoid = true;
     }
   }
-  parseNote(rhythmStr, startIndex) {
+  parseNote(rhythmStr, startIndex, pickMode, fingerMode) {
     let isRest = false;
     let offset = startIndex;
     if (rhythmStr[startIndex] === "-") {
@@ -1436,15 +1440,49 @@ var BeamAndTieAnalyzer = class {
         let fingerSymbol;
         let pickDirection;
         const afterValue = rhythmStr.substring(offset + len);
-        const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
-        if (symbolMatch) {
-          const sym = symbolMatch[1];
-          if (sym === "d" || sym === "u") {
-            pickDirection = sym;
-          } else {
-            fingerSymbol = sym;
+        if (pickMode) {
+          const pickMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
+          if (pickMatch) {
+            let sym = pickMatch[1];
+            if (sym.endsWith("u")) {
+              pickDirection = "u";
+            } else if (sym.endsWith("d") || sym === "d") {
+              pickDirection = "d";
+            }
+            len += pickMatch[0].length;
           }
-          len += symbolMatch[0].length;
+        } else if (fingerMode) {
+          const fingerMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
+          if (fingerMatch) {
+            let sym = fingerMatch[1];
+            if (sym === "d") {
+              sym = "td";
+            } else if (sym === "u") {
+              sym = "tu";
+            }
+            if (sym === "pd") {
+              sym = "td";
+            } else if (sym === "pu") {
+              sym = "tu";
+            } else if (sym === "md") {
+              sym = "hd";
+            } else if (sym === "mu") {
+              sym = "hu";
+            }
+            fingerSymbol = sym;
+            len += fingerMatch[0].length;
+          }
+        } else {
+          const symbolMatch = /^(tu|hu|pu|mu|t|h|p|m|d|u)/.exec(afterValue);
+          if (symbolMatch) {
+            const sym = symbolMatch[1];
+            if (sym === "d" || sym === "u") {
+              pickDirection = sym;
+            } else {
+              fingerSymbol = sym;
+            }
+            len += symbolMatch[0].length;
+          }
         }
         const totalLen = offset - startIndex + len;
         return {
@@ -2727,12 +2765,18 @@ var MeasureRenderer = class {
       this.drawChordOnlyMeasure(svg, measureIndex);
       return;
     }
+    const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+    const isLineStart = this.measure.__isLineStart;
+    const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
+    if (shouldDrawTimeSignatureBeforeBar) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
     if (this.measure.isRepeatStart) {
       this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+    } else if (measureIndex === 0 || isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+    if (hasInlineTimeSignature && !shouldDrawTimeSignatureBeforeBar) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
@@ -3055,18 +3099,28 @@ var MeasureRenderer = class {
   drawChordOnlyMeasure(svg, measureIndex) {
     const leftBarX = this.x;
     const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
+    const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+    const isLineStart = this.measure.__isLineStart;
+    const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
+    if (shouldDrawTimeSignatureBeforeBar) {
+      this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
+    }
     if (this.measure.isRepeatStart) {
       this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-    } else if (measureIndex === 0 || this.measure.__isLineStart) {
+    } else if (measureIndex === 0 || isLineStart) {
       this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "left");
     }
-    if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
+    if (hasInlineTimeSignature && !shouldDrawTimeSignatureBeforeBar) {
       this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
     }
     const segments = this.measure.chordSegments || [];
     const chordCount = segments.length;
     if (chordCount === 2) {
-      const slashStartX = leftBarX + 5;
+      let slashStartX = leftBarX + 5;
+      const hasInlineTimeSignature2 = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+      if (hasInlineTimeSignature2) {
+        slashStartX = leftBarX + LAYOUT.BASE_LEFT_PADDING + 20 + 40;
+      }
       const slashStartY = this.y + 110;
       const slashEndX = rightBarX - 5;
       const slashEndY = this.y + LAYOUT.BASE_LEFT_PADDING;
@@ -3228,7 +3282,14 @@ var MeasureRenderer = class {
    * @param measureIndex - Measure index (for PlaceAndSizeManager)
    */
   drawTimeSignature(svg, timeSignature, measureIndex) {
-    const timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20;
+    const isLineStart = this.measure.__isLineStart;
+    const shouldDrawBeforeBar = isLineStart && measureIndex > 0;
+    let timeSignatureX;
+    if (shouldDrawBeforeBar) {
+      timeSignatureX = this.x - 25;
+    } else {
+      timeSignatureX = this.x + LAYOUT.BASE_LEFT_PADDING + 20;
+    }
     const staffLineY = this.y + NOTATION.STAFF_LINE_Y_OFFSET;
     this.timeSignatureRenderer.render(svg, {
       x: timeSignatureX,
@@ -5100,6 +5161,7 @@ var StrumPatternRenderer = class {
     const notesOnTimeline = [];
     let currentSubdivision = 0;
     grid.measures.forEach((measure, measureIndex) => {
+      let subdivisionInMeasure = 0;
       const segments = measure.chordSegments || [];
       segments.forEach((segment, chordIndex) => {
         segment.beats.forEach((beat, beatIndex) => {
@@ -5122,11 +5184,13 @@ var StrumPatternRenderer = class {
               beatIndex,
               noteIndex,
               subdivisionStart: currentSubdivision,
+              subdivisionInMeasure,
               isAttack,
               value: note.value,
               explicitSymbol
             });
             currentSubdivision += subdivisionCount;
+            subdivisionInMeasure += subdivisionCount;
           });
         });
       });
@@ -5148,44 +5212,52 @@ var StrumPatternRenderer = class {
     }
     const beatValue = 4;
     const subdivisionsPerBeat = globalStep / beatValue;
-    const timeline = [];
+    const timelineMap = /* @__PURE__ */ new Map();
     if (patternArray && config.mode === "finger") {
       const totalPatternSubdivisions = patternBeats * subdivisionsPerBeat;
       const subdivPerPatternElement = totalPatternSubdivisions / patternArray.length;
-      for (let i = 0; i < currentSubdivision; i++) {
-        const positionInPattern = i % totalPatternSubdivisions;
-        const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
-        const rawSymbol = patternArray[patternIndex];
-        const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || "fr");
-        const direction = normalizedSymbol.endsWith("u") ? "up" : "down";
-        timeline.push({ direction, subdivisionIndex: i, symbol: normalizedSymbol });
-      }
+      notesOnTimeline.forEach((note) => {
+        if (!timelineMap.has(note.subdivisionStart)) {
+          const positionInPattern = note.subdivisionInMeasure % totalPatternSubdivisions;
+          const patternIndex = Math.floor(positionInPattern / subdivPerPatternElement);
+          const rawSymbol = patternArray[patternIndex];
+          const normalizedSymbol = this.normalizeFingerSymbol(rawSymbol, config.language || "fr");
+          const direction = normalizedSymbol.endsWith("u") ? "up" : "down";
+          timelineMap.set(note.subdivisionStart, {
+            direction,
+            subdivisionIndex: note.subdivisionStart,
+            symbol: normalizedSymbol
+          });
+        }
+      });
     } else {
       const basePattern = ["t", "tu", "h", "tu"];
-      for (let i = 0; i < currentSubdivision; i++) {
-        let direction;
-        let symbol;
-        if (config.mode === "finger") {
-          let patternIndex;
-          if (globalStep > 8) {
-            const positionInBeat = i % subdivisionsPerBeat;
-            patternIndex = positionInBeat % basePattern.length;
+      notesOnTimeline.forEach((note) => {
+        if (!timelineMap.has(note.subdivisionStart)) {
+          let direction;
+          let symbol;
+          if (config.mode === "finger") {
+            let patternIndex;
+            if (globalStep > 8) {
+              const positionInBeat = note.subdivisionInMeasure % subdivisionsPerBeat;
+              patternIndex = positionInBeat % basePattern.length;
+            } else {
+              patternIndex = note.subdivisionInMeasure % basePattern.length;
+            }
+            const rawSymbol = basePattern[patternIndex];
+            symbol = this.normalizeFingerSymbol(rawSymbol, config.language || "en");
+            direction = symbol.endsWith("u") ? "up" : "down";
           } else {
-            patternIndex = i % basePattern.length;
+            const isDown = note.subdivisionInMeasure % 2 === 0;
+            direction = isDown ? "down" : "up";
           }
-          const rawSymbol = basePattern[patternIndex];
-          symbol = this.normalizeFingerSymbol(rawSymbol, config.language || "en");
-          direction = symbol.endsWith("u") ? "up" : "down";
-        } else {
-          const isDown = i % 2 === 0;
-          direction = isDown ? "down" : "up";
+          timelineMap.set(note.subdivisionStart, {
+            direction,
+            subdivisionIndex: note.subdivisionStart,
+            symbol
+          });
         }
-        timeline.push({
-          direction,
-          subdivisionIndex: i,
-          symbol
-        });
-      }
+      });
     }
     const result = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
       if (n.explicitSymbol) {
@@ -5204,7 +5276,7 @@ var StrumPatternRenderer = class {
           assignedSymbol: normalizedSymbol
         };
       }
-      const timelineSlot = timeline[n.subdivisionStart];
+      const timelineSlot = timelineMap.get(n.subdivisionStart);
       const direction = (timelineSlot == null ? void 0 : timelineSlot.direction) || "down";
       const assignedSymbol = timelineSlot == null ? void 0 : timelineSlot.symbol;
       return {
@@ -6482,10 +6554,13 @@ var SVGRenderer = class {
       isDown = !isDown;
     }
     const attacksWithPicks = notesOnTimeline.filter((n) => n.isAttack).map((n) => {
-      var _a;
+      var _a, _b, _c, _d;
+      const note = (_c = (_b = (_a = grid.measures[n.measureIndex].chordSegments) == null ? void 0 : _a[n.chordIndex]) == null ? void 0 : _b.beats[n.beatIndex]) == null ? void 0 : _c.notes[n.noteIndex];
+      const forcedDirection = note == null ? void 0 : note.pickDirection;
+      const direction = forcedDirection ? forcedDirection === "d" || forcedDirection === "down" ? "down" : "up" : ((_d = timeline[n.subdivisionStart]) == null ? void 0 : _d.pickDirection) || "down";
       return {
         ...n,
-        pickDirection: ((_a = timeline[n.subdivisionStart]) == null ? void 0 : _a.pickDirection) || "down"
+        pickDirection: direction
       };
     });
     const UPBOW_PATH = "M 125.6,4.1 113.3,43.1 101.4,4.1 l 3.3,0 8.6,28.6 9.2,-28.6 z";

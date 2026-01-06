@@ -1636,12 +1636,19 @@ export class SVGRenderer {
     }
 
     // 4) Map notes with real attacks to their pick-stroke direction
+    // Check if note has forced pickDirection; if not, use automatic alternation
     const attacksWithPicks = notesOnTimeline
       .filter(n => n.isAttack)
-      .map(n => ({
-        ...n,
-        pickDirection: timeline[n.subdivisionStart]?.pickDirection || 'down'
-      }));
+      .map(n => {
+        const note = grid.measures[n.measureIndex].chordSegments?.[n.chordIndex]?.beats[n.beatIndex]?.notes[n.noteIndex];
+        const forcedDirection = note?.pickDirection;
+        // Use forced direction if present, otherwise use automatic alternation
+        const direction = forcedDirection ? (forcedDirection === 'd' || forcedDirection === 'down' ? 'down' : 'up') : (timeline[n.subdivisionStart]?.pickDirection || 'down');
+        return {
+          ...n,
+          pickDirection: direction
+        };
+      });
 
     // Original paths (extracted from provided SVGs - BLACK SHAPE ONLY)
     // Upbow (inverted V) from Music-upbow.svg
