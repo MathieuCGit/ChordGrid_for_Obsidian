@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-463%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen.svg)](#)
 
 > **Transform simple text notation into beautiful, professional chord charts with rhythmic notation—right inside your Obsidian notes.**
 

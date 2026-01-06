@@ -402,13 +402,19 @@ var _ChordGridParser = class _ChordGridParser {
         line = line.replace(/\b(count|counting)\b\s*/i, "");
         hasAnyDirective = true;
       }
-      const zoomMatch = /zoom:\s*(\d+)%?/i.exec(line);
+      const zoomMatch = /zoom:\s*([\d.]+)%?/i.exec(line);
       if (zoomMatch) {
-        const percent = parseInt(zoomMatch[1], 10);
+        const value = parseFloat(zoomMatch[1]);
+        let percent;
+        if (zoomMatch[1].includes(".") && value <= 5) {
+          percent = value * 100;
+        } else {
+          percent = value;
+        }
         if (percent > 0 && percent <= 500) {
           zoomPercent = percent;
         }
-        line = line.replace(/zoom:\s*\d+%?\s*/i, "");
+        line = line.replace(/zoom:\s*[\d.]+%?\s*/i, "");
         hasAnyDirective = true;
       }
       if (/^(?!.*\d+\/\d+)\s*(auto-beams?|binary|ternary|auto|noauto)\b/i.test(line)) {
@@ -735,6 +741,10 @@ var _ChordGridParser = class _ChordGridParser {
         }
         const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
         const isNotFirstToken = ti > 0;
+        const isFirstTokenOnContinuationLine = ti === 0 && !isFirstLine;
+        if (isFirstTokenOnContinuationLine) {
+          continue;
+        }
         if (isIntentionalEmpty || measuresPerLine !== void 0 && isNotFirstToken) {
           const emptyMeasure = {
             beats: [],

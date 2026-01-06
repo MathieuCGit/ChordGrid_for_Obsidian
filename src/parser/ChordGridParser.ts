@@ -248,14 +248,27 @@ export class ChordGridParser {
       }
       
       // Check for zoom directive
-      // Syntax: zoom:50% or zoom:75% or zoom:150%
-      const zoomMatch = /zoom:\s*(\d+)%?/i.exec(line);
+      // Syntax: zoom:50% or zoom:50 or zoom:0.5 (all three mean 50%)
+      // Supports: percentage (80%), integer (80), or decimal (0.8)
+      const zoomMatch = /zoom:\s*([\d.]+)%?/i.exec(line);
       if (zoomMatch) {
-        const percent = parseInt(zoomMatch[1], 10);
+        const value = parseFloat(zoomMatch[1]);
+        let percent: number;
+        
+        // Determine format: decimal (0-5 with decimal point), or integer/percentage
+        // If value has decimal point and is <= 5, treat as decimal multiplier
+        if (zoomMatch[1].includes('.') && value <= 5) {
+          // Decimal format: 0.8 = 80%, 1.5 = 150%
+          percent = value * 100;
+        } else {
+          // Integer format: 80 = 80% or 80% = 80%
+          percent = value;
+        }
+        
         if (percent > 0 && percent <= 500) { // Limit to reasonable values (1% to 500%)
           zoomPercent = percent;
         }
-        line = line.replace(/zoom:\s*\d+%?\s*/i, '');
+        line = line.replace(/zoom:\s*[\d.]+%?\s*/i, '');
         hasAnyDirective = true;
       }
       

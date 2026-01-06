@@ -39,6 +39,34 @@ describe('Zoom directive', () => {
     expect(result.zoomPercent).toBe(82);
   });
 
+  it('should parse zoom with decimal format (0.8 = 80%)', () => {
+    const result = parser.parse('zoom:0.8\n4/4 | C[4 4 4 4] |');
+    expect(result.errors).toHaveLength(0);
+    expect(result.zoomPercent).toBe(80);
+  });
+
+  it('should parse zoom with decimal format (0.5 = 50%)', () => {
+    const result = parser.parse('zoom:0.5\n4/4 | C[4 4 4 4] |');
+    expect(result.errors).toHaveLength(0);
+    expect(result.zoomPercent).toBe(50);
+  });
+
+  it('should parse zoom with decimal format (1.5 = 150%)', () => {
+    const result = parser.parse('zoom:1.5\n4/4 | C[4 4 4 4] |');
+    expect(result.errors).toHaveLength(0);
+    expect(result.zoomPercent).toBe(150);
+  });
+
+  it('should treat zoom:80, zoom:80%, and zoom:0.8 as equivalent', () => {
+    const result1 = parser.parse('zoom:80\n4/4 | C[4 4 4 4] |');
+    const result2 = parser.parse('zoom:80%\n4/4 | C[4 4 4 4] |');
+    const result3 = parser.parse('zoom:0.8\n4/4 | C[4 4 4 4] |');
+    
+    expect(result1.zoomPercent).toBe(80);
+    expect(result2.zoomPercent).toBe(80);
+    expect(result3.zoomPercent).toBe(80);
+  });
+
   it('should parse zoom with spaces', () => {
     const result = parser.parse('zoom: 100 %\n4/4 | C[4 4 4 4] |');
     expect(result.errors).toHaveLength(0);
