@@ -768,10 +768,18 @@ export class ChordGridParser {
         
         // Create empty measure if:
         // 1. The content has at least one space (intentional empty measure "| |")
-        // 2. OR it's not the first token (to avoid the leading space after time signature)
-        // 3. OR measures-per-line is specified (forced layout mode)
+        // 2. OR it's not the first token AND (measures-per-line is specified OR this is intentional)
+        // EXCEPT: Don't create an empty measure if this is the first token on a continuation
+        // line (to avoid creating an empty measure when a line ends with | and the next line
+        // starts with |)
         const isIntentionalEmpty = t.content.length > 0 && /\s/.test(t.content);
         const isNotFirstToken = ti > 0;
+        const isFirstTokenOnContinuationLine = ti === 0 && !isFirstLine;
+        
+        // Skip first token on continuation lines to avoid empty measures between lines
+        if (isFirstTokenOnContinuationLine) {
+          continue;
+        }
         
         if (isIntentionalEmpty || (measuresPerLine !== undefined && isNotFirstToken)) {
           // Create an empty measure (no chords, no rhythm)
