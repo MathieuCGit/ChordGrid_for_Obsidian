@@ -328,7 +328,43 @@ You can use the x just after a note value to get a X note head instead of the cl
   ````
 <img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/d63e9a1d-5e7b-4336-b671-f819b1a9945f" />
 
+### Forced Pick/Finger Strokes (v2.2+)
+Override automatic patterns by adding suffixes to note values:
 
+#### Pick Mode - Force directions
+Add `d` (down) or `u` (up) after any note value:
+  ````markdown
+  ```chordgrid
+  pick
+  4/4 | C[8d8u8d8u 8d8u8d8u] | G[8u8u8d8d 8u8u8d8d] |
+  ```
+  ````
+  
+#### Finger Mode - Force symbols
+Add finger symbols after note values:
+- `d` or `td` = thumb down
+- `u` or `tu` = thumb up
+- `hd` = hand down
+- `hu` = hand up
+- `md`/`mu` = French notation (main down/up)
+- `pd`/`pu` = French notation (pouce down/up)
+
+  ````markdown
+  ```chordgrid
+  finger:fr
+  4/4 | C[4pd4mu 4pd4mu] | G[8md8mu8md8mu 8md8mu8md8mu] |
+  ```
+  ````
+
+#### Interoperability
+**New in v2.2:** You can use finger notation suffixes in pick mode! They will be automatically normalized to simple d/u:
+  ````markdown
+  ```chordgrid
+  pick
+  7/8| D |4/4 G / C | D[4u 4u 8md8mu 4u] |
+  ```
+  ````
+  In this example, `8md8mu` will be interpreted as `8d8u` in pick mode. This allows you to switch between `pick` and `finger` modes without rewriting your notation!
 
 
 #### Advanced Syntax Examples
