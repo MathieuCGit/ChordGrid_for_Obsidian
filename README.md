@@ -339,6 +339,8 @@ Add `d` (down) or `u` (up) after any note value:
   4/4 | C[8d8u8d8u 8d8u8d8u] | G[8u8u8d8d 8u8u8d8d] |
   ```
   ````
+<img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/0dd6d714-af2a-4622-b9c3-0d310156679a" />
+
   
 #### Finger Mode - Force symbols
 Add finger symbols after note values:
@@ -355,6 +357,8 @@ Add finger symbols after note values:
   4/4 | C[4pd4mu 4pd4mu] | G[8md8mu8md8mu 8md8mu8md8mu] |
   ```
   ````
+  <img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/cf4b9647-94f8-466f-9266-838aa20af001" />
+
 
 #### Interoperability
 **New in v2.2:** You can use finger notation suffixes in pick mode! They will be automatically normalized to simple d/u:
@@ -365,6 +369,8 @@ Add finger symbols after note values:
   ```
   ````
   In this example, `8md8mu` will be interpreted as `8d8u` in pick mode. This allows you to switch between `pick` and `finger` modes without rewriting your notation!
+  
+<img width="779" height="147" alt="image" src="https://github.com/user-attachments/assets/91b6fbe7-51c4-4f98-9019-70ea6f7eeb16" />
 
 
 #### Advanced Syntax Examples
