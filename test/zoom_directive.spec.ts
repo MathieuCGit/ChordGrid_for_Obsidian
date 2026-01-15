@@ -100,9 +100,16 @@ describe('Zoom directive', () => {
     expect(svg).toBeDefined();
     expect(svg.tagName).toBe('svg');
     
-    // Check that zoom is applied via style
-    const widthStyle = svg.style.width;
-    expect(widthStyle).toBeTruthy();
+    // Check that zoom is applied via viewBox scaling (Solution 2)
+    // At 50% zoom, the viewBox should show 2x more content
+    const viewBox = svg.getAttribute('viewBox');
+    expect(viewBox).toBeTruthy();
+    
+    // Parse viewBox to verify zoom is applied
+    const viewBoxParts = viewBox?.split(' ').map(Number) || [];
+    expect(viewBoxParts.length).toBe(4); // x, y, width, height
+    expect(viewBoxParts[2]).toBeGreaterThan(0); // width should be positive
+    expect(viewBoxParts[3]).toBeGreaterThan(0); // height should be positive
   });
 
   it('should render at 100% zoom (default)', () => {

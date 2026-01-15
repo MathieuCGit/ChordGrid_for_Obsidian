@@ -500,15 +500,23 @@ export class SVGRenderer {
   // Remove fixed height to allow CSS to control it - fixes Obsidian margin issues
   // svg.setAttribute('height', totalHeight.toString());
   
-  // Apply zoom if specified
+  // Apply zoom via adjusted viewBox (Solution 2: ViewBox Scaling)
+  // Zoom is applied mathematically to the viewport, not via CSS dimensions
+  // This maintains responsive behavior while enabling zoom functionality
   const zoomScale = (options.zoomPercent && options.zoomPercent > 0) ? options.zoomPercent / 100 : 1;
-  const scaledWidth = width * zoomScale;
-  const scaledHeight = totalHeight * zoomScale;
   
-  svg.setAttribute('viewBox', `0 ${-topMarginForChords} ${width} ${totalHeight}`);
+  // Calculate zoom-adjusted viewBox coordinates
+  // When zooming to 50%, we need to show 2x more content, so divide by zoomScale
+  // When zooming to 150%, we need to show 66% less content, so divide by zoomScale
+  const viewBoxTop = -topMarginForChords / zoomScale;
+  const viewBoxWidth = width / zoomScale;
+  const viewBoxHeight = totalHeight / zoomScale;
+  
+  svg.setAttribute('viewBox', `0 ${viewBoxTop} ${viewBoxWidth} ${viewBoxHeight}`);
   svg.setAttribute('xmlns', SVG_NS);
-  svg.style.width = `${scaledWidth}px`;
-  svg.style.height = `${scaledHeight}px`;
+  
+  // ✅ FIXED: No style.width or style.height - SVG remains responsive (width="100%")
+  // Zoom is applied through viewBox scaling only, maintaining responsive behavior
 
     // Initialize managers
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
