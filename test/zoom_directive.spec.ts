@@ -144,4 +144,135 @@ describe('Zoom directive', () => {
     expect(result.zoomPercent).toBe(60);
     expect(result.measuresPerLine).toBe(4);
   });
+
+  // ========== NEW TESTS FOR RESPONSIVE BEHAVIOR FIX (Solution 2) ==========
+
+  it('should maintain responsive width="100%" when zoom is applied', () => {
+    const result = parser.parse('zoom:50%\n4/4 | C[4 4 4 4] |');
+    const svg = renderer.render(result.grid, {
+      zoomPercent: result.zoomPercent
+    });
+    
+    // Critical: width="100%" must be preserved for responsiveness
+    const widthAttr = svg.getAttribute('width');
+    expect(widthAttr).toBe('100%');
+    
+    // Critical: style.width and style.height must NOT be set (they break responsiveness)
+    expect(svg.style.width).toBe(''); // Should be empty, not "400px"
+    expect(svg.style.height).toBe(''); // Should be empty, not "300px"
+  });
+
+  it('should apply zoom through viewBox scaling, not CSS dimensions', () => {
+    // Test at 50% zoom
+    const result50 = parser.parse('zoom:50%\n4/4 | C[4 4 4 4] |');
+    const svg50 = renderer.render(result50.grid, {
+      zoomPercent: result50.zoomPercent
+    });
+    
+    const viewBox50 = svg50.getAttribute('viewBox');
+    const [x50, y50, w50, h50] = viewBox50?.split(' ').map(Number) || [];
+    
+    // Test at 100% zoom (no zoom)
+    const result100 = parser.parse('4/4 | C[4 4 4 4] |');
+    const svg100 = renderer.render(result100.grid);
+    
+    const viewBox100 = svg100.getAttribute('viewBox');
+    const [x100, y100, w100, h100] = viewBox100?.split(' ').map(Number) || [];
+    
+    // At 50% zoom, viewBox should be 2x larger (see 2x more content)
+    // Formula: newViewBoxDim = originalDim / zoomScale
+    // zoomScale = 0.5, so dimensions should be 2x (divide by 0.5 = multiply by 2)
+    expect(w50).toBeCloseTo(w100 * 2, 0);
+    expect(h50).toBeCloseTo(h100 * 2, 0);
+  });
+
+  it('should correctly scale viewBox for different zoom percentages', () => {
+    const testCases = [
+      { zoom: 50, expectedMultiplier: 2 },      // 50% → see 2x (1/0.5 = 2)
+      { zoom: 100, expectedMultiplier: 1 },     // 100% → see 1x (1/1 = 1)
+      { zoom: 200, expectedMultiplier: 0.5 }    // 200% → see 0.5x (1/2 = 0.5)
+    ];
+    
+    const baseResult = parser.parse('4/4 | C[4 4 4 4] |');
+    const baseSvg = renderer.render(baseResult.grid);
+    const baseViewBox = baseSvg.getAttribute('viewBox');
+    const [, , baseW, baseH] = baseViewBox?.split(' ').map(Number) || [];
+    
+    testCases.forEach(({ zoom, expectedMultiplier }) => {
+      const result = parser.parse(`zoom:${zoom}%\n4/4 | C[4 4 4 4] |`);
+      const svg = renderer.render(result.grid, {
+        zoomPercent: result.zoomPercent
+      });
+      
+      const viewBox = svg.getAttribute('viewBox');
+      const [, , w, h] = viewBox?.split(' ').map(Number) || [];
+      
+      // Verify viewBox scaling matches expected multiplier
+      expect(w).toBeCloseTo(baseW * expectedMultiplier, 0);
+      expect(h).toBeCloseTo(baseH * expectedMultiplier, 0);
+    });
+  });
+
+  it('should NOT have fixed CSS width/height that break responsiveness', () => {
+    const zoomValues = [25, 50, 75, 100, 150, 200, 300];
+    
+    zoomValues.forEach(zoom => {
+      const result = parser.parse(`zoom:${zoom}%\n4/4 | C[4 4 4 4] |`);
+      const svg = renderer.render(result.grid, {
+        zoomPercent: result.zoomPercent
+      });
+      
+      // These CSS properties would break responsiveness
+      expect(svg.style.width).toBe('', `zoom:${zoom}% should not have style.width`);
+      expect(svg.style.height).toBe('', `zoom:${zoom}% should not have style.height`);
+      
+      // But width="100%" should always be present for responsiveness
+      expect(svg.getAttribute('width')).toBe('100%', `zoom:${zoom}% should maintain width="100%"`);
+    });
+  });
+
+  it('should calculate correct viewBox coordinates when zoom is applied', () => {
+    const result = parser.parse('zoom:50%\n4/4 | C[4 4 4 4] |');
+    const svg = renderer.render(result.grid, {
+      zoomPercent: result.zoomPercent
+    });
+    
+    const viewBox = svg.getAttribute('viewBox');
+    const parts = viewBox?.split(' ').map(Number) || [];
+    
+    // Verify viewBox has all 4 required coordinates (x, y, width, height)
+    expect(parts.length).toBe(4);
+    expect(parts.every(v => typeof v === 'number')).toBe(true);
+    
+    // Width and height should be positive and > 0
+    const [x, y, w, h] = parts;
+    expect(w).toBeGreaterThan(0);
+    expect(h).toBeGreaterThan(0);
+    
+    // y coordinate represents the top boundary (can be negative for chord space)
+    expect(typeof y).toBe('number');
+  });
+
+  it('responsive behavior restored: SVG adapts to container width', () => {
+    const result = parser.parse('zoom:75%\n4/4 | C[4 4 4 4] |');
+    const svg = renderer.render(result.grid, {
+      zoomPercent: result.zoomPercent
+    });
+    
+    // Simulate container resize scenarios
+    // With width="100%", the SVG should adapt to container width
+    // (This is browser behavior, but we can verify the attribute exists)
+    
+    const widthAttr = svg.getAttribute('width');
+    const viewBoxAttr = svg.getAttribute('viewBox');
+    
+    // width="100%" allows container to control width
+    expect(widthAttr).toBe('100%');
+    
+    // viewBox scales content without forcing fixed dimensions
+    expect(viewBoxAttr).toBeTruthy();
+    
+    // No style.width blocking the responsive behavior
+    expect(svg.style.width).toBe('');
+  });
 });
