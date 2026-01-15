@@ -1890,7 +1890,9 @@ export class SVGRenderer {
 
       // Determine placement (above or below note)
       const hasStem = notePos.stemTopY !== undefined && notePos.stemBottomY !== undefined;
-      const stemDirection = hasStem && notePos.stemTopY! < notePos.y ? 'up' : 'down';
+      // In SVG, Y increases downward. If stemTopY < noteY, the stem extends upward (stems-up).
+      // If stemTopY > noteY, the stem extends downward (stems-down).
+      const stemDirection = hasStem && notePos.stemTopY! > notePos.y ? 'down' : 'up';
       const placeAbove = stemDirection === 'down'; // stems-down → symbol above
 
       const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
