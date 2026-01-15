@@ -6723,7 +6723,7 @@ var SVGRenderer = class {
       );
       if (!notePos || !noteInfo.assignedSymbol) return;
       const hasStem = notePos.stemTopY !== void 0 && notePos.stemBottomY !== void 0;
-      const stemDirection = hasStem && notePos.stemTopY < notePos.y ? "up" : "down";
+      const stemDirection = hasStem && notePos.stemTopY > notePos.y ? "down" : "up";
       const placeAbove = stemDirection === "down";
       const noteHeadTop = notePos.y - NOTE_HEAD_HALF_HEIGHT;
       const noteHeadBottom = notePos.y + NOTE_HEAD_HALF_HEIGHT;
