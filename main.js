@@ -464,11 +464,13 @@ var _ChordGridParser = class _ChordGridParser {
     lines[0] = timeSignatureLine;
     const allMeasures = [];
     let lastExplicitMeasure = null;
+    let lastSegmentWithBeats = null;
     for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
       const line = lines[lineIndex2];
-      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode);
+      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode, lastSegmentWithBeats);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure;
+      lastSegmentWithBeats = result.lastSegmentWithBeats;
       if (measures.length > 0 && lineIndex2 < lines.length - 1) {
         measures[measures.length - 1].isLineBreak = true;
       }
@@ -673,7 +675,7 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature, pickMode, fingerMode) {
+  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature, pickMode, fingerMode, lastSegmentWithBeatsFromPreviousLine) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
@@ -721,6 +723,7 @@ var _ChordGridParser = class _ChordGridParser {
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
     let lastExplicitMeasure = lastExplicitMeasureFromPreviousLine || null;
+    let lastSegmentWithBeats = lastSegmentWithBeatsFromPreviousLine || null;
     let pendingStartBarline = null;
     let pendingVolta = void 0;
     let pendingVoltaIsAfterRepeatEnd = false;
@@ -866,6 +869,11 @@ var _ChordGridParser = class _ChordGridParser {
       const isFirstMeasureOfLine = tokens.slice(0, ti).every((prev) => prev.content.trim().length === 0);
       const isLastMeasureOfLine = tokens.slice(ti + 1).every((next) => next.content.trim().length === 0);
       const chordSegments = [];
+      const invalidChordBracketPattern = /\b([A-G][#b♯♭]?(?:maj|min|M|m|dim|aug|mM|mmaj)?[0-9#b♯♭]*(?:add|sus[24]?)?[0-9#b♯♭]*)\s+\[/;
+      const invalidMatch = invalidChordBracketPattern.exec(text);
+      if (invalidMatch) {
+        console.error(`Invalid syntax in measure: "${text}" - Chord "${invalidMatch[1]}" should not have a space before the brackets. Use ${invalidMatch[1]}[%(rhythm)] instead of ${invalidMatch[1]} [%(rhythm)].`);
+      }
       const FORCED_BEAM_PLACEHOLDER = "";
       const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
       if (processedText.includes("[")) {
@@ -893,14 +901,34 @@ var _ChordGridParser = class _ChordGridParser {
             const hasSignificantSpace = (leadingSpaceCapture || "").length > 0;
             const isLastSegment = segmentIndex === lastSegmentWithRhythmIndex;
             const effectiveTS = measureTimeSignature || globalTimeSignature;
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
-            chordSegments.push({
+            let parsedBeats;
+            if (rhythm === "%") {
+              let baselineBeats = null;
+              if (chordSegments.length > 0) {
+                baselineBeats = chordSegments[chordSegments.length - 1].beats;
+              } else if (lastSegmentWithBeats && lastSegmentWithBeats.beats && lastSegmentWithBeats.beats.length > 0) {
+                baselineBeats = lastSegmentWithBeats.beats;
+              }
+              if (baselineBeats && baselineBeats.length > 0) {
+                parsedBeats = baselineBeats.map((beat) => ({ ...beat }));
+              } else {
+                console.warn(`Cannot use '[%]' repeat notation for chord "${chord}" - no previous rhythm to repeat`);
+                parsedBeats = [];
+              }
+            } else {
+              parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
+            }
+            const newSegment = {
               chord,
               // use the current chord
               beats: parsedBeats,
               leadingSpace: hasSignificantSpace
-            });
+            };
+            chordSegments.push(newSegment);
             beats.push(...parsedBeats);
+            if (parsedBeats.length > 0) {
+              lastSegmentWithBeats = newSegment;
+            }
           }
           segmentIndex++;
         }
@@ -1000,7 +1028,7 @@ var _ChordGridParser = class _ChordGridParser {
       }
       lastExplicitMeasure = newMeasure;
     }
-    return { measures, lastExplicitMeasure };
+    return { measures, lastExplicitMeasure, lastSegmentWithBeats };
   }
   /**
    * Parse the time signature from the first line.

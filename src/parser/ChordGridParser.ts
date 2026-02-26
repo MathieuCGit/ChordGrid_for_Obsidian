@@ -349,11 +349,14 @@ export class ChordGridParser {
   const allMeasures: Measure[] = [];
   let lastExplicitMeasure: Measure | null = null;
     
+    let lastSegmentWithBeats: any = null; // Track last segment with beats across all lines
+    
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode);
+      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode, lastSegmentWithBeats);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure; // Preserve for next line
+      lastSegmentWithBeats = result.lastSegmentWithBeats; // Preserve last segment for next line
       
       // Mark the last measure of each line
       if (measures.length > 0 && lineIndex < lines.length - 1) {
@@ -657,7 +660,7 @@ export class ChordGridParser {
     return { timeSignature: result.grid.timeSignature, measures };
   }
   
-  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, fingerMode?: 'en' | 'fr'): { measures: Measure[], lastExplicitMeasure: Measure | null } {
+  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, fingerMode?: 'en' | 'fr', lastSegmentWithBeatsFromPreviousLine?: any): { measures: Measure[], lastExplicitMeasure: Measure | null, lastSegmentWithBeats: any } {
     // Skip time signature on first line
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, '');
@@ -742,6 +745,10 @@ export class ChordGridParser {
     // Track the last explicit measure (non-%) for repeat notation
     // Initialize with value from previous line (if any)
     let lastExplicitMeasure: Measure | null = lastExplicitMeasureFromPreviousLine || null;
+    
+    // Track the last segment with beats for [%] notation in half-measures
+    // Initialize with value from previous line (if any)
+    let lastSegmentWithBeats: any = lastSegmentWithBeatsFromPreviousLine || null;
     
     // Track pending start repeat barline (||:) that should apply to next measure
     let pendingStartBarline: string | null = null;
@@ -967,6 +974,15 @@ export class ChordGridParser {
 
       const chordSegments: ChordSegment[] = [];
       
+      // VALIDATION: Check for invalid syntax like "G [%]" (chord followed by space then brackets)
+      // Valid: "G[%]" (no space), Invalid: "G [%]" (space between chord and brackets)
+      const invalidChordBracketPattern = /\b([A-G][#b♯♭]?(?:maj|min|M|m|dim|aug|mM|mmaj)?[0-9#b♯♭]*(?:add|sus[24]?)?[0-9#b♯♭]*)\s+\[/;
+      const invalidMatch = invalidChordBracketPattern.exec(text);
+      if (invalidMatch) {
+        console.error(`Invalid syntax in measure: "${text}" - Chord "${invalidMatch[1]}" should not have a space before the brackets. Use ${invalidMatch[1]}[%(rhythm)] instead of ${invalidMatch[1]} [%(rhythm)].`);
+        // Still try to parse, but mark it as an error
+      }
+      
       // PREPROCESSING: Replace [_] with temporary placeholder to avoid bracket conflicts
       const FORCED_BEAM_PLACEHOLDER = '\u0001'; // Use control character as placeholder
       const processedText = text.replace(/\[_\]/g, FORCED_BEAM_PLACEHOLDER);
@@ -1010,16 +1026,45 @@ export class ChordGridParser {
             const isLastSegment = (segmentIndex === lastSegmentWithRhythmIndex);
             const effectiveTS = measureTimeSignature || globalTimeSignature;
 
-            const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
+            let parsedBeats: Beat[];
+            
+            // HANDLE HALF-MEASURE REPEAT NOTATION: [%] repeats rhythm from previous segment
+            if (rhythm === '%') {
+              // Try to get beats from previous segment in SAME measure first
+              let baselineBeats: Beat[] | null = null;
+              
+              if (chordSegments.length > 0) {
+                // Use the previous segment in this measure
+                baselineBeats = chordSegments[chordSegments.length - 1].beats;
+              } else if (lastSegmentWithBeats && lastSegmentWithBeats.beats && lastSegmentWithBeats.beats.length > 0) {
+                // Use the last segment from previous measure/line
+                baselineBeats = lastSegmentWithBeats.beats;
+              }
+              
+              if (baselineBeats && baselineBeats.length > 0) {
+                parsedBeats = baselineBeats.map(beat => ({ ...beat }));
+              } else {
+                console.warn(`Cannot use '[%]' repeat notation for chord "${chord}" - no previous rhythm to repeat`);
+                parsedBeats = [];
+              }
+            } else {
+              // Normal rhythm parsing
+              parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
+            }
             
             // Create a segment for each chord/rhythm group
-            chordSegments.push({
+            const newSegment = {
               chord: chord,  // use the current chord
               beats: parsedBeats,
               leadingSpace: hasSignificantSpace
-            });
-            
+            };
+            chordSegments.push(newSegment);
             beats.push(...parsedBeats); // keep compatibility with the rest of the code
+            
+            // Update lastSegmentWithBeats for cross-measure repetition
+            if (parsedBeats.length > 0) {
+              lastSegmentWithBeats = newSegment;
+            }
           }
           segmentIndex++;
         }
@@ -1191,7 +1236,7 @@ export class ChordGridParser {
       lastExplicitMeasure = newMeasure;
     }
 
-    return { measures, lastExplicitMeasure };
+    return { measures, lastExplicitMeasure, lastSegmentWithBeats };
   }
 
   /**
