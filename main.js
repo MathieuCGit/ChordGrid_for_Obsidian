@@ -6997,7 +6997,7 @@ var CountingAnalyzer = class {
             note.countingSize = note.tieEnd ? "s" : "t";
             currentMetricUnitSubdivisionStart = measureSubdivisionPosition;
           } else {
-            if (useAndNotation && positionInMetricUnit === subdivisionsPerMetricUnit / 2 + 1) {
+            if (useAndNotation && note.value === 8) {
               note.countingLabel = "&";
               note.countingSize = note.isRest ? "s" : "m";
             } else {

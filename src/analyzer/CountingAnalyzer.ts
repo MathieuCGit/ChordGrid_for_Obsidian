@@ -203,8 +203,9 @@ export class CountingAnalyzer {
             currentMetricUnitSubdivisionStart = measureSubdivisionPosition;
           } else {
             // Subdivision within metric unit
-            if (useAndNotation && positionInMetricUnit === (subdivisionsPerMetricUnit / 2) + 1) {
-              // Use & notation for eighth subdivisions (middle of metric unit)
+            // Use & notation if this note is an eighth (8) and the beat supports it
+            if (useAndNotation && note.value === 8) {
+              // Use & notation for eighth notes in eighth-compatible beats
               note.countingLabel = '&';
               note.countingSize = note.isRest ? 's' : 'm';
             } else {
