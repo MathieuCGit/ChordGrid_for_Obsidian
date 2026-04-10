@@ -456,6 +456,13 @@ var _ChordGridParser = class _ChordGridParser {
     }
     lines.splice(0, lineIndex);
     let timeSignatureLine = lines[0] || "";
+    const barlineTimeSignaturePattern = /^\s*\|\s*(\d+\/\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?\s*/;
+    const barlineMatch = barlineTimeSignaturePattern.exec(timeSignatureLine);
+    if (barlineMatch && !timeSignatureLine.match(/^\s*\d+\/\d+/)) {
+      const extractedTsText = barlineMatch[1] + (barlineMatch[2] ? " " + barlineMatch[2] : "");
+      timeSignatureLine = extractedTsText + " " + timeSignatureLine.replace(barlineTimeSignaturePattern, "|");
+      lines[0] = timeSignatureLine;
+    }
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
     if (groupingModeDirective && timeSignature.groupingMode === "space-based") {
       timeSignature.groupingMode = groupingModeDirective;

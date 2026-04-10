@@ -331,6 +331,24 @@ export class ChordGridParser {
     // Now lines[0] should be the time signature line
     let timeSignatureLine = lines[0] || '';
 
+    // DETECTION: Time signature after first barline (e.g., |3/8)
+    // If first line starts with |N/M instead of N/M, move the signature to the front
+    // so it's treated as the GLOBAL time signature (not a local change on first measure)
+    // Pattern: |3/8 ... → 3/8 | ...
+    const barlineTimeSignaturePattern = /^\s*\|\s*(\d+\/\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?\s*/;
+    const barlineMatch = barlineTimeSignaturePattern.exec(timeSignatureLine);
+    
+    if (barlineMatch && !timeSignatureLine.match(/^\s*\d+\/\d+/)) {
+      // Line starts with |N/M (not with N/M at document start)
+      // Extract the time signature and move it to the front
+      const extractedTsText = barlineMatch[1] + (barlineMatch[2] ? ' ' + barlineMatch[2] : '');
+      
+      // Replace |N/M with just | (preserve the barline for measure parsing)
+      // Insert extracted signature at the front
+      timeSignatureLine = extractedTsText + ' ' + timeSignatureLine.replace(barlineTimeSignaturePattern, '|');
+      lines[0] = timeSignatureLine;
+    }
+
     // Parse the time signature
     const timeSignature = this.parseTimeSignature(timeSignatureLine);
     
