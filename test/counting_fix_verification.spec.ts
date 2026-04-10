@@ -1,5 +1,7 @@
 /**
- * Test to verify the counting bug fix with actual SVG rendering
+ * Verification test for counting annotation fix.
+ * Validates that eighth notes display '&' instead of numeric position labels
+ * when counting mode is enabled, regardless of their position in the metric unit.
  */
 
 import { ChordGridParser } from '../src/parser/ChordGridParser';
@@ -40,11 +42,11 @@ describe('Counting Bug Fix - SVG Rendering', () => {
         if (labelMatch) {
           console.log(`  Label ${idx + 1}: "${labelMatch[1]}"`);
           
-          // Check for the bug
+          // Verify correct label
           if (labelMatch[1] === '7') {
-            console.error(`  ❌ BUG STILL EXISTS: Found "7" instead of "&"`);
+            console.error(`  ❌ REGRESSION: Found "7" instead of "&"`);
           } else if (labelMatch[1] === '&') {
-            console.log(`  ✓ CORRECT: Found "&" for eighth`);
+            console.log(`  ✓ Fixed: Found "&" for eighth note`);
           }
         }
       });

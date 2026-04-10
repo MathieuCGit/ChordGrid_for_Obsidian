@@ -23,7 +23,7 @@ describe('Time Signature First Line Detection', () => {
   const renderer = new SVGRenderer();
 
   it('should detect time signature immediately after first barline as GLOBAL signature', () => {
-    // User's bug report case: starts with |3/8
+    // Regression: previously defaulted to 4/4 when grid started with |N/M pattern
     const input = '|3/8 C | G |5/8 D/F#[4.] D[4] | 2/4 A |';
     const result = parser.parse(input);
 

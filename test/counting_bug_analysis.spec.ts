@@ -1,10 +1,12 @@
 /**
- * Test to analyze the counting bug:
- * Input: count + 4/4 | D[4.]A[8_] [_4] D[4_] | [_8]A[8_] [_4] E[4 4] |
+ * Test to analyze the counting annotation bug.
  * 
- * User reports: "J'ai un chiffre 7 sous la deuxième note au lieux d'un "&""
- * Expected: Should display "&" for eighth notes
- * Actual: Shows "7" instead
+ * Regression: Eighth notes displayed numeric position labels instead of
+ * the ampersand symbol (&) when they appeared at positions other than
+ * the midpoint of the metric unit.
+ * 
+ * Example: In count mode with dotted quarters, an eighth after the dotted note
+ * would display '7' instead of the expected '&' symbol.
  */
 
 import { ChordGridParser } from '../src/parser/ChordGridParser';
@@ -63,11 +65,11 @@ describe('Counting Bug Analysis - Issue with 8th note subdivision display', () =
           console.log(`        Tie: start=${note.tieStart}, end=${note.tieEnd}`);
           console.log(`        Counting: ${JSON.stringify(countingInfo)}`);
           
-          // Check if counting label has unexpected value (the bug)
+          // Verify counting annotation is correct
           if (countingInfo?.label === '7') {
-            console.error(`        ❌ BUG DETECTED: countingLabel = "7" (expected "&" for eighth)`);
+            console.error(`        ❌ REGRESSION: countingLabel = "7" (expected "&" for eighth note)`);
           } else if (countingInfo?.label === '&') {
-            console.log(`        ✓ Correct: countingLabel = "&" for subdivision`);
+            console.log(`        ✓ Verified: countingLabel = "&" for eighth note subdivision`);
           }
         });
       });
@@ -123,11 +125,11 @@ describe('Counting Bug Analysis - Issue with 8th note subdivision display', () =
       console.log(`  Ties: start=${n.tieStart}, end=${n.tieEnd}`);
       console.log(`  Counting: ${JSON.stringify(n.counting)}`);
       
-      // ISSUE: The 2nd note (8_) should be counted differently
+      // Verify 2nd note counting (the note that would show regression if bug exists)
       if (idx === 1) {
-        console.log(`  >>> THIS IS THE "2ND NOTE" THE USER REPORTS AS SHOWING "7" <<<`);
+        console.log(`  Note position: Second note in measure`);
         if (n.counting?.label === '7') {
-          console.log(`  ❌ BUG CONFIRMED: Shows "7" instead of expected subdivision marker`);
+          console.log(`  ❌ REGRESSION DETECTED: Shows "7" instead of "&" for eighth note`);
         }
       }
     });
