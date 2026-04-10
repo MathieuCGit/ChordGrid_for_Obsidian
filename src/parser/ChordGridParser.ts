@@ -1197,6 +1197,12 @@ export class ChordGridParser {
       
       if (bar === ':||') {
         (newMeasure as any).isRepeatEnd = true;
+        // Auto-queue ||: as pending for next measure (repeat end typically implies start of next repeat)
+        // This handles the case of consecutive repeats like :|||: where :|| on one measure
+        // implies ||: should start the next measure
+        if (!pendingStartBarline) {
+          pendingStartBarline = '||:';
+        }
       }
 
       // Add repeat count if present (e.g., :||x3)
