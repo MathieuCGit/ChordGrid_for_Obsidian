@@ -497,26 +497,27 @@ export class SVGRenderer {
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('width', '100%');
-  // Remove fixed height to allow CSS to control it - fixes Obsidian margin issues
-  // svg.setAttribute('height', totalHeight.toString());
   
-  // Apply zoom via adjusted viewBox (Solution 2: ViewBox Scaling)
-  // Zoom is applied mathematically to the viewport, not via CSS dimensions
-  // This maintains responsive behavior while enabling zoom functionality
+  // Apply zoom scaling to SVG height ONLY
+  // This prevents transparent space below content at different zoom levels
   const zoomScale = (options.zoomPercent && options.zoomPercent > 0) ? options.zoomPercent / 100 : 1;
   
-  // Calculate zoom-adjusted viewBox coordinates
-  // When zooming to 50%, we need to show 2x more content, so divide by zoomScale
-  // When zooming to 150%, we need to show 66% less content, so divide by zoomScale
-  const viewBoxTop = -topMarginForChords / zoomScale;
-  const viewBoxWidth = width / zoomScale;
-  const viewBoxHeight = totalHeight / zoomScale;
+  svg.setAttribute('height', String(totalHeight * zoomScale));
+  
+  // ViewBox stays at normal scale (NOT divided by zoomScale)
+  // This prevents double-zooming of content
+  // SVG height is scaled, so aspect ratio is preserved
+  const viewBoxTop = -topMarginForChords;
+  const viewBoxWidth = width;
+  const viewBoxHeight = totalHeight;
   
   svg.setAttribute('viewBox', `0 ${viewBoxTop} ${viewBoxWidth} ${viewBoxHeight}`);
-  svg.setAttribute('xmlns', SVG_NS);
   
-  // ✅ FIXED: No style.width or style.height - SVG remains responsive (width="100%")
-  // Zoom is applied through viewBox scaling only, maintaining responsive behavior
+  // Preserve aspect ratio and align content to the left (not centered)
+  // xMinYMid: align viewBox to left (xMin) and vertically centered (YMid)
+  svg.setAttribute('preserveAspectRatio', 'xMinYMid meet');
+  
+  svg.setAttribute('xmlns', SVG_NS);
 
     // Initialize managers
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
@@ -525,7 +526,8 @@ export class SVGRenderer {
     const voltaManager = new VoltaManager();
     const notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,segmentNoteIndex?:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number,countingNumber?:number,countingSize?:'t'|'m'|'s'}[] = [];
 
-  // white background
+  // white background - must match viewBox dimensions (at normal scale)
+  // Do NOT scale by zoomScale to avoid double-zooming
   const bg = document.createElementNS(SVG_NS, 'rect');
   bg.setAttribute('x', '0');
   bg.setAttribute('y', String(-topMarginForChords));

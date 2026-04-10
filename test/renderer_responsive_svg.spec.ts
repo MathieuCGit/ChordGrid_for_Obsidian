@@ -32,13 +32,15 @@ describe('SVGRenderer responsive SVG', () => {
     };
   }
 
-  it('sets SVG width to 100% and no fixed height (auto-sizing via viewBox)', () => {
+  it('sets SVG width to 100% with height scaled by zoom', () => {
     const renderer = new SVGRenderer();
     const grid = makeGrid();
     const svg = renderer.render(grid);
     expect(svg.getAttribute('width')).toBe('100%');
-    // Height attribute should not be set - CSS controls it via viewBox
-    expect(svg.getAttribute('height')).toBeNull();
+    // Height attribute should be set to prevent excessive spacing when zoom is applied
+    const height = svg.getAttribute('height');
+    expect(height).toBeTruthy();
+    expect(parseInt(height!)).toBeGreaterThan(0);
     // viewBox is now dynamically adjusted based on content bounds
     expect(svg.getAttribute('viewBox')).toMatch(/^[\d.-]+ [\d.-]+ [\d.]+ [\d.]+$/);
   });

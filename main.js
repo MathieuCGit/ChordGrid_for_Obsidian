@@ -1003,6 +1003,9 @@ var _ChordGridParser = class _ChordGridParser {
       }
       if (bar === ":||") {
         newMeasure.isRepeatEnd = true;
+        if (!pendingStartBarline) {
+          pendingStartBarline = "||:";
+        }
       }
       if (t.repeatCount !== void 0) {
         newMeasure.repeatCount = t.repeatCount;
@@ -5819,10 +5822,12 @@ var SVGRenderer = class {
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
     const zoomScale = options.zoomPercent && options.zoomPercent > 0 ? options.zoomPercent / 100 : 1;
-    const viewBoxTop = -topMarginForChords / zoomScale;
-    const viewBoxWidth = width / zoomScale;
-    const viewBoxHeight = totalHeight / zoomScale;
+    svg.setAttribute("height", String(totalHeight * zoomScale));
+    const viewBoxTop = -topMarginForChords;
+    const viewBoxWidth = width;
+    const viewBoxHeight = totalHeight;
     svg.setAttribute("viewBox", `0 ${viewBoxTop} ${viewBoxWidth} ${viewBoxHeight}`);
+    svg.setAttribute("preserveAspectRatio", "xMinYMid meet");
     svg.setAttribute("xmlns", SVG_NS);
     const placeAndSizeManager = new PlaceAndSizeManager({ debugMode: false });
     const timeSignatureRenderer = new TimeSignatureRenderer(placeAndSizeManager);
