@@ -192,14 +192,14 @@ export class ChordGridParser {
         hasAnyDirective = true;
       }
       
-      // Check for measures-per-line directive
-      const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(line);
+      // Check for measures-per-line directive (aliases: measure-per-line, measures-per-line, mpl)
+      const measuresPerLineMatch = /(?:measures?-per-line|mpl):\s*(\d+)/i.exec(line);
       if (measuresPerLineMatch) {
         const count = parseInt(measuresPerLineMatch[1], 10);
         if (count > 0) {
           measuresPerLine = count;
         }
-        line = line.replace(/measures-per-line:\s*\d+\s*/i, '');
+        line = line.replace(/(?:measures?-per-line|mpl):\s*\d+\s*/i, '');
         hasAnyDirective = true;
       }
       
