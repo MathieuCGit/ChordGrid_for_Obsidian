@@ -364,13 +364,13 @@ var _ChordGridParser = class _ChordGridParser {
         line = line.replace(/(fingers?)(:\s*(en|fr))?\s*/i, "");
         hasAnyDirective = true;
       }
-      const measuresPerLineMatch = /measures-per-line:\s*(\d+)/i.exec(line);
+      const measuresPerLineMatch = /(?:measures?-per-line|mpl):\s*(\d+)/i.exec(line);
       if (measuresPerLineMatch) {
         const count = parseInt(measuresPerLineMatch[1], 10);
         if (count > 0) {
           measuresPerLine = count;
         }
-        line = line.replace(/measures-per-line:\s*\d+\s*/i, "");
+        line = line.replace(/(?:measures?-per-line|mpl):\s*\d+\s*/i, "");
         hasAnyDirective = true;
       }
       const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,\-](\d+))?)?/i.exec(line);
