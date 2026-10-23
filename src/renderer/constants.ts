@@ -336,7 +336,7 @@ export const NOTATION = {
     PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
     
     /** Counting number font size for tall (beat starts) (px) */
-    COUNTING_FONT_SIZE_TALL: 14,
+    COUNTING_FONT_SIZE_TALL: 16,
     
     /** Counting number font size for medium (subdivisions) (px) */
     COUNTING_FONT_SIZE_MEDIUM: 12,
@@ -348,7 +348,7 @@ export const NOTATION = {
     COUNTING_MARGIN: 10,
     
     /** Font weight for tall counting numbers */
-    COUNTING_FONT_WEIGHT_TALL: 'normal',
+    COUNTING_FONT_WEIGHT_TALL: 'bold',
     
     /** Font weight for medium/small counting numbers */
     COUNTING_FONT_WEIGHT_NORMAL: 'normal',

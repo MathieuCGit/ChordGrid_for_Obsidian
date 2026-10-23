@@ -24,7 +24,7 @@ describe('Tie rendering with dotted notes', () => {
       this.children.push(child);
     }
 
-    querySelectorAll() {
+    querySelectorAll(_selector: string): FakeElement[] {
       return [];
     }
   }
@@ -123,4 +123,3 @@ describe('Tie rendering with dotted notes', () => {
     expect(controlY).toBeCloseTo(expectedRaisedControlY, 5);
   });
 });
-

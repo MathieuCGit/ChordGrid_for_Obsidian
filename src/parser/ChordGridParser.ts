@@ -39,6 +39,16 @@
  * @see {@link Note} for note structure
  */
 export class ChordGridParser {
+  /**
+   * Roman degree roots accepted as chord labels.
+   *
+   * The alternatives are ordered from the longest numeral to the shortest so
+   * regular-expression matching cannot read `VII` as `V` followed by `II`.
+   * Uppercase and lowercase roots are kept distinct in the stored chord text;
+   * this parser displays degree labels literally and does not infer a key.
+   */
+  private static readonly ROMAN_DEGREE_ROOT_PATTERN =
+    '(?:VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)';
 
   /**
    * Default ratio table for common tuplets.
@@ -135,6 +145,7 @@ export class ChordGridParser {
     let stemsDirection: 'up' | 'down' = 'up';
     let displayRepeatSymbol = false;
     let pickMode: boolean | undefined = undefined;
+    let globalPickDirection: 'd' | 'u' | undefined = undefined;
     let fingerMode: 'en' | 'fr' | undefined = undefined;
     let measuresPerLine: number | undefined = undefined;
     let measureNumbering: { startNumber: number, interval: number, enabled: boolean } | undefined = undefined;
@@ -176,7 +187,21 @@ export class ChordGridParser {
         hasAnyDirective = true;
       }
       
-      // Check for pick directive
+      // Check for pick:down and pick:up directives FIRST (they include pick intent)
+      if (/pick:down/i.test(line)) {
+        globalPickDirection = 'd';
+        pickMode = true;
+        line = line.replace(/pick:down\s*/i, '');
+        hasAnyDirective = true;
+      }
+      if (/pick:up/i.test(line)) {
+        globalPickDirection = 'u';
+        pickMode = true;
+        line = line.replace(/pick:up\s*/i, '');
+        hasAnyDirective = true;
+      }
+
+      // Check for pick directive (generic enable)
       if (/(picks?-auto|picks?|pick)(?!\w)/i.test(line)) {
         pickMode = true;
         line = line.replace(/(picks?-auto|picks?|pick)(?!\w)\s*/i, '');
@@ -371,7 +396,7 @@ export class ChordGridParser {
     
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode, lastSegmentWithBeats);
+      const result = this.parseLine(line, lineIndex === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, globalPickDirection, fingerMode, lastSegmentWithBeats);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure; // Preserve for next line
       lastSegmentWithBeats = result.lastSegmentWithBeats; // Preserve last segment for next line
@@ -592,7 +617,7 @@ export class ChordGridParser {
       this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
 
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, globalPickDirection, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
   }
 
 
@@ -604,6 +629,10 @@ export class ChordGridParser {
         for (const segment of measure.chordSegments) {
           if (segment.chord && segment.chord.trim() !== '') {
             if (segment.chord === '%' || segment.chord === '[%]') continue;
+            // Roman degree labels do not have a pitch root to transpose. Keep
+            // them exactly as written while still transposing named chords in
+            // the same grid.
+            if (this.isRomanNumeralChord(segment.chord)) continue;
             if (!chordToSegments.has(segment.chord)) {
               allChords.push(segment.chord);
               chordToSegments.set(segment.chord, []);
@@ -625,6 +654,20 @@ export class ChordGridParser {
       }
     }
   }
+
+  /**
+   * Identifies a degree-based chord label so pitch transposition will not
+   * mistake the leading `I`, `V`, or `VII` for an A-G note name.
+   *
+   * A degree can have a suffix such as `7` or `maj7`, and may use a slash
+   * degree (for example `V7/V`). These labels remain literal because this
+   * feature does not select a key or resolve degrees into sounding chords.
+   */
+  private isRomanNumeralChord(chord: string): boolean {
+    const numeral = ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN;
+    return new RegExp(`^${numeral}[A-Za-z0-9#b♯♭()+ø-]*(?:/${numeral})?$`).test(chord);
+  }
+
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
    * This ignores any beam grouping and only preserves the raw note sequence per chord segment.
@@ -678,7 +721,7 @@ export class ChordGridParser {
     return { timeSignature: result.grid.timeSignature, measures };
   }
   
-  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, fingerMode?: 'en' | 'fr', lastSegmentWithBeatsFromPreviousLine?: any): { measures: Measure[], lastExplicitMeasure: Measure | null, lastSegmentWithBeats: any } {
+  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, globalPickDirection?: 'd' | 'u', fingerMode?: 'en' | 'fr', lastSegmentWithBeatsFromPreviousLine?: any): { measures: Measure[], lastExplicitMeasure: Measure | null, lastSegmentWithBeats: any } {
     // Skip time signature on first line
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, '');
@@ -782,7 +825,8 @@ export class ChordGridParser {
 
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
-      const bar = t.bar as BarlineType;
+      const startsRepeatAfterMeasure = t.bar === '||:' && t.content.trim().length > 0;
+      const bar = (startsRepeatAfterMeasure ? '|' : t.bar) as BarlineType;
       
       // Check if this is a start repeat marker (||:) with no content
       if (t.content.trim().length === 0 && t.bar === '||:') {
@@ -925,6 +969,9 @@ export class ChordGridParser {
         }
         
         measures.push(clonedMeasure);
+        if (startsRepeatAfterMeasure) {
+          pendingStartBarline = '||:';
+        }
         
         // After creating the measure, check if this token's barline has a volta
         if (t.volta) {
@@ -968,6 +1015,9 @@ export class ChordGridParser {
         }
         
         measures.push(clonedMeasure);
+        if (startsRepeatAfterMeasure) {
+          pendingStartBarline = '||:';
+        }
         
         // After creating the measure, check if this token's barline has a volta
         if (t.volta) {
@@ -1067,7 +1117,7 @@ export class ChordGridParser {
               }
             } else {
               // Normal rhythm parsing
-              parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
+              parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, globalPickDirection, fingerMode);
             }
             
             // Create a segment for each chord/rhythm group
@@ -1094,11 +1144,13 @@ export class ChordGridParser {
         const trimmedText = text.trim();
         anySource = text;
         
-        // Detect chord-only mode: text contains chord names separated by / or space, no digits
-        // Chord pattern: comprehensive support for all standard chord notations
-        // Examples: C, Am, Cmaj7, G7sus4, F#m7b5, Bb/D, Gmaj7/B, FM7, CM9, FM7(#11)/A
+        // Detect chord-only mode: text contains chord names or degree labels
+        // separated by / or space, with no rhythm notation.
+        // Chord pattern: comprehensive support for standard chord notation and
+        // literal Roman-degree labels such as I7, iv, or V7/V.
         // Pattern breakdown:
-        // - Root: A-G with optional # or b (or unicode ♯/♭)
+        // - Root: A-G with optional # or b (or unicode ♯/♭), or a Roman
+        //   degree from I through VII (uppercase or lowercase)
         // - Quality: M, m, maj, min, major, minor, dim, aug, ø, o, +, - (optional)
         // - Extensions: any combination of numbers (2,4,5,6,7,9,11,13)
         // - Alterations: b5, #5, b9, #9, #11, b13, etc. with optional parentheses
@@ -1107,7 +1159,7 @@ export class ChordGridParser {
         // - Bass note: /[root] at the end
         
         // Build a more permissive pattern that captures real-world chord notation
-        const rootPattern = '[A-G][#b♯♭]?';
+        const rootPattern = `(?:[A-G][#b♯♭]?|${ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN})`;
         // Quality: include mM, mMaj, mmaj (minor with major 7th) - longer patterns first
         const qualityPattern = '(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\\+|\\-)?';
         const extensionPattern = '[0-9]+';
@@ -1159,7 +1211,7 @@ export class ChordGridParser {
           // Rhythm-only mode: parse as rhythm without chord
           const rhythm = trimmedText;
           const effectiveTS = measureTimeSignature || globalTimeSignature;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, fingerMode);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, '', isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, globalPickDirection, fingerMode);
           
           chordSegments.push({
             chord: '',
@@ -1191,8 +1243,6 @@ export class ChordGridParser {
       if (pendingStartBarline === '||:') {
         (newMeasure as any).isRepeatStart = true;
         pendingStartBarline = null; // Clear after applying
-      } else if (bar === '||:') {
-        (newMeasure as any).isRepeatStart = true;
       }
       
       if (bar === ':||') {
@@ -1241,6 +1291,9 @@ export class ChordGridParser {
       }
 
       measures.push(newMeasure);
+      if (startsRepeatAfterMeasure) {
+        pendingStartBarline = '||:';
+      }
       
       // After creating the measure, check if this token's barline has a volta
       // If so, store it for the NEXT measure
@@ -1533,6 +1586,7 @@ class BeamAndTieAnalyzer {
     isLastSegment: boolean = true,
     effectiveTimeSignature?: TimeSignature,
     pickMode?: boolean,
+    globalPickDirection?: 'd' | 'u',
     fingerMode?: 'en' | 'fr'
   ): Beat[] {
     // NOTE: we should NOT overwrite lastGroupHasSpace here because the
@@ -1636,11 +1690,11 @@ class BeamAndTieAnalyzer {
                 // Parse chaque note du sous-groupe
                 let note: NoteElement;
                 if (group[k] === '-') {
-                  note = this.parseNote(group, k + 1, pickMode, fingerMode);
+                  note = this.parseNote(group, k + 1, pickMode, globalPickDirection, fingerMode);
                   note.isRest = true;
                   k += (note.length ?? 0) + 1;
                 } else {
-                  note = this.parseNote(group, k, pickMode, fingerMode);
+                  note = this.parseNote(group, k, pickMode, globalPickDirection, fingerMode);
                   k += (note.length ?? 0);
                 }
                 
@@ -1743,13 +1797,13 @@ class BeamAndTieAnalyzer {
       }
       // Handle rests (-) - let parseNote handle the '-' prefix
       if (rhythmStr[i] === '-') {
-        const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
+        const note = this.parseNote(rhythmStr, i, pickMode, globalPickDirection, fingerMode);
         currentBeat.push(note);
         i += (note.length ?? 0);
         continue;
       }
       // Read a note value
-      const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
+      const note = this.parseNote(rhythmStr, i, pickMode, globalPickDirection, fingerMode);
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
@@ -1782,7 +1836,7 @@ class BeamAndTieAnalyzer {
     }
   }
   
-  private parseNote(rhythmStr: string, startIndex: number, pickMode?: boolean, fingerMode?: 'en' | 'fr'): NoteElement {
+  private parseNote(rhythmStr: string, startIndex: number, pickMode?: boolean, globalPickDirection?: 'd' | 'u', fingerMode?: 'en' | 'fr'): NoteElement {
     // Check for rest prefix '-'
     let isRest = false;
     let offset = startIndex;
@@ -1815,9 +1869,9 @@ class BeamAndTieAnalyzer {
         let pickDirection: 'd' | 'u' | undefined;
         
         const afterValue = rhythmStr.substring(offset + len);
-        // Context-aware parsing based on pickMode and fingerMode
-        if (pickMode) {
-          // PICK MODE: accept d/u and also normalize complex suffixes (md/mu/pd/pu/hd/hu/td/tu → d/u)
+        // Context-aware parsing based on pickMode, globalPickDirection, and fingerMode
+        if (pickMode || globalPickDirection) {
+          // PICK MODE or GLOBAL PICK DIRECTION: accept d/u and also normalize complex suffixes (md/mu/pd/pu/hd/hu/td/tu → d/u)
           // This allows using finger notation in pick mode without rewriting
           const pickMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
           if (pickMatch) {
@@ -1868,6 +1922,11 @@ class BeamAndTieAnalyzer {
             }
             len += symbolMatch[0].length;
           }
+        }
+
+        // Apply global pick direction if no local direction was specified and not a rest
+        if (!isRest && pickDirection === undefined && globalPickDirection) {
+          pickDirection = globalPickDirection;
         }
 
         // Total length includes the optional '-' prefix

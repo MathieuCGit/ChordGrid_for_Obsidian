@@ -184,6 +184,7 @@ Besoin de plus de puissance ? ChordGrid supporte la notation avancée :
 
 ### Accords
 Notation standard (ex : `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
+Les degrés en chiffres romains sont également acceptés et affichés tels quels (ex. : `I7`, `IV7`, `V7`, `ii`, `V7/V`). Ils ne sont pas convertis en notes et ne sont pas modifiés par la directive `transpose:`.
 
 ### Rythme entre crochets (valeurs de notes)
 - `1` = Ronde (whole note)
