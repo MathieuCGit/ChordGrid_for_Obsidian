@@ -49,6 +49,17 @@ describe('Repeat Count Notation', () => {
       expect((result.grid.measures[3] as any).isRepeatEnd).toBe(true);
       expect((result.grid.measures[3] as any).repeatCount).toBe(3);
     });
+
+    it('should start a repeat after the measure preceding ||:', () => {
+      const input = `pick
+|[-2. -8]F[8] ||: C[4 8.16 16168_ 8]F[8] :||x9| Am[4 8.]G[16 16168_ 8]F[8] | C[4 8.16 16168_ 8]F[8] |`;
+      const result = parser.parse(input);
+
+      expect(result.grid.measures.length).toBeGreaterThan(1);
+      expect((result.grid.measures[0] as any).isRepeatStart).toBeUndefined();
+      expect(result.grid.measures[0].barline).toBe('|');
+      expect((result.grid.measures[1] as any).isRepeatStart).toBe(true);
+    });
   });
 
   describe('Rendering', () => {

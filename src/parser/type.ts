@@ -328,4 +328,6 @@ export interface ParseResult {
   countingMode?: boolean;
   /** Zoom level as percentage (e.g., 50, 75, 100, 150) */
   zoomPercent?: number;
+  /** Global pick direction default: 'd' for downstroke, 'u' for upstroke */
+  globalPickDirection?: 'd' | 'u';
 }

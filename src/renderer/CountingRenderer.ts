@@ -12,9 +12,9 @@
  * 4. Pick strokes / Finger patterns (if enabled)
  * 
  * Visual properties:
- * - Tall (t): 14px bold - for beat starts
+ * - Tall (t): 16px bold - for beat starts
  * - Medium (m): 12px normal - for subdivisions
- * - Small (s): 10px normal gray - for rests
+ * - Small (s): 11px normal gray - for rests
  * 
  * Positioning:
  * - Stems-up: numbers BELOW note head (5px margin)

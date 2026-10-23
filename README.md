@@ -183,6 +183,7 @@ Need more power? ChordGrid supports advanced notation:
 
 ### Chords
 Standard notation (e.g., `Am`, `C`, `Gmaj7`, `Dm`, `F#m`, `Bb7`, `C/E`).
+Roman numeral degree labels are also supported and displayed literally (e.g., `I7`, `IV7`, `V7`, `ii`, `V7/V`). They are not resolved to pitches or changed by the `transpose:` directive.
 
 ### Rhythm in brackets (note values)
 - `1` = Whole note (ronde)
@@ -485,4 +486,3 @@ Built with passion for the music and Obsidian communities.
 ---
 
 **Enjoying Chord Grid?** ⭐ Star the repository to show your support!
-

@@ -6,6 +6,7 @@
 
 import { ChordGridParser } from '../src/parser/ChordGridParser';
 import { SVGRenderer } from '../src/renderer/SVGRenderer';
+import { CountingAnalyzer } from '../src/analyzer/CountingAnalyzer';
 
 declare const describe: any;
 declare const it: any;
@@ -24,7 +25,7 @@ describe('Counting Bug Fix - SVG Rendering', () => {
     expect(result.errors).toHaveLength(0);
 
     // Render to SVG
-    const svg = renderer.render(result.grid);
+    const svg = renderer.render(result.grid, { countingMode: result.countingMode });
     expect(svg).toBeTruthy();
 
     // Convert SVG to string for inspection
@@ -53,6 +54,22 @@ describe('Counting Bug Fix - SVG Rendering', () => {
     } else {
       console.log(`No data-counting elements found in SVG`);
     }
+  });
+
+  it('should render beat-start counting labels larger and bold', () => {
+    const input = `count
+4/4 | Dm[8] G[8] |`;
+
+    const result = parser.parse(input);
+    CountingAnalyzer.analyzeCounting(result.measures, result.grid.timeSignature);
+    const svg = renderer.render(result.grid, { countingMode: result.countingMode });
+
+    const tallCountingText = Array.from(
+      svg.querySelectorAll('text[data-counting-size="t"]')
+    ).find(text => text.textContent === '1');
+    expect(tallCountingText).toBeTruthy();
+    expect(Number(tallCountingText?.getAttribute('font-size')?.replace('px', '') ?? 0)).toBeGreaterThanOrEqual(16);
+    expect(tallCountingText?.getAttribute('font-weight')).toBe('bold');
   });
 
   it('should show ampersand for all eighth notes in mixed rhythm', () => {

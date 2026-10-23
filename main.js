@@ -7,7 +7,6 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
@@ -24,7 +23,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
 // src/utils/DebugLogger.ts
 var DebugLogger_exports = {};
@@ -121,10 +119,10 @@ var init_DebugLogger = __esm({
         this.render();
       }
     };
-    __publicField(DebugLogger, "enabled", true);
-    __publicField(DebugLogger, "logContainer", null);
-    __publicField(DebugLogger, "logs", []);
-    __publicField(DebugLogger, "maxLogs", 50);
+    DebugLogger.enabled = true;
+    DebugLogger.logContainer = null;
+    DebugLogger.logs = [];
+    DebugLogger.maxLogs = 50;
   }
 });
 
@@ -249,14 +247,14 @@ var Transposer = class {
   }
 };
 // Chromatic scales
-__publicField(Transposer, "SHARPS", ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]);
-__publicField(Transposer, "FLATS", ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]);
+Transposer.SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+Transposer.FLATS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 // Circle of fifths - major keys preferring sharps
-__publicField(Transposer, "SHARP_KEYS", /* @__PURE__ */ new Set(["C", "G", "D", "A", "E", "B", "F#", "C#"]));
+Transposer.SHARP_KEYS = /* @__PURE__ */ new Set(["C", "G", "D", "A", "E", "B", "F#", "C#"]);
 // Circle of fifths - major keys preferring flats  
-__publicField(Transposer, "FLAT_KEYS", /* @__PURE__ */ new Set(["F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"]));
+Transposer.FLAT_KEYS = /* @__PURE__ */ new Set(["F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"]);
 // Minor keys and their relative majors
-__publicField(Transposer, "RELATIVE_MAJORS", {
+Transposer.RELATIVE_MAJORS = {
   "Am": "C",
   "Em": "G",
   "Bm": "D",
@@ -270,7 +268,7 @@ __publicField(Transposer, "RELATIVE_MAJORS", {
   "Fm": "Ab",
   "Bbm": "Db",
   "Ebm": "Gb"
-});
+};
 
 // src/parser/ChordGridParser.ts
 var _ChordGridParser = class _ChordGridParser {
@@ -323,6 +321,7 @@ var _ChordGridParser = class _ChordGridParser {
     let stemsDirection = "up";
     let displayRepeatSymbol = false;
     let pickMode = void 0;
+    let globalPickDirection = void 0;
     let fingerMode = void 0;
     let measuresPerLine = void 0;
     let measureNumbering = void 0;
@@ -350,6 +349,18 @@ var _ChordGridParser = class _ChordGridParser {
       if (/show%/i.test(line)) {
         displayRepeatSymbol = true;
         line = line.replace(/show%\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/pick:down/i.test(line)) {
+        globalPickDirection = "d";
+        pickMode = true;
+        line = line.replace(/pick:down\s*/i, "");
+        hasAnyDirective = true;
+      }
+      if (/pick:up/i.test(line)) {
+        globalPickDirection = "u";
+        pickMode = true;
+        line = line.replace(/pick:up\s*/i, "");
         hasAnyDirective = true;
       }
       if (/(picks?-auto|picks?|pick)(?!\w)/i.test(line)) {
@@ -474,7 +485,7 @@ var _ChordGridParser = class _ChordGridParser {
     let lastSegmentWithBeats = null;
     for (let lineIndex2 = 0; lineIndex2 < lines.length; lineIndex2++) {
       const line = lines[lineIndex2];
-      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, fingerMode, lastSegmentWithBeats);
+      const result = this.parseLine(line, lineIndex2 === 0, measuresPerLine, lastExplicitMeasure, timeSignature, pickMode, globalPickDirection, fingerMode, lastSegmentWithBeats);
       const measures = result.measures;
       lastExplicitMeasure = result.lastExplicitMeasure;
       lastSegmentWithBeats = result.lastSegmentWithBeats;
@@ -600,7 +611,7 @@ var _ChordGridParser = class _ChordGridParser {
     if (transposeSettings) {
       this.applyTransposition(allMeasures, transposeSettings.semitones, transposeSettings.accidental);
     }
-    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
+    return { grid, errors, measures: allMeasures, stemsDirection, displayRepeatSymbol, pickMode, globalPickDirection, fingerMode, measuresPerLine, measureNumbering, countingMode, zoomPercent };
   }
   applyTransposition(measures, semitones, forceAccidental) {
     const allChords = [];
@@ -610,6 +621,7 @@ var _ChordGridParser = class _ChordGridParser {
         for (const segment of measure.chordSegments) {
           if (segment.chord && segment.chord.trim() !== "") {
             if (segment.chord === "%" || segment.chord === "[%]") continue;
+            if (this.isRomanNumeralChord(segment.chord)) continue;
             if (!chordToSegments.has(segment.chord)) {
               allChords.push(segment.chord);
               chordToSegments.set(segment.chord, []);
@@ -630,6 +642,18 @@ var _ChordGridParser = class _ChordGridParser {
         }
       }
     }
+  }
+  /**
+   * Identifies a degree-based chord label so pitch transposition will not
+   * mistake the leading `I`, `V`, or `VII` for an A-G note name.
+   *
+   * A degree can have a suffix such as `7` or `maj7`, and may use a slash
+   * degree (for example `V7/V`). These labels remain literal because this
+   * feature does not select a key or resolve degrees into sounding chords.
+   */
+  isRomanNumeralChord(chord) {
+    const numeral = _ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN;
+    return new RegExp(`^${numeral}[A-Za-z0-9#b\u266F\u266D()+\xF8-]*(?:/${numeral})?$`).test(chord);
   }
   /**
    * Produce simplified syntactic measures for the new analyzer layer (v2.0.0).
@@ -682,7 +706,7 @@ var _ChordGridParser = class _ChordGridParser {
     });
     return { timeSignature: result.grid.timeSignature, measures };
   }
-  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature, pickMode, fingerMode, lastSegmentWithBeatsFromPreviousLine) {
+  parseLine(line, isFirstLine, measuresPerLine, lastExplicitMeasureFromPreviousLine, globalTimeSignature, pickMode, globalPickDirection, fingerMode, lastSegmentWithBeatsFromPreviousLine) {
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, "");
     }
@@ -737,7 +761,8 @@ var _ChordGridParser = class _ChordGridParser {
     let pendingVoltaEndMarker = false;
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
-      const bar = t.bar;
+      const startsRepeatAfterMeasure = t.bar === "||:" && t.content.trim().length > 0;
+      const bar = startsRepeatAfterMeasure ? "|" : t.bar;
       if (t.content.trim().length === 0 && t.bar === "||:") {
         pendingStartBarline = "||:";
         if (t.volta) {
@@ -829,6 +854,9 @@ var _ChordGridParser = class _ChordGridParser {
           pendingVoltaIsAfterRepeatEnd = false;
         }
         measures.push(clonedMeasure);
+        if (startsRepeatAfterMeasure) {
+          pendingStartBarline = "||:";
+        }
         if (t.volta) {
           pendingVolta = t.volta;
           pendingVoltaIsAfterRepeatEnd = bar === ":||";
@@ -861,6 +889,9 @@ var _ChordGridParser = class _ChordGridParser {
           pendingVoltaIsAfterRepeatEnd = false;
         }
         measures.push(clonedMeasure);
+        if (startsRepeatAfterMeasure) {
+          pendingStartBarline = "||:";
+        }
         if (t.volta) {
           pendingVolta = t.volta;
           pendingVoltaIsAfterRepeatEnd = bar === ":||";
@@ -923,7 +954,7 @@ var _ChordGridParser = class _ChordGridParser {
                 parsedBeats = [];
               }
             } else {
-              parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, fingerMode);
+              parsedBeats = analyzer.analyzeRhythmGroup(rhythm, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace, isLastSegment, effectiveTS, pickMode, globalPickDirection, fingerMode);
             }
             const newSegment = {
               chord,
@@ -942,7 +973,7 @@ var _ChordGridParser = class _ChordGridParser {
       } else {
         const trimmedText = text.trim();
         anySource = text;
-        const rootPattern = "[A-G][#b\u266F\u266D]?";
+        const rootPattern = `(?:[A-G][#b\u266F\u266D]?|${_ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN})`;
         const qualityPattern = "(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|\xF8|o|\\+|\\-)?";
         const extensionPattern = "[0-9]+";
         const alterationPattern = "(?:\\([#b\u266F\u266D]?[0-9]+\\)|[#b\u266F\u266D][0-9]+)";
@@ -972,7 +1003,7 @@ var _ChordGridParser = class _ChordGridParser {
         } else if (trimmedText.length > 0) {
           const rhythm = trimmedText;
           const effectiveTS = measureTimeSignature || globalTimeSignature;
-          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, fingerMode);
+          const parsedBeats = analyzer.analyzeRhythmGroup(rhythm, "", isFirstMeasureOfLine, isLastMeasureOfLine, false, true, effectiveTS, pickMode, globalPickDirection, fingerMode);
           chordSegments.push({
             chord: "",
             beats: parsedBeats,
@@ -998,8 +1029,6 @@ var _ChordGridParser = class _ChordGridParser {
       if (pendingStartBarline === "||:") {
         newMeasure.isRepeatStart = true;
         pendingStartBarline = null;
-      } else if (bar === "||:") {
-        newMeasure.isRepeatStart = true;
       }
       if (bar === ":||") {
         newMeasure.isRepeatEnd = true;
@@ -1028,6 +1057,9 @@ var _ChordGridParser = class _ChordGridParser {
         pendingVoltaEndMarker = false;
       }
       measures.push(newMeasure);
+      if (startsRepeatAfterMeasure) {
+        pendingStartBarline = "||:";
+      }
       if (t.volta) {
         if (t.volta === "END") {
           pendingVoltaEndMarker = true;
@@ -1213,6 +1245,15 @@ var _ChordGridParser = class _ChordGridParser {
   }
 };
 /**
+ * Roman degree roots accepted as chord labels.
+ *
+ * The alternatives are ordered from the longest numeral to the shortest so
+ * regular-expression matching cannot read `VII` as `V` followed by `II`.
+ * Uppercase and lowercase roots are kept distinct in the stored chord text;
+ * this parser displays degree labels literally and does not infer a key.
+ */
+_ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN = "(?:VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)";
+/**
  * Default ratio table for common tuplets.
  * 
  * Musical convention (compatible with MuseScore):
@@ -1231,7 +1272,7 @@ var _ChordGridParser = class _ChordGridParser {
  * This table can be extended according to musical needs.
  * To enforce a specific ratio, use syntax {...}N:M
  */
-__publicField(_ChordGridParser, "DEFAULT_TUPLET_RATIOS", {
+_ChordGridParser.DEFAULT_TUPLET_RATIOS = {
   // Tuplets in simple time (most common)
   3: { numerator: 3, denominator: 2 },
   // Triplet: 3 notes in the time of 2
@@ -1260,14 +1301,10 @@ __publicField(_ChordGridParser, "DEFAULT_TUPLET_RATIOS", {
   // Quadruplet: 4 notes in the time of 3
   8: { numerator: 8, denominator: 6 }
   // Octuplet: 8 notes in the time of 6
-});
+};
 var ChordGridParser = _ChordGridParser;
 var BeamAndTieAnalyzer = class {
   constructor() {
-    __publicField(this, "tieContext");
-    // Keep context of the last note group to detect
-    // whether two segments should be beamed or separated
-    __publicField(this, "rhythmContext");
     this.tieContext = {
       lastNote: null,
       crossMeasure: false,
@@ -1280,7 +1317,7 @@ var BeamAndTieAnalyzer = class {
       lastBeamableNotes: []
     };
   }
-  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature, pickMode, fingerMode) {
+  analyzeRhythmGroup(rhythmStr, chord, isFirstMeasureOfLine, isLastMeasureOfLine, hasSignificantSpace = false, isLastSegment = true, effectiveTimeSignature, pickMode, globalPickDirection, fingerMode) {
     var _a, _b, _c, _d, _e, _f, _g;
     const beats = [];
     let currentBeat = [];
@@ -1354,11 +1391,11 @@ var BeamAndTieAnalyzer = class {
                 }
                 let note2;
                 if (group[k] === "-") {
-                  note2 = this.parseNote(group, k + 1, pickMode, fingerMode);
+                  note2 = this.parseNote(group, k + 1, pickMode, globalPickDirection, fingerMode);
                   note2.isRest = true;
                   k += ((_a = note2.length) != null ? _a : 0) + 1;
                 } else {
-                  note2 = this.parseNote(group, k, pickMode, fingerMode);
+                  note2 = this.parseNote(group, k, pickMode, globalPickDirection, fingerMode);
                   k += (_b = note2.length) != null ? _b : 0;
                 }
                 if (pendingTieFromPrevious) {
@@ -1433,12 +1470,12 @@ var BeamAndTieAnalyzer = class {
         continue;
       }
       if (rhythmStr[i] === "-") {
-        const note2 = this.parseNote(rhythmStr, i, pickMode, fingerMode);
+        const note2 = this.parseNote(rhythmStr, i, pickMode, globalPickDirection, fingerMode);
         currentBeat.push(note2);
         i += (_e = note2.length) != null ? _e : 0;
         continue;
       }
-      const note = this.parseNote(rhythmStr, i, pickMode, fingerMode);
+      const note = this.parseNote(rhythmStr, i, pickMode, globalPickDirection, fingerMode);
       if (pendingTieFromVoid) {
         note.tieFromVoid = true;
         pendingTieFromVoid = false;
@@ -1464,7 +1501,7 @@ var BeamAndTieAnalyzer = class {
       this.tieContext.pendingTieToVoid = true;
     }
   }
-  parseNote(rhythmStr, startIndex, pickMode, fingerMode) {
+  parseNote(rhythmStr, startIndex, pickMode, globalPickDirection, fingerMode) {
     let isRest = false;
     let offset = startIndex;
     if (rhythmStr[startIndex] === "-") {
@@ -1488,7 +1525,7 @@ var BeamAndTieAnalyzer = class {
         let fingerSymbol;
         let pickDirection;
         const afterValue = rhythmStr.substring(offset + len);
-        if (pickMode) {
+        if (pickMode || globalPickDirection) {
           const pickMatch = /^(td|pd|tu|pu|hd|hu|md|mu|d|u)/.exec(afterValue);
           if (pickMatch) {
             let sym = pickMatch[1];
@@ -1531,6 +1568,9 @@ var BeamAndTieAnalyzer = class {
             }
             len += symbolMatch[0].length;
           }
+        }
+        if (!isRest && pickDirection === void 0 && globalPickDirection) {
+          pickDirection = globalPickDirection;
         }
         const totalLen = offset - startIndex + len;
         return {
@@ -1801,7 +1841,7 @@ var NOTATION = {
   /** Note head half height for pattern positioning (px) */
   PATTERN_NOTE_HEAD_HALF_HEIGHT: 5,
   /** Counting number font size for tall (beat starts) (px) */
-  COUNTING_FONT_SIZE_TALL: 14,
+  COUNTING_FONT_SIZE_TALL: 16,
   /** Counting number font size for medium (subdivisions) (px) */
   COUNTING_FONT_SIZE_MEDIUM: 12,
   /** Counting number font size for small (rests) (px) */
@@ -1809,7 +1849,7 @@ var NOTATION = {
   /** Distance from note head to counting number (px) */
   COUNTING_MARGIN: 10,
   /** Font weight for tall counting numbers */
-  COUNTING_FONT_WEIGHT_TALL: "normal",
+  COUNTING_FONT_WEIGHT_TALL: "bold",
   /** Font weight for medium/small counting numbers */
   COUNTING_FONT_WEIGHT_NORMAL: "normal",
   /** Color for rest counting numbers (gray) */
@@ -2094,9 +2134,6 @@ var RestRenderer = class {
 // src/renderer/NoteRenderer.ts
 var NoteRenderer = class {
   constructor(stemsDirection = "up", placeAndSizeManager) {
-    __publicField(this, "restRenderer");
-    __publicField(this, "stemsDirection");
-    __publicField(this, "placeAndSizeManager");
     this.stemsDirection = stemsDirection;
     this.placeAndSizeManager = placeAndSizeManager;
     this.restRenderer = new RestRenderer();
@@ -2610,25 +2647,25 @@ var TimeSignatureRenderer = class {
     /**
      * Default digit width from user's custom SVG files (viewBox: 0 0 50 69)
      */
-    __publicField(this, "DIGIT_WIDTH", 50);
+    this.DIGIT_WIDTH = 50;
     /**
      * Default digit height from user's custom SVG files (viewBox: 0 0 50 69)
      */
-    __publicField(this, "DIGIT_HEIGHT", 69);
+    this.DIGIT_HEIGHT = 69;
     /**
      * Standard scale for inline time signatures (same as global for consistent sizing)
      */
-    __publicField(this, "INLINE_SCALE", 0.38);
+    this.INLINE_SCALE = 0.38;
     // Reduced scale for better proportion with chord names
     /**
      * Standard scale for global time signature
      */
-    __publicField(this, "GLOBAL_SCALE", 0.38);
+    this.GLOBAL_SCALE = 0.38;
     // Reduced scale for better proportion with chord names
     /**
      * Vertical spacing between numerator and denominator (in scaled units)
      */
-    __publicField(this, "VERTICAL_SPACING", 5);
+    this.VERTICAL_SPACING = 5;
   }
   /**
    * Calculate the standard Y position for time signatures.
@@ -2752,23 +2789,6 @@ var MeasureRenderer = class {
     this.width = width;
     this.beamedAtLevel1 = beamedAtLevel1;
     this.placeAndSizeManager = placeAndSizeManager;
-    /**
-     * Measure renderer constructor.
-     * 
-     * @param measure - Measure to render
-     * @param x - Starting X position of the measure in the SVG
-     * @param y - Starting Y position of the measure in the SVG
-     * @param width - Width allocated to the measure
-     * @param beamedAtLevel1 - Set of segmentIndex:noteIndex that are in level-1 beam groups
-     * @param placeAndSizeManager - Position and size manager to avoid overlaps
-     * @param stemsDirection - Stem direction ('up' or 'down')
-     * @param displayRepeatSymbol - Display the % symbol for repeated measures
-     */
-    __publicField(this, "restRenderer");
-    __publicField(this, "noteRenderer");
-    __publicField(this, "timeSignatureRenderer");
-    __publicField(this, "stemsDirection");
-    __publicField(this, "displayRepeatSymbol");
     this.stemsDirection = stemsDirection === "down" ? "down" : "up";
     this.displayRepeatSymbol = displayRepeatSymbol != null ? displayRepeatSymbol : false;
     this.restRenderer = new RestRenderer(this.placeAndSizeManager);
@@ -3364,7 +3384,7 @@ var MeasureRenderer = class {
 var TieManager = class {
   constructor() {
     // pending ties saved when a tie continues beyond the rendered area (e.g. line break)
-    __publicField(this, "pending", []);
+    this.pending = [];
   }
   /**
    * Adds a tie awaiting resolution.
@@ -3409,8 +3429,8 @@ var TieManager = class {
 // src/utils/VoltaManager.ts
 var VoltaManager = class {
   constructor() {
-    __publicField(this, "allMeasurePositions", []);
-    __publicField(this, "allBarlines", []);
+    this.allMeasurePositions = [];
+    this.allBarlines = [];
   }
   /**
    * Registers a measure position for volta rendering.
@@ -3830,7 +3850,12 @@ var MusicAnalyzer = class {
                 }
               }
             } else {
-              if (restLevel === notesLevel - 1) {
+              const timeSignature = measure.timeSignature;
+              const isCompoundMeter = !!timeSignature && timeSignature.denominator >= 8 && [6, 9, 12].includes(timeSignature.numerator) && timeSignature.groupingMode !== "binary";
+              const remainsInExplicitBeat = allNotes[aIdx].beatIndex !== void 0 && allNotes[aIdx].beatIndex === allNotes[bIdx].beatIndex;
+              if (isCompoundMeter && remainsInExplicitBeat && restLevel >= notesLevel) {
+                blockFromLevel = Math.min(blockFromLevel, Math.max(2, restLevel));
+              } else if (restLevel === notesLevel - 1) {
                 blockFromLevel = Math.min(blockFromLevel, notesLevel);
               } else {
                 blockFromLevel = Math.min(blockFromLevel, restLevel);
@@ -4146,8 +4171,7 @@ var PlaceAndSizeManager = class {
    * @param config - Configuration optionnelle
    */
   constructor(config) {
-    __publicField(this, "elements", []);
-    __publicField(this, "config");
+    this.elements = [];
     this.config = {
       minSpacing: 2,
       chordTupletVerticalSpacing: 8,
@@ -5511,8 +5535,8 @@ var CountingRenderer = class {
 var SVGRenderer = class {
   constructor() {
     // Dynamic spacing limits for readability
-    __publicField(this, "MIN_SPACING_RATIO", SEGMENT_WIDTH.MIN_SPACING_RATIO);
-    __publicField(this, "MAX_SPACING_RATIO", SEGMENT_WIDTH.MAX_SPACING_RATIO);
+    this.MIN_SPACING_RATIO = SEGMENT_WIDTH.MIN_SPACING_RATIO;
+    this.MAX_SPACING_RATIO = SEGMENT_WIDTH.MAX_SPACING_RATIO;
   }
   /**
    * Calculate the minimum spacing for a given rhythmic value.

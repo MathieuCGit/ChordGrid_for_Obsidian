@@ -317,7 +317,26 @@ export class MusicAnalyzer {
             } else {
               // Outside tuplets: use original rule
               // Example: 16-816 → rest -8 blocks from level 2 (can decompose to two -16)
-              if (restLevel === notesLevel - 1) {
+              const timeSignature = measure.timeSignature;
+              const isCompoundMeter = !!timeSignature &&
+                timeSignature.denominator >= 8 &&
+                [6, 9, 12].includes(timeSignature.numerator) &&
+                timeSignature.groupingMode !== 'binary';
+              const remainsInExplicitBeat =
+                allNotes[aIdx].beatIndex !== undefined &&
+                allNotes[aIdx].beatIndex === allNotes[bIdx].beatIndex;
+
+              if (
+                isCompoundMeter &&
+                remainsInExplicitBeat &&
+                restLevel >= notesLevel
+              ) {
+                // In compound meters, notes inside one explicitly grouped
+                // dotted-quarter pulse may share their primary beam across an
+                // intervening rest (for example, 8-88). Keep the rest's
+                // normal effect on secondary beams.
+                blockFromLevel = Math.min(blockFromLevel, Math.max(2, restLevel));
+              } else if (restLevel === notesLevel - 1) {
                 blockFromLevel = Math.min(blockFromLevel, notesLevel);
               } else {
                 blockFromLevel = Math.min(blockFromLevel, restLevel);
