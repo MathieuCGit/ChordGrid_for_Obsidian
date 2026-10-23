@@ -182,6 +182,11 @@ export interface EnrichedMetadata {
     noteIndex?: number;
     /** Index dans la séquence aplatie */
     segmentNoteIndex?: number;
+    exactX?: number;
+    visualStartX?: number;
+    visualEndX?: number;
+    side?: string;
+    leftPadding?: number;
     
     /** Métadonnées spécifiques par type */
     stem?: StemMetadata;
@@ -191,7 +196,7 @@ export interface EnrichedMetadata {
     barline?: BarlineMetadata;
     
     /** Données génériques additionnelles */
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 /**
@@ -579,9 +584,6 @@ export class PlaceAndSizeManager {
             metadata: enrichedMetadata 
         });
         
-        if (this.config.debugMode) {
-            console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`, enrichedMetadata);
-        }
     }
 
     /**
@@ -702,15 +704,8 @@ export class PlaceAndSizeManager {
             }
 
             if (!this.hasCollision(candidate, testType, excludeTypes)) {
-                if (this.config.debugMode) {
-                    console.log(`[PlaceAndSizeManager] Found free position after ${attempt} attempts`, candidate);
-                }
                 return candidate;
             }
-        }
-
-        if (this.config.debugMode) {
-            console.warn(`[PlaceAndSizeManager] Could not find free position after ${maxAttempts} attempts`);
         }
         
         return null;
@@ -763,9 +758,6 @@ export class PlaceAndSizeManager {
      */
     public clear(): void {
         this.elements = [];
-        if (this.config.debugMode) {
-            console.log('[PlaceAndSizeManager] Cleared all elements');
-        }
     }
 
     /**
@@ -774,11 +766,7 @@ export class PlaceAndSizeManager {
      * @param type - Type d'élément à effacer
      */
     public clearType(type: ElementType): void {
-        const before = this.elements.length;
         this.elements = this.elements.filter(e => e.type !== type);
-        if (this.config.debugMode) {
-            console.log(`[PlaceAndSizeManager] Cleared ${before - this.elements.length} elements of type ${type}`);
-        }
     }
 
     /**
@@ -965,36 +953,4 @@ export class PlaceAndSizeManager {
         }).sort((a, b) => a.measureIndex - b.measureIndex);
     }
 
-    /**
-     * Affiche un rapport de diagnostic dans la console.
-     * Utile pour déboguer les problèmes d'alignement.
-     */
-    public logDiagnosticReport(): void {
-        const report = this.diagnoseChordStemAlignment();
-        
-        console.log('=== DIAGNOSTIC REPORT: Chord-Stem Alignment ===');
-        report.forEach(measure => {
-            console.log(`\n📏 Measure ${measure.measureIndex}:`);
-            console.log(`  Chords: ${measure.chords.length}`);
-            measure.chords.forEach((c, i) => {
-                console.log(`    [${i}] "${c.symbol}" at X=${c.textX.toFixed(2)} (anchor=${c.textAnchor})`);
-                console.log(`        bbox: x=${c.bbox.x.toFixed(2)}, w=${c.bbox.width.toFixed(2)}`);
-            });
-            
-            console.log(`  Stems: ${measure.stems.length}`);
-            measure.stems.forEach((s, i) => {
-                console.log(`    [${i}] ${s.direction} stem at centerX=${s.centerX.toFixed(2)}`);
-                console.log(`        bbox: x=${s.bbox.x.toFixed(2)}, w=${s.bbox.width.toFixed(2)}`);
-            });
-            
-            if (measure.alignment) {
-                const diff = measure.alignment.difference;
-                const status = Math.abs(diff) < 0.5 ? '✅ ALIGNED' : '❌ MISALIGNED';
-                console.log(`  ${status}: Chord X=${measure.alignment.firstChordX.toFixed(2)}, Stem X=${measure.alignment.firstStemX.toFixed(2)}, Δ=${diff.toFixed(2)}px`);
-            } else {
-                console.log(`  ⚠️  No alignment data available`);
-            }
-        });
-        console.log('\n=== END DIAGNOSTIC REPORT ===');
-    }
 }

@@ -69,7 +69,7 @@ export class ChordGridParser {
    * This table can be extended according to musical needs.
    * To enforce a specific ratio, use syntax {...}N:M
    */
-  private static readonly DEFAULT_TUPLET_RATIOS: Record<number, { numerator: number, denominator: number }> = {
+  static readonly DEFAULT_TUPLET_RATIOS: Record<number, { numerator: number, denominator: number }> = {
     // Tuplets in simple time (most common)
     3: { numerator: 3, denominator: 2 },   // Triplet: 3 notes in the time of 2
     5: { numerator: 5, denominator: 4 },   // Quintuplet: 5 notes in the time of 4
@@ -233,7 +233,7 @@ export class ChordGridParser {
       //         measure-num: 5 (start at 5, display at line starts)
       //         measure-num: 1,4 (start at 1, display every 4 measures)
       //         measure-num: 5-8 (start at 5, display every 8 measures)
-      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,\-](\d+))?)?/i.exec(line);
+      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,-](\d+))?)?/i.exec(line);
       if (measureNumMatch) {
         const startNum = measureNumMatch[1] ? parseInt(measureNumMatch[1], 10) : 1; // Default to 1
         const intervalOrFreq = measureNumMatch[2] ? parseInt(measureNumMatch[2], 10) : 0;
@@ -245,7 +245,7 @@ export class ChordGridParser {
           enabled: true
         };
         
-        line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, '');
+        line = line.replace(/measure-num(?::\s*\d+(?:[,-]\d+)?)?\s*/i, '');
         hasAnyDirective = true;
       }
       
@@ -392,7 +392,7 @@ export class ChordGridParser {
   const allMeasures: Measure[] = [];
   let lastExplicitMeasure: Measure | null = null;
     
-    let lastSegmentWithBeats: any = null; // Track last segment with beats across all lines
+    let lastSegmentWithBeats: ChordSegment | null = null; // Track last segment with beats across all lines
     
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
@@ -419,7 +419,7 @@ export class ChordGridParser {
     // Note: A volta CAN include the measure with :|| (repeat end)
     
     for (let i = 0; i < allMeasures.length; i++) {
-      const measure = allMeasures[i] as any;
+      const measure = allMeasures[i];
       if (measure.voltaStart) {
         const voltaInfo = measure.voltaStart;
         
@@ -429,7 +429,7 @@ export class ChordGridParser {
         
         // Always search for explicit end marker, even for open voltas
         for (let j = i + 1; j < allMeasures.length; j++) {
-          const nextMeasure = allMeasures[j] as any;
+          const nextMeasure = allMeasures[j];
           
           // Check for explicit end marker (|.) - has highest priority
           if (nextMeasure.voltaEndMarker) {
@@ -459,7 +459,7 @@ export class ChordGridParser {
         }
         
         // Mark the end measure with voltaEnd (same volta info)
-        (allMeasures[endIndex] as any).voltaEnd = voltaInfo;
+        allMeasures[endIndex].voltaEnd = voltaInfo;
       }
     }
     
@@ -488,12 +488,12 @@ export class ChordGridParser {
       }
       
       // Skip validation for chord-only measures (no rhythm notation)
-      if ((measure as any).__isChordOnlyMode) {
+      if (measure.__isChordOnlyMode) {
         continue;
       }
       
       // Skip validation for empty measures (created with measures-per-line)
-      if ((measure as any).__isEmpty) {
+      if (measure.__isEmpty) {
         continue;
       }
       
@@ -721,7 +721,7 @@ export class ChordGridParser {
     return { timeSignature: result.grid.timeSignature, measures };
   }
   
-  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, globalPickDirection?: 'd' | 'u', fingerMode?: 'en' | 'fr', lastSegmentWithBeatsFromPreviousLine?: any): { measures: Measure[], lastExplicitMeasure: Measure | null, lastSegmentWithBeats: any } {
+  private parseLine(line: string, isFirstLine: boolean, measuresPerLine?: number, lastExplicitMeasureFromPreviousLine?: Measure | null, globalTimeSignature?: TimeSignature, pickMode?: boolean, globalPickDirection?: 'd' | 'u', fingerMode?: 'en' | 'fr', lastSegmentWithBeatsFromPreviousLine?: ChordSegment | null): { measures: Measure[], lastExplicitMeasure: Measure | null, lastSegmentWithBeats: ChordSegment | null } {
     // Skip time signature on first line
     if (isFirstLine) {
       line = line.replace(/^\d+\/\d+\s*/, '');
@@ -790,7 +790,7 @@ export class ChordGridParser {
     }
 
     // Helper: parse a single measure text like "Am[88 4 4 88]"
-    const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
+    const measureRe = /^\s*([^\x5b]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
 
     // A token's content may contain multiple chord[rhythm] groups (e.g. "Am[88 4] G[4 88]").
@@ -798,7 +798,7 @@ export class ChordGridParser {
     // and concatenate their beats into a single Measure (since a single bar may contain
     // multiple chord changes). The token's barline marks the measure boundary.
     // Capture aussi les espaces entre les groupes
-    const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
+    const segmentRe = /(\s*)([^\x5b\x5d\s]+)?\s*\[([^\]]*)\]/g;
 
     // Don't filter out empty tokens yet - we need to know if they're at the start
     // to correctly determine isFirstMeasureOfLine for tie logic
@@ -809,7 +809,7 @@ export class ChordGridParser {
     
     // Track the last segment with beats for [%] notation in half-measures
     // Initialize with value from previous line (if any)
-    let lastSegmentWithBeats: any = lastSegmentWithBeatsFromPreviousLine || null;
+    let lastSegmentWithBeats: ChordSegment | null = lastSegmentWithBeatsFromPreviousLine || null;
     
     // Track pending start repeat barline (||:) that should apply to next measure
     let pendingStartBarline: string | null = null;
@@ -876,11 +876,11 @@ export class ChordGridParser {
           };
           
           // Mark it as empty for special rendering
-          (emptyMeasure as any).__isEmpty = true;
+          emptyMeasure.__isEmpty = true;
           
           // Apply pending start barline if any
           if (pendingStartBarline === '||:') {
-            (emptyMeasure as any).isRepeatStart = true;
+            emptyMeasure.isRepeatStart = true;
             pendingStartBarline = null;
           }
           
@@ -889,7 +889,7 @@ export class ChordGridParser {
             const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
             const voltaText = pendingVolta;
             const isClosed = !pendingVoltaIsAfterRepeatEnd;
-            (emptyMeasure as any).voltaStart = {
+            emptyMeasure.voltaStart = {
               numbers: voltaNumbers,
               text: voltaText,
               isClosed: isClosed
@@ -900,13 +900,13 @@ export class ChordGridParser {
           
           // Apply pending volta end marker
           if (pendingVoltaEndMarker) {
-            (emptyMeasure as any).voltaEnd = true;
+            emptyMeasure.voltaEndMarker = true;
             pendingVoltaEndMarker = false;
           }
           
           // Handle repeat count on the barline (:||x3)
           if (bar === ':||' && t.repeatCount) {
-            (emptyMeasure as any).repeatEndCount = t.repeatCount;
+            emptyMeasure.repeatEndCount = t.repeatCount;
           }
           
           measures.push(emptyMeasure);
@@ -950,7 +950,7 @@ export class ChordGridParser {
         
         // Apply pending start barline if any
         if (pendingStartBarline === '||:') {
-          (clonedMeasure as any).isRepeatStart = true;
+          clonedMeasure.isRepeatStart = true;
           pendingStartBarline = null;
         }
         
@@ -959,7 +959,7 @@ export class ChordGridParser {
           const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
           const voltaText = pendingVolta;
           const isClosed = !pendingVoltaIsAfterRepeatEnd;
-          (clonedMeasure as any).voltaStart = {
+          clonedMeasure.voltaStart = {
             numbers: voltaNumbers,
             text: voltaText,
             isClosed: isClosed
@@ -985,7 +985,7 @@ export class ChordGridParser {
       }
 
       // Check for 'Chord[%]' (repeat rhythm with new chord)
-      const repeatMatch = /^\s*([^\[\]\s]+)\s*\[%\]\s*$/.exec(text);
+      const repeatMatch = /^\s*([^\x5b\x5d\s]+)\s*\[%\]\s*$/.exec(text);
       if (repeatMatch) {
         if (!lastExplicitMeasure) {
           console.warn("Cannot use '[%]' repeat notation on first measure");
@@ -996,7 +996,7 @@ export class ChordGridParser {
         
         // Apply pending start barline if any
         if (pendingStartBarline === '||:') {
-          (clonedMeasure as any).isRepeatStart = true;
+          clonedMeasure.isRepeatStart = true;
           pendingStartBarline = null;
         }
         
@@ -1005,7 +1005,7 @@ export class ChordGridParser {
           const voltaNumbers = this.parseVoltaNumbers(pendingVolta);
           const voltaText = pendingVolta;
           const isClosed = !pendingVoltaIsAfterRepeatEnd;
-          (clonedMeasure as any).voltaStart = {
+          clonedMeasure.voltaStart = {
             numbers: voltaNumbers,
             text: voltaText,
             isClosed: isClosed
@@ -1161,7 +1161,7 @@ export class ChordGridParser {
         // Build a more permissive pattern that captures real-world chord notation
         const rootPattern = `(?:[A-G][#b♯♭]?|${ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN})`;
         // Quality: include mM, mMaj, mmaj (minor with major 7th) - longer patterns first
-        const qualityPattern = '(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\\+|\\-)?';
+        const qualityPattern = '(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\\+|-)?';
         const extensionPattern = '[0-9]+';
         // Alterations can be in parentheses or not: b5, #11, (b9), (#11), etc.
         const alterationPattern = '(?:\\([#b♯♭]?[0-9]+\\)|[#b♯♭][0-9]+)';
@@ -1235,18 +1235,18 @@ export class ChordGridParser {
       
       // Mark chord-only mode if detected
       if (isChordOnlyMode) {
-        (newMeasure as any).__isChordOnlyMode = true;
+        newMeasure.__isChordOnlyMode = true;
       }
 
       // Add repeat bar properties based on barline type
       // Check if there's a pending start barline from previous token
       if (pendingStartBarline === '||:') {
-        (newMeasure as any).isRepeatStart = true;
+        newMeasure.isRepeatStart = true;
         pendingStartBarline = null; // Clear after applying
       }
       
       if (bar === ':||') {
-        (newMeasure as any).isRepeatEnd = true;
+        newMeasure.isRepeatEnd = true;
         // Auto-queue ||: as pending for next measure (repeat end typically implies start of next repeat)
         // This handles the case of consecutive repeats like :|||: where :|| on one measure
         // implies ||: should start the next measure
@@ -1257,7 +1257,7 @@ export class ChordGridParser {
 
       // Add repeat count if present (e.g., :||x3)
       if (t.repeatCount !== undefined) {
-        (newMeasure as any).repeatCount = t.repeatCount;
+        newMeasure.repeatCount = t.repeatCount;
       }
 
       // Apply pending volta from previous token (e.g., the barline before this measure had |.1-3)
@@ -1277,7 +1277,7 @@ export class ChordGridParser {
         };
         
         // Mark this measure as having a volta start
-        (newMeasure as any).voltaStart = voltaInfo;
+        newMeasure.voltaStart = voltaInfo;
         
         // Clear the pending volta
         pendingVolta = undefined;
@@ -1286,7 +1286,7 @@ export class ChordGridParser {
       
       // Apply pending volta end marker from previous barline (|.)
       if (pendingVoltaEndMarker) {
-        (newMeasure as any).voltaEndMarker = true;
+        newMeasure.voltaEndMarker = true;
         pendingVoltaEndMarker = false;
       }
 
@@ -1415,20 +1415,20 @@ export class ChordGridParser {
     };
 
     // Copy chord-only mode flag if present
-    if ((source as any).__isChordOnlyMode) {
-      (cloned as any).__isChordOnlyMode = true;
+    if (source.__isChordOnlyMode) {
+      cloned.__isChordOnlyMode = true;
     }
 
     // Add repeat bar properties based on barline type
     if (barline === '||:') {
-      (cloned as any).isRepeatStart = true;
+      cloned.isRepeatStart = true;
     } else if (barline === ':||') {
-      (cloned as any).isRepeatEnd = true;
+      cloned.isRepeatEnd = true;
     }
 
     // Add repeat count if provided
     if (repeatCount !== undefined) {
-      (cloned as any).repeatCount = repeatCount;
+      cloned.repeatCount = repeatCount;
     }
 
     return cloned;
@@ -1644,7 +1644,7 @@ class BeamAndTieAnalyzer {
               finalRatio = explicitRatio;
             } else {
               // Check default ratio table (access via class name since we're in inner class)
-              const defaultRatio = (ChordGridParser as any).DEFAULT_TUPLET_RATIOS[tupletCount];
+              const defaultRatio = ChordGridParser.DEFAULT_TUPLET_RATIOS[tupletCount];
               if (defaultRatio) {
                 finalRatio = defaultRatio;
               } else {

@@ -25,7 +25,7 @@ import { Note } from './Note';
  * ```
  */
 export class Beat implements IBeat {
-  notes: NoteElement[];
+  notes: Note[];
   hasBeam: boolean;
   beamGroups: BeamGroup[];
   chord?: string;
@@ -57,15 +57,7 @@ export class Beat implements IBeat {
    */
   totalQuarterNotes(): number {
     return this.notes.reduce((sum, n) => {
-      const note = n as Note;
-      if (!note) return sum;
-      // If a Note instance, use its helper, otherwise compute
-      if (typeof (note as any).durationInQuarterNotes === 'function') {
-        return sum + (note as any).durationInQuarterNotes();
-      }
-      const baseWhole = 1 / (note.value || 4);
-      const dottedMultiplier = note.dotted ? 1.5 : 1;
-      return sum + baseWhole * dottedMultiplier * 4;
+      return sum + n.durationInQuarterNotes();
     }, 0);
   }
 }

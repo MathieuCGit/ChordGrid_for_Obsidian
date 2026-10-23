@@ -24,8 +24,7 @@
  * @see {@link TieManager} for managing ties between measures
  */
 
-import { ChordGrid, Measure } from '../parser/type';
-import { Beat } from '../models/Beat';
+import { ChordGrid, Measure, Beat as ParsedBeat, ChordSegment, TimeSignature, NoteElement } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
 import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
@@ -47,6 +46,19 @@ import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { ChordRenderer } from './ChordRenderer';
 import { StrumPatternRenderer } from './StrumPatternRenderer';
 import { CountingRenderer } from './CountingRenderer';
+import type { AnalyzedMeasure, BeamGroup as AnalyzedBeamGroup, NoteReference, ParsedMeasure, ParsedNote } from '../analyzer/analyzer-types';
+
+type RenderMeasurePosition = {
+  measure: Measure;
+  lineIndex: number;
+  posInLine: number;
+  globalIndex: number;
+  width: number;
+  x?: number;
+  y?: number;
+};
+
+type SVGWithLayoutPadding = SVGElement & { __dynamicLineStartPadding?: number };
 
 /**
  * Rendering options for SVGRenderer.
@@ -104,12 +116,12 @@ export class SVGRenderer {
   /**
    * Calculate the required width for a beat.
    */
-  private calculateBeatWidth(beat: any): number {
+  private calculateBeatWidth(beat: ParsedBeat): number {
     const noteCount = beat?.notes?.length || 0;
     if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + SEGMENT_WIDTH.SINGLE_NOTE_PADDING + SEGMENT_WIDTH.HEAD_HALF_MAX;
     
     const spacing = Math.max(
-      ...beat.notes.map((n: any) => {
+      ...beat.notes.map(n => {
         const base = this.getMinSpacingForValue(n.value);
         return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
       })
@@ -122,21 +134,21 @@ export class SVGRenderer {
    */
   private calculateMeasureWidth(measure: Measure): number {
     // Empty measures (| |) should have a minimal width
-    if ((measure as any).__isEmpty) {
+    if (measure.__isEmpty) {
       return LAYOUT.BASE_MEASURE_WIDTH * 0.5; // Half the base width for empty measures
     }
     
-    const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+    const segments: ChordSegment[] = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
     let width = 0;
     
-    segments.forEach((seg: any, idx: number) => {
+    segments.forEach((seg, idx) => {
       if (idx > 0 && seg.leadingSpace) width += LAYOUT.SEPARATOR_WIDTH;
-      const beatsWidth = (seg.beats || []).reduce((acc: number, b: any) => acc + this.calculateBeatWidth(b), 0);
+      const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + this.calculateBeatWidth(b), 0);
       width += beatsWidth + LAYOUT.INNER_PADDING_PER_SEGMENT;
     });
     
     // Add extra width for inline time signature if marked for display
-    if ((measure as any).__shouldShowTimeSignature && measure.timeSignature) {
+    if (measure.__shouldShowTimeSignature && measure.timeSignature) {
       width += 60; // Space for time signature (approximately 30px wide + 30px padding)
     }
     
@@ -148,14 +160,14 @@ export class SVGRenderer {
    */
   private getRenderedMeasureWidth(measure: Measure): number {
     const base = this.calculateMeasureWidth(measure);
-    const ratio = (measure as any).__spacingRatio;
+    const ratio = measure.__spacingRatio;
     return ratio ? base * ratio : base;
   }
 
   /**
    * Compares two time signatures for equality.
    */
-  private timeSignaturesEqual(ts1: any, ts2: any): boolean {
+  private timeSignaturesEqual(ts1: TimeSignature | undefined, ts2: TimeSignature | undefined): boolean {
     if (!ts1 || !ts2) return ts1 === ts2;
     return ts1.numerator === ts2.numerator && ts1.denominator === ts2.denominator;
   }
@@ -165,7 +177,7 @@ export class SVGRenderer {
    * This allows calculateMeasureWidth() to reserve space for inline time signatures.
    * Only marks actual changes (not line-starts, which are handled later in markTimeSignatureDisplay).
    */
-  private preMarkTimeSignatureChanges(measures: Measure[], globalTimeSignature: any): void {
+  private preMarkTimeSignatureChanges(measures: Measure[], globalTimeSignature: TimeSignature): void {
     let currentTimeSignature = globalTimeSignature;
     
     for (let i = 0; i < measures.length; i++) {
@@ -174,7 +186,7 @@ export class SVGRenderer {
       // Check if this measure has a different time signature than the previous
       if (measure.timeSignature && !this.timeSignaturesEqual(measure.timeSignature, currentTimeSignature)) {
         // Mark this measure to display its time signature
-        (measure as any).__shouldShowTimeSignature = true;
+        measure.__shouldShowTimeSignature = true;
         currentTimeSignature = measure.timeSignature;
       }
     }
@@ -186,7 +198,7 @@ export class SVGRenderer {
    * - First occurrence of a time signature change
    * - Line breaks (forced with \n or automatic) where the current metric differs from global
    */
-  private markTimeSignatureDisplay(renderLines: RenderLine[], globalTimeSignature: any): void {
+  private markTimeSignatureDisplay(renderLines: RenderLine[], globalTimeSignature: TimeSignature): void {
     let currentTimeSignature = globalTimeSignature;
 
     renderLines.forEach((line, lineIndex) => {
@@ -215,7 +227,7 @@ export class SVGRenderer {
           }
         }
 
-        (measure as any).__shouldShowTimeSignature = shouldShow;
+        measure.__shouldShowTimeSignature = shouldShow;
       });
     });
   }
@@ -329,7 +341,7 @@ export class SVGRenderer {
       if (Math.abs(targetRatio - 1.0) > 0.01) { // Minimum threshold to avoid unnecessary adjustments
         for (const measure of line.measures) {
           // Store the adjustment ratio in the measure for later use
-          (measure as any).__spacingRatio = targetRatio;
+          measure.__spacingRatio = targetRatio;
         }
         line.width = currentWidth * targetRatio;
       }
@@ -385,23 +397,23 @@ export class SVGRenderer {
       if (v >= 8)  return NOTE_SPACING.EIGHTH;   // was 20
       return NOTE_SPACING.QUARTER_AND_LONGER;                // was 16 for quarters & longer
     };
-    const requiredBeatWidth = (beat: any) => {
+    const requiredBeatWidth = (beat: ParsedBeat) => {
       const noteCount = beat?.notes?.length || 0;
       if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax; // increased minimal single-note width
       const spacing = Math.max(
-        ...beat.notes.map((n: any) => {
+        ...beat.notes.map(n => {
           const base = valueMinSpacing(n.value);
           return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base; // give short rests a bit more room when estimating width
         })
       );
       return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + LAYOUT.SEGMENT_END_PADDING; // +8 extra breathing room
     };
-    const requiredMeasureWidth = (measure: any) => {
-      const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+    const requiredMeasureWidth = (measure: Measure) => {
+      const segments: ChordSegment[] = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
       let width = 0;
-      segments.forEach((seg: any, idx: number) => {
+      segments.forEach((seg, idx) => {
         if (idx > 0 && seg.leadingSpace) width += separatorWidth;
-        const beatsWidth = (seg.beats || []).reduce((acc: number, b: any) => acc + requiredBeatWidth(b), 0);
+        const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + requiredBeatWidth(b), 0);
         width += beatsWidth + innerPaddingPerSegment; // include inner padding for segment
       });
       // Ensure a sensible minimum
@@ -432,7 +444,7 @@ export class SVGRenderer {
     this.markTimeSignatureDisplay(renderLines, grid.timeSignature);
 
     // Reconstruct measurePositions for compatibility with existing methods
-    const measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number, x?: number, y?: number}[] = [];
+    const measurePositions: RenderMeasurePosition[] = [];
     let globalIndex = 0;
     
     renderLines.forEach((line, lineIndex) => {
@@ -441,7 +453,7 @@ export class SVGRenderer {
             const measureWidth = this.getRenderedMeasureWidth(measure);
 
             // Mark line start for MeasureRenderer
-            (measure as any).__isLineStart = (posInLine === 0);
+            measure.__isLineStart = (posInLine === 0);
             
             measurePositions.push({
                 measure,
@@ -463,8 +475,8 @@ export class SVGRenderer {
     let maxRepeatCountWidth = 0;
     renderLines.forEach(line => {
         const lastMeasure = line.measures[line.measures.length - 1];
-        if (lastMeasure && (lastMeasure as any).repeatCount !== undefined) {
-            const count = (lastMeasure as any).repeatCount;
+        if (lastMeasure && lastMeasure.repeatCount !== undefined) {
+            const count = lastMeasure.repeatCount;
             // Calculate width of "xN" text: BASE_LEFT_PADDING (10px) + text width
             const textWidth = count >= 10 ? 40 : LAYOUT.REPEAT_COUNT_WIDTH; // 30px for single digit, 40px for double
             const totalRepeatCountWidth = LAYOUT.BASE_LEFT_PADDING + textWidth;
@@ -549,14 +561,14 @@ export class SVGRenderer {
         measureIndex: 0
     }, true); // true = global time signature (larger)
     
-    (svg as any).__dynamicLineStartPadding = dynamicLineStartPadding;
+    (svg as SVGWithLayoutPadding).__dynamicLineStartPadding = dynamicLineStartPadding;
     
     // Note: Time signature is registered in the first line context later if needed, 
     // but since it's static at top left, we can just draw it.
     // If we want it to collide properly on line 1, we should register it inside the loop for line 1.
 
     // Prepare analyzed measures for beam rendering
-    let analyzedMeasures: any[] = [];
+    let analyzedMeasures: AnalyzedMeasure[] = [];
     let level1BeamSet: Set<string> | undefined;
     try {
       const parser = new ChordGridParser();
@@ -565,7 +577,7 @@ export class SVGRenderer {
       analyzedMeasures = grid.measures.map(m => {
         // Map existing measure into analyzer ParsedMeasure shape
         const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map(seg => {
-          const notes: any[] = [];
+          const notes: ParsedNote[] = [];
           seg.beats.forEach((beat, beatIndex) => {
             beat.notes.forEach(n => {
               notes.push({
@@ -591,20 +603,20 @@ export class SVGRenderer {
         const parsedMeasure = {
           segments,
           timeSignature: m.timeSignature || grid.timeSignature,
-          barline: (m as any).barline || '|',
-          isLineBreak: (m as any).isLineBreak || false,
-          source: (m as any).source || ''
+          barline: m.barline,
+          isLineBreak: m.isLineBreak,
+          source: m.source || ''
         };
-        const analyzed = analyzer.analyze(parsedMeasure as any);
+        const analyzed = analyzer.analyze(parsedMeasure as ParsedMeasure);
         return analyzed;
       });
 
       // Build global set of notes in level-1 beams of length >=2 per measure
       level1BeamSet = new Set<string>();
-      analyzedMeasures.forEach((am: any, mi: number) => {
-        am.beamGroups?.forEach((g: any) => {
+      analyzedMeasures.forEach((am, mi) => {
+        am.beamGroups.forEach((g: AnalyzedBeamGroup) => {
           if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
-            g.notes.forEach((r: any) => {
+            g.notes.forEach((r: NoteReference) => {
               level1BeamSet!.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
             });
           }
@@ -630,14 +642,14 @@ export class SVGRenderer {
         // No need to re-register it here
 
         const lineY = line.startY + 20; // Top margin
-        let currentX = (svg as any).__dynamicLineStartPadding || 40;
+        let currentX = (svg as SVGWithLayoutPadding).__dynamicLineStartPadding || 40;
 
         // 2. LOCAL POSITIONS CONSTRUCTION
-        const lineMeasurePositions: any[] = [];
+        const lineMeasurePositions: RenderMeasurePosition[] = [];
         
         line.measures.forEach((measure, posInLine) => {
             const mWidth = this.getRenderedMeasureWidth(measure);
-            (measure as any).__isLineStart = (posInLine === 0);
+            measure.__isLineStart = (posInLine === 0);
             
             const mp = {
                 measure,
@@ -661,7 +673,7 @@ export class SVGRenderer {
         
         // Register measures themselves for complete geometric tracking
         lineMeasurePositions.forEach((mp) => {
-          const measure = mp.measure as any;
+          const measure = mp.measure;
           const measureHeight = 120; // Standard staff height
           
           placeAndSizeManager.registerElement('measure', {
@@ -677,7 +689,7 @@ export class SVGRenderer {
             visualEndX: mp.x + mp.width,
             visualTopY: mp.y,
             visualBottomY: mp.y + measureHeight,
-            timeSignature: measure.timeSignature ? `${measure.timeSignature.beats}/${measure.timeSignature.beatValue}` : undefined,
+            timeSignature: measure.timeSignature ? `${measure.timeSignature.numerator}/${measure.timeSignature.denominator}` : undefined,
             isLineStart: measure.__isLineStart,
             isRepeatStart: measure.isRepeatStart,
             barlineType: measure.barline,
@@ -696,9 +708,9 @@ export class SVGRenderer {
             let perMeasureBeamSet: Set<string> | undefined;
             if (level1BeamSet) {
                 perMeasureBeamSet = new Set<string>();
-                analyzedMeasures[globalIndex]?.beamGroups?.forEach((g: any) => {
+                analyzedMeasures[globalIndex]?.beamGroups.forEach((g: AnalyzedBeamGroup) => {
                     if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
-                        g.notes.forEach((r: any) => {
+                        g.notes.forEach((r: NoteReference) => {
                             perMeasureBeamSet!.add(`${r.segmentIndex}:${r.noteIndex}`);
                         });
                     }
@@ -710,7 +722,7 @@ export class SVGRenderer {
 
             // Draw beams
             if (analyzedMeasures[globalIndex]) {
-                drawBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions as any, stemsDir);
+                drawBeams(svg, analyzedMeasures[globalIndex], globalIndex, notePositions, stemsDir);
             }
         });
 
@@ -754,14 +766,14 @@ export class SVGRenderer {
         this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
 
         // Draw Pick-Strokes (Current line only) - AFTER ties to calculate global offset
-        this.drawPickStrokes(svg, grid, notePositions as any, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
+        this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
         
         // Draw Fingerstyle Symbols (Current line only)
-        this.drawFingerSymbols(svg, grid, notePositions as any, stemsDirection, options, allowedMeasureIndices);
+        this.drawFingerSymbols(svg, grid, notePositions, stemsDirection, options, allowedMeasureIndices);
         
         // Draw Counting Numbers (Current line only) - if counting mode is enabled
         if (options.countingMode) {
-          CountingRenderer.drawCountingNumbers(svg, notePositions as any, stemsDirection, allowedMeasureIndices, placeAndSizeManager);
+          CountingRenderer.drawCountingNumbers(svg, notePositions, stemsDirection, allowedMeasureIndices, placeAndSizeManager);
         }
         
         // 6. SAVE BARLINES before PlaceAndSizeManager is cleared
@@ -787,11 +799,6 @@ export class SVGRenderer {
     // Global bounds from PlaceAndSizeManager (note: currently contains only the last line)
     // We use the width/height calculated by layout instead, which covers all lines correctly
     const bounds = placeAndSizeManager.getGlobalBounds();
-    
-    // Display diagnostic report if debug mode enabled
-    if (options.debugPlacement) {
-        placeAndSizeManager.logDiagnosticReport();
-    }
     
     return svg;
   }
@@ -839,14 +846,14 @@ export class SVGRenderer {
     notePositions: {x:number,y:number,headLeftX?:number,headRightX?:number,measureIndex:number,chordIndex:number,beatIndex:number,noteIndex:number,tieStart?:boolean,tieEnd?:boolean,tieToVoid?:boolean,tieFromVoid?:boolean,stemTopY?:number,stemBottomY?:number,value?:number,countingNumber?:number,countingSize?:'t'|'m'|'s'}[],
     svgWidth: number,
     tieManager: TieManager,
-    measurePositions: {measure: any, lineIndex: number, posInLine: number, globalIndex: number, width: number}[],
+    measurePositions: RenderMeasurePosition[],
     placeAndSizeManager?: PlaceAndSizeManager,
     stemsDirection?: 'up' | 'down',
     allowedMeasureIndices?: Set<number>
   ) {
     // Precompute visual X bounds for each measure to draw half-ties to the measure edge
   // Use same dynamic padding as measure start to align tie rendering
-  const lineStartPadding = (svg as any).__dynamicLineStartPadding ?? 40;
+  const lineStartPadding = (svg as SVGWithLayoutPadding).__dynamicLineStartPadding ?? 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map(m => m.lineIndex));
     const lineOffsets: number[] = new Array(maxLineIndex + 1).fill(lineStartPadding);
     const measureXB: Record<number, { xStart: number; xEnd: number; y: number }> = {};
@@ -1227,13 +1234,13 @@ export class SVGRenderer {
    * @param placeAndSizeManager - Collision detection manager
    */
   private registerBarlines(
-    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    measurePositions: RenderMeasurePosition[],
     placeAndSizeManager: PlaceAndSizeManager
   ): void {
     measurePositions.forEach((mp, i) => {
       if (mp.x === undefined || mp.y === undefined) return;
       
-      const measure = mp.measure as any;
+      const measure = mp.measure;
       const leftBarX = mp.x;
       const rightBarX = mp.x + mp.width - 2;
       const y = mp.y;
@@ -1281,7 +1288,7 @@ export class SVGRenderer {
       let thickLineX: number | undefined = undefined;
       let dotsX: number | undefined = undefined;
       
-      if (measure.barline === ':||' || measure.barline === 'repeat-end') {
+      if (measure.barline === ':||') {
         // :|| - Thin bar at rightBarX (stroke-width: 1.5), thick bar at rightBarX+6 (stroke-width: 3)
         // Visual extent: rightBarX - 0.75 (left edge of thin bar) to rightBarX + 6 + 1.5 (right edge of thick bar)
         barlineType = 'repeat-end';
@@ -1329,7 +1336,7 @@ export class SVGRenderer {
    * @param placeAndSizeManager - Collision detection manager
    */
   private registerVoltaText(
-    measurePositions: Array<{ measure: Measure; lineIndex: number; posInLine: number; globalIndex: number; width: number; x?: number; y?: number }>,
+    measurePositions: RenderMeasurePosition[],
     placeAndSizeManager: PlaceAndSizeManager
   ): void {
     // Barlines are already registered, so we can retrieve their exact positions and widths
@@ -1337,7 +1344,7 @@ export class SVGRenderer {
     // Find all volta starts and calculate text positions
     for (let i = 0; i < measurePositions.length; i++) {
       const mp = measurePositions[i];
-      const measure = mp.measure as any;
+      const measure = mp.measure;
       
       if (measure.voltaStart) {
         const startMP = measurePositions[i];
@@ -1345,7 +1352,7 @@ export class SVGRenderer {
         // Only process if x, y are defined
         if (startMP.x !== undefined && startMP.y !== undefined) {
           // Retrieve the left barline of the volta from PlaceAndSizeManager
-          let startBarline: any;
+          let startBarline: ReturnType<PlaceAndSizeManager['getElements']>[number] | undefined;
           if (i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
             // Right barline of the previous measure
             const prevMeasureIndex = measurePositions[i - 1].globalIndex;
@@ -1989,7 +1996,7 @@ export class SVGRenderer {
    * @param measurePosition - Position info for the measure
    * @param number - Measure number to display
    */
-  private drawMeasureNumber(svg: SVGElement, measurePosition: any, number: number): void {
+  private drawMeasureNumber(svg: SVGElement, measurePosition: RenderMeasurePosition, number: number): void {
     const x = measurePosition.x + LAYOUT.BASE_LEFT_PADDING + NOTATION.MEASURE_NUMBER_X_OFFSET;
     const y = measurePosition.y + NOTATION.MEASURE_NUMBER_Y_OFFSET;
     
@@ -2011,14 +2018,14 @@ export class SVGRenderer {
    */
   private resolveCrossLineTies(renderLines: RenderLine[]) {
     // 1. Construire une liste plate de toutes les notes avec leur position (ligne)
-    const allNotes: { note: any, lineIndex: number }[] = [];
+    const allNotes: { note: NoteElement, lineIndex: number }[] = [];
     
     renderLines.forEach((line, lineIndex) => {
         line.measures.forEach((measure) => {
-            const segments = measure.chordSegments || [{beats: measure.beats}];
-            segments.forEach((seg: any) => {
-                seg.beats.forEach((beat: any) => {
-                    beat.notes.forEach((note: any) => {
+            const segments: ChordSegment[] = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
+            segments.forEach(seg => {
+                seg.beats.forEach((beat: ParsedBeat) => {
+                    beat.notes.forEach((note: NoteElement) => {
                         allNotes.push({ note, lineIndex });
                     });
                 });

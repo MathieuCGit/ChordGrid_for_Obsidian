@@ -7,9 +7,6 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -23,108 +20,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/utils/DebugLogger.ts
-var DebugLogger_exports = {};
-__export(DebugLogger_exports, {
-  DebugLogger: () => DebugLogger
-});
-var DebugLogger;
-var init_DebugLogger = __esm({
-  "src/utils/DebugLogger.ts"() {
-    DebugLogger = class {
-      // Limit to avoid too many logs
-      /**
-       * Enables or disables logging.
-       */
-      static setEnabled(enabled) {
-        this.enabled = enabled;
-      }
-      /**
-       * Initializes the log container for a given code block.
-       */
-      static init(parentElement) {
-        this.logs = [];
-        this.logContainer = parentElement.createEl("details", { cls: "chord-grid-debug" });
-        const summary = this.logContainer.createEl("summary");
-        summary.setText("\u{1F41B} Debug Logs");
-        const logContent = this.logContainer.createEl("pre", {
-          cls: "chord-grid-debug-content"
-        });
-        logContent.style.cssText = `
-      background: #1e1e1e;
-      color: #d4d4d4;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 12px;
-      max-height: 300px;
-      overflow-y: auto;
-      font-family: 'Consolas', 'Monaco', monospace;
-    `;
-        return this.logContainer;
-      }
-      /**
-       * Records a log message.
-       */
-      static log(message, data) {
-        if (!this.enabled) return;
-        const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-        const logMessage = data ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}` : `[${timestamp}] ${message}`;
-        this.logs.push(logMessage);
-        if (this.logs.length > this.maxLogs) {
-          this.logs.shift();
-        }
-        console.log(`[ChordGrid] ${message}`, data);
-        this.render();
-      }
-      /**
-       * Records an error message.
-       */
-      static error(message, error) {
-        if (!this.enabled) return;
-        const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-        const errorMessage = error ? `[${timestamp}] \u274C ERROR: ${message}: ${error.message || JSON.stringify(error)}` : `[${timestamp}] \u274C ERROR: ${message}`;
-        this.logs.push(errorMessage);
-        console.error(`[ChordGrid] ${message}`, error);
-        this.render();
-      }
-      /**
-       * Records a warning message.
-       */
-      static warn(message, data) {
-        if (!this.enabled) return;
-        const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-        const warnMessage = data ? `[${timestamp}] \u26A0\uFE0F WARN: ${message}: ${JSON.stringify(data, null, 2)}` : `[${timestamp}] \u26A0\uFE0F WARN: ${message}`;
-        this.logs.push(warnMessage);
-        console.warn(`[ChordGrid] ${message}`, data);
-        this.render();
-      }
-      /**
-       * Updates the log display.
-       */
-      static render() {
-        if (!this.logContainer) return;
-        const logContent = this.logContainer.querySelector(".chord-grid-debug-content");
-        if (logContent) {
-          logContent.textContent = this.logs.join("\n");
-          logContent.scrollTop = logContent.scrollHeight;
-        }
-      }
-      /**
-       * Efface tous les logs.
-       */
-      static clear() {
-        this.logs = [];
-        this.render();
-      }
-    };
-    DebugLogger.enabled = true;
-    DebugLogger.logContainer = null;
-    DebugLogger.logs = [];
-    DebugLogger.maxLogs = 50;
-  }
-});
 
 // main.ts
 var main_exports = {};
@@ -384,7 +279,7 @@ var _ChordGridParser = class _ChordGridParser {
         line = line.replace(/(?:measures?-per-line|mpl):\s*\d+\s*/i, "");
         hasAnyDirective = true;
       }
-      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,\-](\d+))?)?/i.exec(line);
+      const measureNumMatch = /measure-num(?::\s*(\d+)(?:[,-](\d+))?)?/i.exec(line);
       if (measureNumMatch) {
         const startNum = measureNumMatch[1] ? parseInt(measureNumMatch[1], 10) : 1;
         const intervalOrFreq = measureNumMatch[2] ? parseInt(measureNumMatch[2], 10) : 0;
@@ -394,7 +289,7 @@ var _ChordGridParser = class _ChordGridParser {
           // 0 = line starts only, >0 = every N measures
           enabled: true
         };
-        line = line.replace(/measure-num(?::\s*\d+(?:[,\-]\d+)?)?\s*/i, "");
+        line = line.replace(/measure-num(?::\s*\d+(?:[,-]\d+)?)?\s*/i, "");
         hasAnyDirective = true;
       }
       const transposeMatch = /transpose:\s*([+-]\d+)(?:\s*,\s*([#b]))?/i.exec(line);
@@ -750,9 +645,9 @@ var _ChordGridParser = class _ChordGridParser {
     if (currentText.length > 0 && currentText.trim().length > 0) {
       tokens.push({ bar: "|", content: currentText });
     }
-    const measureRe = /^\s*([^\[]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
+    const measureRe = /^\s*([^\x5b]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
-    const segmentRe = /(\s*)([^\[\]\s]+)?\s*\[([^\]]*)\]/g;
+    const segmentRe = /(\s*)([^\x5b\x5d\s]+)?\s*\[([^\]]*)\]/g;
     let lastExplicitMeasure = lastExplicitMeasureFromPreviousLine || null;
     let lastSegmentWithBeats = lastSegmentWithBeatsFromPreviousLine || null;
     let pendingStartBarline = null;
@@ -808,7 +703,7 @@ var _ChordGridParser = class _ChordGridParser {
             pendingVoltaIsAfterRepeatEnd = false;
           }
           if (pendingVoltaEndMarker) {
-            emptyMeasure.voltaEnd = true;
+            emptyMeasure.voltaEndMarker = true;
             pendingVoltaEndMarker = false;
           }
           if (bar === ":||" && t.repeatCount) {
@@ -864,7 +759,7 @@ var _ChordGridParser = class _ChordGridParser {
         lastExplicitMeasure = clonedMeasure;
         continue;
       }
-      const repeatMatch = /^\s*([^\[\]\s]+)\s*\[%\]\s*$/.exec(text);
+      const repeatMatch = /^\s*([^\x5b\x5d\s]+)\s*\[%\]\s*$/.exec(text);
       if (repeatMatch) {
         if (!lastExplicitMeasure) {
           console.warn("Cannot use '[%]' repeat notation on first measure");
@@ -974,7 +869,7 @@ var _ChordGridParser = class _ChordGridParser {
         const trimmedText = text.trim();
         anySource = text;
         const rootPattern = `(?:[A-G][#b\u266F\u266D]?|${_ChordGridParser.ROMAN_DEGREE_ROOT_PATTERN})`;
-        const qualityPattern = "(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|\xF8|o|\\+|\\-)?";
+        const qualityPattern = "(?:mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|\xF8|o|\\+|-)?";
         const extensionPattern = "[0-9]+";
         const alterationPattern = "(?:\\([#b\u266F\u266D]?[0-9]+\\)|[#b\u266F\u266D][0-9]+)";
         const susPattern = "(?:\\((?:sus[24]?|add[#b\u266F\u266D]?[0-9]+)\\)|sus[24]?|add[#b\u266F\u266D]?[0-9]+)";
@@ -2735,7 +2630,6 @@ var TimeSignatureRenderer = class {
     for (const digit of digits) {
       const pathData = TIME_SIGNATURE_DIGITS[digit];
       if (!pathData) {
-        console.warn(`[TimeSignatureRenderer] No path data for digit: ${digit}`);
         continue;
       }
       const digitSvg = document.createElementNS(SVG_NS, "svg");
@@ -2746,7 +2640,13 @@ var TimeSignatureRenderer = class {
       if (pathData.trim().startsWith("<")) {
         digitSvg.setAttribute("viewBox", `0 0 ${this.DIGIT_WIDTH} ${this.DIGIT_HEIGHT}`);
         digitSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-        digitSvg.innerHTML = pathData;
+        const parsedSvg = new DOMParser().parseFromString(
+          `<svg xmlns="${SVG_NS}">${pathData}</svg>`,
+          "image/svg+xml"
+        );
+        digitSvg.append(...Array.from(parsedSvg.documentElement.childNodes).map(
+          (node) => document.importNode(node, true)
+        ));
       } else {
         digitSvg.setAttribute("viewBox", `0 0 ${this.DIGIT_WIDTH} ${this.DIGIT_HEIGHT}`);
         digitSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -3644,19 +3544,6 @@ var VoltaManager = class {
 };
 
 // src/analyzer/MusicAnalyzer.ts
-var DebugLogger2;
-try {
-  DebugLogger2 = (init_DebugLogger(), __toCommonJS(DebugLogger_exports)).DebugLogger;
-} catch (e) {
-  DebugLogger2 = {
-    log: () => {
-    },
-    warn: () => {
-    },
-    error: () => {
-    }
-  };
-}
 var MusicAnalyzer = class {
   /**
    * Analyze a parsed measure and determine beam groups
@@ -3668,18 +3555,8 @@ var MusicAnalyzer = class {
    * @returns Analyzed measure with beam groups calculated
    */
   analyze(measure) {
-    DebugLogger2.log("\u{1F3BC} MusicAnalyzer: Starting analysis", {
-      segments: measure.segments.length
-    });
     const allNotes = this.flattenNotes(measure);
-    DebugLogger2.log("\u{1F4CB} Flattened notes", {
-      totalNotes: allNotes.length,
-      beamableCount: allNotes.filter((n) => this.isBeamable(n)).length
-    });
     const beamGroups = this.analyzeBeams(allNotes, measure);
-    DebugLogger2.log("\u2705 Analysis complete", {
-      beamGroupsCreated: beamGroups.length
-    });
     return {
       ...measure,
       beamGroups,
@@ -3775,15 +3652,6 @@ var MusicAnalyzer = class {
       if (this.isBeamable(allNotes[i])) beamableIdxs.push(i);
     }
     if (beamableIdxs.length === 0) return beamGroups;
-    DebugLogger2.log("\u{1F3B5} Analyzing beams", {
-      totalBeamable: beamableIdxs.length,
-      notes: beamableIdxs.map((idx) => ({
-        index: idx,
-        segmentIndex: allNotes[idx].segmentIndex,
-        value: allNotes[idx].value,
-        absoluteIndex: allNotes[idx].absoluteIndex
-      }))
-    });
     const segments = [];
     let seg = [beamableIdxs[0]];
     for (let k = 1; k < beamableIdxs.length; k++) {
@@ -3797,10 +3665,6 @@ var MusicAnalyzer = class {
       }
     }
     if (seg.length) segments.push(seg);
-    DebugLogger2.log("\u{1F3B5} Beam segments after hard breaks", {
-      segmentCount: segments.length,
-      segments: segments.map((s) => s.map((idx) => allNotes[idx].absoluteIndex))
-    });
     for (const noteIndices of segments) {
       if (noteIndices.length === 0) continue;
       const blocks = [];
@@ -3881,21 +3745,11 @@ var MusicAnalyzer = class {
       const currentBeat = (_a = current.beatIndex) != null ? _a : 0;
       const nextBeat = (_b = next.beatIndex) != null ? _b : 0;
       if (nextBeat !== currentBeat) {
-        DebugLogger2.log("\u{1F50D} Beat boundary detected", {
-          segment: current.segmentIndex,
-          fromBeat: currentBeat,
-          toBeat: nextBeat
-        });
         return true;
       }
     }
     if (next.segmentIndex > current.segmentIndex) {
       const nextSegment = measure.segments[next.segmentIndex];
-      DebugLogger2.log("\u{1F50D} Checking segment boundary", {
-        fromSegment: current.segmentIndex,
-        toSegment: next.segmentIndex,
-        nextSegmentHasLeadingSpace: nextSegment.leadingSpace
-      });
       return nextSegment.leadingSpace;
     }
     return false;
@@ -3911,10 +3765,6 @@ var MusicAnalyzer = class {
     const maxLevel = Math.max(
       ...noteIndices.map((i) => this.getBeamLevel(allNotes[i].value))
     );
-    DebugLogger2.log("\u{1F3AF} Creating beam groups", {
-      noteCount: noteIndices.length,
-      maxLevel
-    });
     for (let level = 1; level <= maxLevel; level++) {
       let sequence = [];
       for (let gi = 0; gi < noteIndices.length; gi++) {
@@ -3937,7 +3787,6 @@ var MusicAnalyzer = class {
                 })),
                 isPartial: false
               });
-              DebugLogger2.log(`  \u2550 Created primary beam level 1`, { notesConnected: sequence.length });
             } else {
               if (sequence.length === 1) {
                 const soloIdx = sequence[0];
@@ -3951,7 +3800,6 @@ var MusicAnalyzer = class {
                   isPartial: true,
                   direction
                 });
-                DebugLogger2.log("  \u270F\uFE0F Created secondary beamlet", { level, direction });
               } else {
                 beamGroups.push({
                   level,
@@ -3961,7 +3809,6 @@ var MusicAnalyzer = class {
                   })),
                   isPartial: false
                 });
-                DebugLogger2.log(`  \u2550 Created secondary beam level ${level}`, { notesConnected: sequence.length });
               }
             }
             sequence = [];
@@ -3973,10 +3820,6 @@ var MusicAnalyzer = class {
   isHardBreakBetween(a, b, measure, allNotes) {
     var _a, _b;
     if (a.forcedBeamThroughTie) {
-      DebugLogger2.log("\u{1F517} Forced beam through tie [_]", {
-        fromNote: a.absoluteIndex,
-        toNote: b.absoluteIndex
-      });
       return false;
     }
     const resolvedMode = measure.timeSignature ? this.resolveGroupingMode(measure.timeSignature) : "irregular";
@@ -3986,11 +3829,6 @@ var MusicAnalyzer = class {
       if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
         return false;
       }
-      DebugLogger2.log("\u{1F50D} Beat boundary within segment (space)", {
-        fromBeat: a.beatIndex,
-        toBeat: b.beatIndex,
-        segment: a.segmentIndex
-      });
       return true;
     }
     if (resolvedMode !== "irregular") {
@@ -4015,24 +3853,12 @@ var MusicAnalyzer = class {
         const aGroup = Math.floor(a.quarterStart / groupSize);
         const bGroup = Math.floor(b.quarterStart / groupSize);
         if (aGroup !== bGroup) {
-          DebugLogger2.log(`\u{1F3B5} Auto-break at ${actualMode} boundary`, {
-            aStart: a.quarterStart,
-            bStart: b.quarterStart,
-            groupSize,
-            aGroup,
-            bGroup
-          });
           return true;
         }
       }
     }
     if (b.segmentIndex > a.segmentIndex) {
       const nextSegment = measure.segments[b.segmentIndex];
-      DebugLogger2.log("\u{1F50D} Checking segment boundary", {
-        fromSegment: a.segmentIndex,
-        toSegment: b.segmentIndex,
-        nextSegmentHasLeadingSpace: nextSegment.leadingSpace
-      });
       return !!nextSegment.leadingSpace;
     }
     return false;
@@ -4399,9 +4225,6 @@ var PlaceAndSizeManager = class {
       horizontalMargin,
       metadata: enrichedMetadata
     });
-    if (this.config.debugMode) {
-      console.log(`[PlaceAndSizeManager] Registered ${type}`, bbox, `layer: ${layer}, margin: ${horizontalMargin}px`, enrichedMetadata);
-    }
   }
   /**
    * Vérifie si une zone entre en collision avec des éléments existants.
@@ -4481,14 +4304,8 @@ var PlaceAndSizeManager = class {
         else candidate = { ...bbox, x: bbox.x - distance };
       }
       if (!this.hasCollision(candidate, testType, excludeTypes)) {
-        if (this.config.debugMode) {
-          console.log(`[PlaceAndSizeManager] Found free position after ${attempt} attempts`, candidate);
-        }
         return candidate;
       }
-    }
-    if (this.config.debugMode) {
-      console.warn(`[PlaceAndSizeManager] Could not find free position after ${maxAttempts} attempts`);
     }
     return null;
   }
@@ -4525,9 +4342,6 @@ var PlaceAndSizeManager = class {
    */
   clear() {
     this.elements = [];
-    if (this.config.debugMode) {
-      console.log("[PlaceAndSizeManager] Cleared all elements");
-    }
   }
   /**
    * Efface les éléments d'un type spécifique.
@@ -4535,11 +4349,7 @@ var PlaceAndSizeManager = class {
    * @param type - Type d'élément à effacer
    */
   clearType(type) {
-    const before = this.elements.length;
     this.elements = this.elements.filter((e) => e.type !== type);
-    if (this.config.debugMode) {
-      console.log(`[PlaceAndSizeManager] Cleared ${before - this.elements.length} elements of type ${type}`);
-    }
   }
   /**
    * Obtient tous les éléments enregistrés (lecture seule).
@@ -4687,36 +4497,6 @@ var PlaceAndSizeManager = class {
         alignment
       };
     }).sort((a, b) => a.measureIndex - b.measureIndex);
-  }
-  /**
-   * Affiche un rapport de diagnostic dans la console.
-   * Utile pour déboguer les problèmes d'alignement.
-   */
-  logDiagnosticReport() {
-    const report = this.diagnoseChordStemAlignment();
-    console.log("=== DIAGNOSTIC REPORT: Chord-Stem Alignment ===");
-    report.forEach((measure) => {
-      console.log(`
-\u{1F4CF} Measure ${measure.measureIndex}:`);
-      console.log(`  Chords: ${measure.chords.length}`);
-      measure.chords.forEach((c, i) => {
-        console.log(`    [${i}] "${c.symbol}" at X=${c.textX.toFixed(2)} (anchor=${c.textAnchor})`);
-        console.log(`        bbox: x=${c.bbox.x.toFixed(2)}, w=${c.bbox.width.toFixed(2)}`);
-      });
-      console.log(`  Stems: ${measure.stems.length}`);
-      measure.stems.forEach((s, i) => {
-        console.log(`    [${i}] ${s.direction} stem at centerX=${s.centerX.toFixed(2)}`);
-        console.log(`        bbox: x=${s.bbox.x.toFixed(2)}, w=${s.bbox.width.toFixed(2)}`);
-      });
-      if (measure.alignment) {
-        const diff = measure.alignment.difference;
-        const status = Math.abs(diff) < 0.5 ? "\u2705 ALIGNED" : "\u274C MISALIGNED";
-        console.log(`  ${status}: Chord X=${measure.alignment.firstChordX.toFixed(2)}, Stem X=${measure.alignment.firstStemX.toFixed(2)}, \u0394=${diff.toFixed(2)}px`);
-      } else {
-        console.log(`  \u26A0\uFE0F  No alignment data available`);
-      }
-    });
-    console.log("\n=== END DIAGNOSTIC REPORT ===");
   }
 };
 
@@ -4902,9 +4682,6 @@ var ChordRenderer = class {
             segmentIndex
           );
         } else {
-          console.warn(
-            `[ChordRenderer] No note found for chord "${chordSymbol}" in measure ${mp.globalIndex}, segment ${segmentIndex}. Using fallback centered position.`
-          );
           const segmentWidth = mp.width / segments.length;
           const segmentX = measureX + segmentIndex * segmentWidth + segmentWidth / 2;
           this.renderChordSymbol(
@@ -4958,7 +4735,7 @@ var ChordRenderer = class {
     }
     const root = rootMatch[0];
     let remaining = processedChord.substring(root.length);
-    const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|\-)/);
+    const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|-)/);
     const quality = qualityMatch ? qualityMatch[0] : "";
     remaining = remaining.substring(quality.length);
     let bass = "";
@@ -5912,8 +5689,8 @@ var SVGRenderer = class {
         const parsedMeasure = {
           segments,
           timeSignature: m.timeSignature || grid.timeSignature,
-          barline: m.barline || "|",
-          isLineBreak: m.isLineBreak || false,
+          barline: m.barline,
+          isLineBreak: m.isLineBreak,
           source: m.source || ""
         };
         const analyzed = analyzer.analyze(parsedMeasure);
@@ -5921,8 +5698,7 @@ var SVGRenderer = class {
       });
       level1BeamSet = /* @__PURE__ */ new Set();
       analyzedMeasures.forEach((am, mi) => {
-        var _a;
-        (_a = am.beamGroups) == null ? void 0 : _a.forEach((g) => {
+        am.beamGroups.forEach((g) => {
           if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
             g.notes.forEach((r) => {
               level1BeamSet.add(`${mi}:${r.segmentIndex}:${r.noteIndex}`);
@@ -5973,7 +5749,7 @@ var SVGRenderer = class {
           visualEndX: mp.x + mp.width,
           visualTopY: mp.y,
           visualBottomY: mp.y + measureHeight2,
-          timeSignature: measure.timeSignature ? `${measure.timeSignature.beats}/${measure.timeSignature.beatValue}` : void 0,
+          timeSignature: measure.timeSignature ? `${measure.timeSignature.numerator}/${measure.timeSignature.denominator}` : void 0,
           isLineStart: measure.__isLineStart,
           isRepeatStart: measure.isRepeatStart,
           barlineType: measure.barline,
@@ -5983,12 +5759,12 @@ var SVGRenderer = class {
       });
       const stemsDir = stemsDirection === "down" ? "down" : "up";
       lineMeasurePositions.forEach((mp) => {
-        var _a, _b, _c;
+        var _a, _b;
         const { measure, globalIndex: globalIndex2, width: mWidth, x, y } = mp;
         let perMeasureBeamSet;
         if (level1BeamSet) {
           perMeasureBeamSet = /* @__PURE__ */ new Set();
-          (_b = (_a = analyzedMeasures[globalIndex2]) == null ? void 0 : _a.beamGroups) == null ? void 0 : _b.forEach((g) => {
+          (_a = analyzedMeasures[globalIndex2]) == null ? void 0 : _a.beamGroups.forEach((g) => {
             if (g.level === 1 && !g.isPartial && g.notes.length >= 2) {
               g.notes.forEach((r) => {
                 perMeasureBeamSet.add(`${r.segmentIndex}:${r.noteIndex}`);
@@ -5996,7 +5772,7 @@ var SVGRenderer = class {
             }
           });
         }
-        const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir != null ? stemsDir : "up", (_c = options.displayRepeatSymbol) != null ? _c : false);
+        const mr = new MeasureRenderer(measure, x, y, mWidth, perMeasureBeamSet, placeAndSizeManager, stemsDir != null ? stemsDir : "up", (_b = options.displayRepeatSymbol) != null ? _b : false);
         mr.drawMeasure(svg, globalIndex2, notePositions, grid);
         if (analyzedMeasures[globalIndex2]) {
           drawBeams(svg, analyzedMeasures[globalIndex2], globalIndex2, notePositions, stemsDir);
@@ -6042,9 +5818,6 @@ var SVGRenderer = class {
     });
     voltaManager.renderVoltas(svg, placeAndSizeManager);
     const bounds = placeAndSizeManager.getGlobalBounds();
-    if (options.debugPlacement) {
-      placeAndSizeManager.logDiagnosticReport();
-    }
     return svg;
   }
   /**
@@ -6384,7 +6157,7 @@ var SVGRenderer = class {
       let thinLineX = rightBarX;
       let thickLineX = void 0;
       let dotsX = void 0;
-      if (measure.barline === ":||" || measure.barline === "repeat-end") {
+      if (measure.barline === ":||") {
         barlineType = "repeat-end";
         barlineWidth = 10;
         visualStartX = rightBarX - 0.75;
@@ -6870,7 +6643,7 @@ var SVGRenderer = class {
     const allNotes = [];
     renderLines.forEach((line, lineIndex) => {
       line.measures.forEach((measure) => {
-        const segments = measure.chordSegments || [{ beats: measure.beats }];
+        const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
         segments.forEach((seg) => {
           seg.beats.forEach((beat) => {
             beat.notes.forEach((note) => {
@@ -7188,7 +6961,6 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
    * In case of parsing error, displays a formatted error message.
    */
   async onload() {
-    console.log("Loading Chord Grid Plugin");
     this.registerMarkdownCodeBlockProcessor(
       "chordgrid",
       (source, el, ctx) => {
@@ -7225,13 +6997,5 @@ var ChordGridPlugin = class extends import_obsidian.Plugin {
         }
       }
     );
-  }
-  /**
-   * Method called when the plugin is unloaded.
-   * 
-   * Allows cleaning up resources if necessary.
-   */
-  onunload() {
-    console.log("Unloading Chord Grid Plugin");
   }
 };
