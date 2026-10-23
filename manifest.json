@@ -1,7 +1,7 @@
 {
   "id": "chordgrid",
   "name": "Chord Grid With Rhythmic Notation",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "minAppVersion": "0.15.0",
   "description": "Displays chord grids with rhythmic notation from a simple syntax.",
   "author": "Mathieu CONAN",

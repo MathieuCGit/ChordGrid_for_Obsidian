@@ -1,8 +1,8 @@
 # 🎵 Chord Grid pour Obsidian
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-536%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-601%20passing-brightgreen.svg)](#)
 
 > **Transformez une simple notation textuelle en magnifiques grilles d'accords professionnelles avec notation rythmique—directement dans vos notes Obsidian.**
 

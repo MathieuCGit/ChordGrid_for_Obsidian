@@ -5,6 +5,32 @@ All notable changes to the Chord Grid Plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-10-23
+
+### Added
+- **Roman numeral chord degrees**
+  - Use Roman numeral chord labels from `I` through `VII`, including lowercase degrees and extensions such as `I7`, `iv7`, and `V7/V`
+  - Degree labels are displayed literally and are not resolved to pitches or changed by `transpose:`
+- **`mpl` directive alias**
+  - Use `mpl:N` as a shorthand for `measures-per-line:N`
+- **Zoom control**
+  - Resize rendered grids with the `zoom:` directive using percentage values
+  - Responsive SVG scaling preserves the grid's proportions within its container
+
+### Changed
+- **Compound-meter beaming**
+  - Preserve the primary beam across an intervening rest within an explicitly grouped pulse, such as `8-88` in 12/8
+- **Measure-start repeat markers**
+  - A `||:` written after a measure now ends that measure and starts the repeat on the following measure
+
+### Fixed
+- Repeat-start markers are rendered correctly after a previous measure and between consecutive repeat sections
+- Time signatures written after the first barline are detected and used as the global signature
+- Eighth-note counting labels use the correct ampersand subdivision notation
+
+### Tests
+- 601 tests passing (1 skipped)
+
 ## [Unreleased]
 
 ## [2.2.0] - 2025-12-18
