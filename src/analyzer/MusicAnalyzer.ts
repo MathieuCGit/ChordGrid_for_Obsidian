@@ -32,19 +32,6 @@ import {
   NoteReference
 } from './analyzer-types';
 
-// Optional DebugLogger - will be undefined in Node.js tests
-let DebugLogger: any;
-try {
-  DebugLogger = require('../utils/DebugLogger').DebugLogger;
-} catch (e) {
-  // Running in Node.js test environment without DOM types
-  DebugLogger = {
-    log: () => {},
-    warn: () => {},
-    error: () => {}
-  };
-}
-
 export class MusicAnalyzer {
   
   /**
@@ -57,24 +44,17 @@ export class MusicAnalyzer {
    * @returns Analyzed measure with beam groups calculated
    */
   public analyze(measure: ParsedMeasure): AnalyzedMeasure {
-    DebugLogger.log('🎼 MusicAnalyzer: Starting analysis', {
-      segments: measure.segments.length
-    });
+
     
     // 1. Flatten all notes with their positions
     const allNotes = this.flattenNotes(measure);
     
-    DebugLogger.log('📋 Flattened notes', {
-      totalNotes: allNotes.length,
-      beamableCount: allNotes.filter(n => this.isBeamable(n)).length
-    });
+
     
     // 2. Analyze beam groups
     const beamGroups = this.analyzeBeams(allNotes, measure);
     
-    DebugLogger.log('✅ Analysis complete', {
-      beamGroupsCreated: beamGroups.length
-    });
+
     
     return {
       ...measure,
@@ -201,15 +181,7 @@ export class MusicAnalyzer {
     }
     if (beamableIdxs.length === 0) return beamGroups;
 
-    DebugLogger.log('🎵 Analyzing beams', {
-      totalBeamable: beamableIdxs.length,
-      notes: beamableIdxs.map(idx => ({
-        index: idx,
-        segmentIndex: allNotes[idx].segmentIndex,
-        value: allNotes[idx].value,
-        absoluteIndex: allNotes[idx].absoluteIndex
-      }))
-    });
+
 
     // 2) Split into segments separated by hard breaks (beat boundary or segment leadingSpace)
     const segments: number[][] = [];
@@ -226,10 +198,7 @@ export class MusicAnalyzer {
     }
     if (seg.length) segments.push(seg);
 
-    DebugLogger.log('🎵 Beam segments after hard breaks', {
-      segmentCount: segments.length,
-      segments: segments.map(s => s.map(idx => allNotes[idx].absoluteIndex))
-    });
+
 
     // 3) For each segment, compute block levels between adjacent notes (rests-in-between)
     for (const noteIndices of segments) {
@@ -248,13 +217,13 @@ export class MusicAnalyzer {
         const notesLevel = Math.min(aLevel, bLevel);
         
         // Check if we're in a tuplet (special beam rules for rests in tuplets)
-        const inTuplet = (allNotes[aIdx] as any).tuplet || (allNotes[bIdx] as any).tuplet;
+        const inTuplet = allNotes[aIdx].tuplet || allNotes[bIdx].tuplet;
         
   // Check if note b has hasLeadingSpace (space-induced break)
   const bNote = allNotes[bIdx];
   // Exception: If previous note forced beam through tie, ignore space break
   const aNote = allNotes[aIdx];
-  if ((bNote as any).hasLeadingSpace && !(aNote as any).forcedBeamThroughTie) {
+  if (bNote.hasLeadingSpace && !aNote.forcedBeamThroughTie) {
           // Find minimum beam level in the previous subgroup (notes before this one in the tuplet)
           // Look backward from current note to find the minimum level of the group
           let minGroupLevel = Infinity;
@@ -264,7 +233,7 @@ export class MusicAnalyzer {
             minGroupLevel = Math.min(minGroupLevel, prevLevel);
             
             // Stop at previous hasLeadingSpace boundary
-            if (lookback < j && (prevNote as any).hasLeadingSpace) break;
+            if (lookback < j && prevNote.hasLeadingSpace) break;
           }
           
           // Block from max(minGroupLevel, 2) onwards
@@ -280,17 +249,17 @@ export class MusicAnalyzer {
         // Scan between aAbs and bAbs for rests
         for (let t = aAbs + 1; t < bAbs; t++) {
           const mid = allNotes.find(n => n.absoluteIndex === t);
-          if (mid && (mid as any).isRest) {
-            const restLevel = this.getBeamLevel((mid as any).value);
+          if (mid && mid.isRest) {
+            const restLevel = this.getBeamLevel(mid.value);
             
             if (inTuplet) {
               // In tuplets: beam behavior depends on whether there are explicit spaces
               // Check if both notes are in same tuplet group without space separation
-              const aTuplet = (allNotes[aIdx] as any).tuplet;
-              const bTuplet = (allNotes[bIdx] as any).tuplet;
+              const aTuplet = allNotes[aIdx].tuplet;
+              const bTuplet = allNotes[bIdx].tuplet;
               const sameTupletNoSpace = aTuplet && bTuplet && 
                                        aTuplet.groupId === bTuplet.groupId &&
-                                       !(bNote as any).hasLeadingSpace;
+                                       !bNote.hasLeadingSpace;
               
               if (sameTupletNoSpace) {
                 // Continuous tuplet notation (e.g., {8-88}3 without internal spaces)
@@ -371,11 +340,7 @@ export class MusicAnalyzer {
       const nextBeat = next.beatIndex ?? 0;
       
       if (nextBeat !== currentBeat) {
-        DebugLogger.log('🔍 Beat boundary detected', {
-          segment: current.segmentIndex,
-          fromBeat: currentBeat,
-          toBeat: nextBeat
-        });
+
         return true;
       }
     }
@@ -384,11 +349,7 @@ export class MusicAnalyzer {
     if (next.segmentIndex > current.segmentIndex) {
       const nextSegment = measure.segments[next.segmentIndex];
       
-      DebugLogger.log('🔍 Checking segment boundary', {
-        fromSegment: current.segmentIndex,
-        toSegment: next.segmentIndex,
-        nextSegmentHasLeadingSpace: nextSegment.leadingSpace
-      });
+
       
       return nextSegment.leadingSpace;
     }
@@ -415,10 +376,7 @@ export class MusicAnalyzer {
       ...noteIndices.map(i => this.getBeamLevel(allNotes[i].value))
     );
     
-    DebugLogger.log('🎯 Creating beam groups', {
-      noteCount: noteIndices.length,
-      maxLevel
-    });
+
     
     // For each beam level build contiguous sequences. Intermediate notes with lower level break higher-level beams.
     for (let level = 1; level <= maxLevel; level++) {
@@ -449,7 +407,7 @@ export class MusicAnalyzer {
                 })),
                 isPartial: false
               });
-              DebugLogger.log(`  ═ Created primary beam level 1`, { notesConnected: sequence.length });
+
             } else {
               // Higher level: sequences of length >1 become full secondary beam; length==1 => beamlet
               if (sequence.length === 1) {
@@ -464,7 +422,7 @@ export class MusicAnalyzer {
                   isPartial: true,
                   direction
                 });
-                DebugLogger.log('  ✏️ Created secondary beamlet', { level, direction });
+
               } else {
                 beamGroups.push({
                   level,
@@ -474,7 +432,7 @@ export class MusicAnalyzer {
                   })),
                   isPartial: false
                 });
-                DebugLogger.log(`  ═ Created secondary beam level ${level}`, { notesConnected: sequence.length });
+
               }
             }
             sequence = [];
@@ -487,11 +445,8 @@ export class MusicAnalyzer {
   private isHardBreakBetween(a: NoteWithPosition, b: NoteWithPosition, measure: ParsedMeasure, allNotes: NoteWithPosition[]): boolean {
      // Check if previous note has forced beam through tie ([_] syntax)
      // This takes absolute priority over all other rules
-     if ((a as any).forcedBeamThroughTie) {
-       DebugLogger.log('🔗 Forced beam through tie [_]', {
-         fromNote: a.absoluteIndex,
-         toNote: b.absoluteIndex
-       });
+     if (a.forcedBeamThroughTie) {
+
        return false; // Don't break beam
      }
      
@@ -511,17 +466,13 @@ export class MusicAnalyzer {
     // EXCEPTION 1: when both notes belong to the SAME tuplet group, preserve primary beam
     // EXCEPTION 2: in auto-beam/binary/ternary modes, spaces are IGNORED
     if (resolvedMode === 'irregular' && a.segmentIndex === b.segmentIndex && (a.beatIndex ?? -1) !== (b.beatIndex ?? -1)) {
-      const aTuplet = (a as any).tuplet;
-      const bTuplet = (b as any).tuplet;
+      const aTuplet = a.tuplet;
+      const bTuplet = b.tuplet;
       if (aTuplet && bTuplet && aTuplet.groupId && aTuplet.groupId === bTuplet.groupId) {
         // Inside same tuplet group: do not hard-break; higher-level beam breaks handled later
         return false;
       }
-      DebugLogger.log('🔍 Beat boundary within segment (space)', {
-        fromBeat: a.beatIndex,
-        toBeat: b.beatIndex,
-        segment: a.segmentIndex
-      });
+
       return true;
     }
     
@@ -530,8 +481,8 @@ export class MusicAnalyzer {
     // Spaces are IGNORED - algorithm decides grouping
     if (resolvedMode !== 'irregular') {
       // Do NOT auto-break within the same tuplet group
-      const aTuplet2 = (a as any).tuplet;
-      const bTuplet2 = (b as any).tuplet;
+      const aTuplet2 = a.tuplet;
+      const bTuplet2 = b.tuplet;
       if (aTuplet2 && bTuplet2 && aTuplet2.groupId && aTuplet2.groupId === bTuplet2.groupId) {
         // Skip auto-breaks for tuplets
         return false;
@@ -565,13 +516,7 @@ export class MusicAnalyzer {
         const bGroup = Math.floor(b.quarterStart / groupSize);
         
         if (aGroup !== bGroup) {
-          DebugLogger.log(`🎵 Auto-break at ${actualMode} boundary`, {
-            aStart: a.quarterStart,
-            bStart: b.quarterStart,
-            groupSize,
-            aGroup,
-            bGroup
-          });
+
           return true;
         }
       }
@@ -580,11 +525,7 @@ export class MusicAnalyzer {
     // Segment boundary with leadingSpace
     if (b.segmentIndex > a.segmentIndex) {
       const nextSegment = measure.segments[b.segmentIndex];
-      DebugLogger.log('🔍 Checking segment boundary', {
-        fromSegment: a.segmentIndex,
-        toSegment: b.segmentIndex,
-        nextSegmentHasLeadingSpace: nextSegment.leadingSpace
-      });
+
       return !!nextSegment.leadingSpace;
     }
     
@@ -608,7 +549,7 @@ export class MusicAnalyzer {
     const currentNote = allNotes[noteIndex];
     
     // Check if note is preceded by space (hasLeadingSpace) → point right
-    if ((currentNote as any).hasLeadingSpace) {
+    if (currentNote.hasLeadingSpace) {
       return 'right';
     }
     
@@ -616,7 +557,7 @@ export class MusicAnalyzer {
     if (posInGroup < groupIndices.length - 1) {
       const nextIdx = groupIndices[posInGroup + 1];
       const nextNote = allNotes[nextIdx];
-      if ((nextNote as any).hasLeadingSpace) {
+      if (nextNote.hasLeadingSpace) {
         return 'left';
       }
     }

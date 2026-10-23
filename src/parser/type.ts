@@ -111,6 +111,7 @@ export interface NoteElement {
     };
     explicitRatio?: boolean;
   };
+  durationInQuarterNotes?: () => number;
   /**
    * Flag indicating there was a lexical space before this note in the source text.
    * Used to break higher-level beams in tuplets.
@@ -237,12 +238,24 @@ export interface Measure {
   chord: string;
   barline: BarlineType;
   isLineBreak: boolean;
+  lineBreakAfter?: boolean;
   chordSegments: ChordSegment[];
   source?: string;
   isRepeat?: boolean;  // true if this measure was created from % notation
   voltaStart?: VoltaInfo;  // Start of a volta bracket
   voltaEnd?: VoltaInfo;    // End of a volta bracket (same volta as voltaStart)
   timeSignature?: TimeSignature;  // Time signature change for this measure (if different from global)
+  __isEmpty?: boolean;
+  __isChordOnlyMode?: boolean;
+  __shouldShowTimeSignature?: boolean;
+  __isLineStart?: boolean;
+  __spacingRatio?: number;
+  __hasRepeatSymbol?: boolean;
+  isRepeatStart?: boolean;
+  isRepeatEnd?: boolean;
+  repeatCount?: number;
+  repeatEndCount?: number;
+  voltaEndMarker?: boolean;
 }
 
 /**

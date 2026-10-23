@@ -50,10 +50,8 @@ export default class ChordGridPlugin extends Plugin {
    * 
    * In case of parsing error, displays a formatted error message.
    */
-  async onload() {
-    console.log('Loading Chord Grid Plugin');
-
-    this.registerMarkdownCodeBlockProcessor(
+   async onload() {
+     this.registerMarkdownCodeBlockProcessor(
       'chordgrid',
       (source, el, ctx) => {
         try {
@@ -102,12 +100,4 @@ export default class ChordGridPlugin extends Plugin {
     );
   }
 
-  /**
-   * Method called when the plugin is unloaded.
-   * 
-   * Allows cleaning up resources if necessary.
-   */
-  onunload() {
-    console.log('Unloading Chord Grid Plugin');
-  }
 }

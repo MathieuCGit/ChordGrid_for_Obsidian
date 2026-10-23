@@ -203,7 +203,6 @@ export class TimeSignatureRenderer {
         for (const digit of digits) {
             const pathData = TIME_SIGNATURE_DIGITS[digit];
             if (!pathData) {
-                console.warn(`[TimeSignatureRenderer] No path data for digit: ${digit}`);
                 continue;
             }
             
@@ -219,7 +218,13 @@ export class TimeSignatureRenderer {
                 // Complex SVG content (groups with transforms) - use the original viewBox
                 digitSvg.setAttribute('viewBox', `0 0 ${this.DIGIT_WIDTH} ${this.DIGIT_HEIGHT}`);
                 digitSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-                digitSvg.innerHTML = pathData;
+                const parsedSvg = new DOMParser().parseFromString(
+                    `<svg xmlns="${SVG_NS}">${pathData}</svg>`,
+                    'image/svg+xml'
+                );
+                digitSvg.append(...Array.from(parsedSvg.documentElement.childNodes).map(node =>
+                    document.importNode(node, true)
+                ));
             } else {
                 // Simple path string - use viewBox to normalize
                 digitSvg.setAttribute('viewBox', `0 0 ${this.DIGIT_WIDTH} ${this.DIGIT_HEIGHT}`);

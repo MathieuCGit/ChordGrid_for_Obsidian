@@ -9,7 +9,7 @@
  * - Registering chords in PlaceAndSizeManager with complete metadata
  */
 
-import { Measure } from '../models/Measure';
+import { Measure, ChordSegment } from '../parser/type';
 import { PlaceAndSizeManager, ChordMetadata } from './PlaceAndSizeManager';
 import { SVG_NS, TYPOGRAPHY, POSITIONING, LAYOUT, NOTATION } from './constants';
 
@@ -243,7 +243,7 @@ export class ChordRenderer {
         measurePositions.forEach(mp => {
             if (!mp.x || !mp.y) return;
 
-            const measure = mp.measure as any;
+            const measure = mp.measure;
             const measureX = mp.x;
             const measureY = mp.y;
             
@@ -266,7 +266,7 @@ export class ChordRenderer {
             // Check if the measure has chord segments
             const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
 
-            segments.forEach((segment: any, segmentIndex: number) => {
+            segments.forEach((segment: ChordSegment, segmentIndex: number) => {
                 const chordSymbol = segment.chord;
 
                 // Ignore segments without chord (or with empty chord)
@@ -326,12 +326,6 @@ export class ChordRenderer {
                     // No note found (measure without rhythm or error)
                     // Fallback behavior: center in segment
                     // NOTE: This case should normally not happen if rhythm is properly defined
-                    console.warn(
-                        `[ChordRenderer] No note found for chord "${chordSymbol}" ` +
-                        `in measure ${mp.globalIndex}, segment ${segmentIndex}. ` +
-                        `Using fallback centered position.`
-                    );
-                    
                     // Calculate approximate position at segment center
                     const segmentWidth = mp.width / segments.length;
                     const segmentX = measureX + segmentIndex * segmentWidth + segmentWidth / 2;
@@ -414,7 +408,7 @@ export class ChordRenderer {
         // Extract quality - including mM (minor with major 7th), mmaj, mMaj, Mmaj, etc.
         // Order matters: check longer patterns first (mMaj, mmaj) before shorter ones (M, m, maj, min)
         // Quality will be rendered with superstructures (smaller size)
-        const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|\-)/);
+        const qualityMatch = remaining.match(/^(mMaj|mmaj|mM|Mmaj|major|minor|maj|min|dim|aug|M|m|ø|o|\+|-)/);
         const quality = qualityMatch ? qualityMatch[0] : '';
         remaining = remaining.substring(quality.length);
         
@@ -558,7 +552,7 @@ export class ChordRenderer {
         placeAndSizeManager: PlaceAndSizeManager,
         displayRepeatSymbol: boolean = false
     ): void {
-        const measure = measurePosition.measure as any;
+        const measure = measurePosition.measure;
         
         // Skip rendering chord if it's a simple % repeat (not D[%]) AND show% is enabled
         // When show% is disabled, we still render the chords even for repeated measures
@@ -663,7 +657,7 @@ export class ChordRenderer {
             const chordSpacing = availableWidth / chordCount;
             const fontSize = TYPOGRAPHY.CHORD_ONLY_FONT_SIZE;
             
-            segments.forEach((segment: any, idx: number) => {
+            segments.forEach((segment: ChordSegment, idx: number) => {
                 const chord = segment.chord;
                 if (!chord) return;
                 

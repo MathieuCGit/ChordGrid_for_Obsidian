@@ -28,7 +28,7 @@ import { Beat } from './Beat';
  * ```
  */
 export class Measure implements IMeasure {
-  beats: IBeat[];
+  beats: Beat[];
   chord: string;
   barline: BarlineType;
   isLineBreak: boolean;
@@ -41,10 +41,10 @@ export class Measure implements IMeasure {
    * @param data - Partial data to initialize the measure
    */
   constructor(data: Partial<IMeasure> = {}) {
-    this.beats = (data.beats || []).map(b => new Beat(b.notes, (b as any).chord)) as unknown as IBeat[];
+    this.beats = (data.beats || []).map(b => new Beat(b.notes, b.chord));
     this.chord = data.chord || '';
     this.barline = data.barline || (BarlineType.Single as BarlineType);
-    this.isLineBreak = Boolean((data as any).isLineBreak || (data as any).lineBreakAfter);
+    this.isLineBreak = Boolean(data.isLineBreak || data.lineBreakAfter);
     this.chordSegments = data.chordSegments || [];
     this.source = data.source;
   }
@@ -64,10 +64,7 @@ export class Measure implements IMeasure {
    */
   totalQuarterNotes(): number {
     return this.beats.reduce((s, b) => {
-      const beat = b as Beat;
-      if (typeof (beat as any).totalQuarterNotes === 'function') return s + (beat as any).totalQuarterNotes();
-      // fallback
-      return s;
+      return s + b.totalQuarterNotes();
     }, 0);
   }
 }

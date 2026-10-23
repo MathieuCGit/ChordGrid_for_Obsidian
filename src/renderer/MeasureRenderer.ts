@@ -1,6 +1,6 @@
 import { RestRenderer } from './RestRenderer';
 import { NoteRenderer, NotePosition } from './NoteRenderer';
-import { Beat, Measure, NoteElement, ChordGrid, ChordSegment } from '../parser/type';
+import { Beat, Measure, NoteElement, ChordGrid, ChordSegment, TimeSignature } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
@@ -82,7 +82,7 @@ export class MeasureRenderer {
         const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Check for empty measure (forced by measures-per-line)
-        if ((this.measure as any).__isEmpty) {
+        if (this.measure.__isEmpty) {
             this.drawEmptyMeasure(svg, measureIndex);
             return;
         }
@@ -93,7 +93,7 @@ export class MeasureRenderer {
         // 2. Chord[%] notation: show % symbol WITHOUT staff line
         // 3. Rhythm measure with complex repeat: show % symbol WITH staff line (rare case)
         if (this.displayRepeatSymbol && this.measure.isRepeat) {
-            const isChordOnly = (this.measure as any).__isChordOnlyMode;
+            const isChordOnly = this.measure.__isChordOnlyMode;
             const isSimpleRepeat = this.measure.source === '%';
             const isBracketPercent = this.measure.source?.includes('[%]');
             
@@ -108,14 +108,14 @@ export class MeasureRenderer {
         }
 
         // Check for chord-only mode (no rhythm notation)
-        if ((this.measure as any).__isChordOnlyMode) {
+        if (this.measure.__isChordOnlyMode) {
             this.drawChordOnlyMeasure(svg, measureIndex);
             return;
         }
 
         // Check if time signature should be displayed BEFORE the barline (line start behavior)
-        const hasInlineTimeSignature = (this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature;
-        const isLineStart = (this.measure as any).__isLineStart;
+        const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+        const isLineStart = this.measure.__isLineStart;
         const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
         
         // Draw time signature BEFORE barline if it's a line start (not first measure)
@@ -124,7 +124,7 @@ export class MeasureRenderer {
         }
 
         // Draw left barline - check for repeat start first
-        if ((this.measure as any).isRepeatStart) {
+        if (this.measure.isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
@@ -175,10 +175,10 @@ export class MeasureRenderer {
         const totalSeparatorPixels = separatorsCount * separatorWidth;
 
         // Add extra padding if measure starts with repeat barline to avoid collisions
-        let extraLeftPadding = (this.measure as any).isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
+        let extraLeftPadding = this.measure.isRepeatStart ? LAYOUT.EXTRA_LEFT_PADDING_REPEAT : 0;
         
         // Add extra padding for inline time signature to avoid note collision
-        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+        if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
             extraLeftPadding += 50; // Space for time signature (about 30px wide + 20px breathing room)
         }
 
@@ -247,11 +247,11 @@ export class MeasureRenderer {
             currentX += segmentWidth;
         }
 
-        if ((this.measure as any).isRepeatEnd) {
+        if (this.measure.isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
             // Draw repeat count if present (e.g., x3)
-            if ((this.measure as any).repeatCount !== undefined) {
-                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            if (this.measure.repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
@@ -524,24 +524,24 @@ export class MeasureRenderer {
         const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Draw left barline
-        if ((this.measure as any).isRepeatStart) {
+        if (this.measure.isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+        } else if (measureIndex === 0 || this.measure.__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
         // Draw time signature if marked for display (either changed or line start with different metric)
-        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+        if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
         // NO staff line for empty measures - they are truly empty
 
         // Draw right barline
-        if ((this.measure as any).isRepeatEnd) {
+        if (this.measure.isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
-            if ((this.measure as any).repeatCount !== undefined) {
-                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            if (this.measure.repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
@@ -555,8 +555,8 @@ export class MeasureRenderer {
         const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Check if time signature should be displayed BEFORE the barline (line start behavior)
-        const hasInlineTimeSignature = (this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature;
-        const isLineStart = (this.measure as any).__isLineStart;
+        const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
+        const isLineStart = this.measure.__isLineStart;
         const shouldDrawTimeSignatureBeforeBar = hasInlineTimeSignature && isLineStart && measureIndex > 0;
         
         // Draw time signature BEFORE barline if it's a line start (not first measure)
@@ -565,7 +565,7 @@ export class MeasureRenderer {
         }
 
         // Draw left barline
-        if ((this.measure as any).isRepeatStart) {
+        if (this.measure.isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
         } else if (measureIndex === 0 || isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
@@ -585,7 +585,7 @@ export class MeasureRenderer {
             // Draw diagonal line from bottom-left to top-right
             // If there's an inline time signature, start the slash after it to avoid collision
             let slashStartX = leftBarX + 5;
-            const hasInlineTimeSignature = (this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature;
+            const hasInlineTimeSignature = this.measure.__shouldShowTimeSignature && this.measure.timeSignature;
             
             if (hasInlineTimeSignature) {
                 // Time signature is positioned at: this.x + BASE_LEFT_PADDING + 20
@@ -624,10 +624,10 @@ export class MeasureRenderer {
         }
 
         // Draw right barline
-        if ((this.measure as any).isRepeatEnd) {
+        if (this.measure.isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, 120, false, measureIndex);
-            if ((this.measure as any).repeatCount !== undefined) {
-                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            if (this.measure.repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
@@ -646,14 +646,14 @@ export class MeasureRenderer {
         const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
 
         // Draw left barline
-        if ((this.measure as any).isRepeatStart) {
+        if (this.measure.isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+        } else if (measureIndex === 0 || this.measure.__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
 
         // Draw time signature if marked for display (either changed or line start with different metric)
-        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+        if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
 
@@ -661,13 +661,13 @@ export class MeasureRenderer {
         this.drawRepeatSymbol(svg);
         
         // Mark as having repeat symbol for ChordRenderer
-        (this.measure as any).__hasRepeatSymbol = true;
+        this.measure.__hasRepeatSymbol = true;
 
         // Draw right barline
-        if ((this.measure as any).isRepeatEnd) {
+        if (this.measure.isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
-            if ((this.measure as any).repeatCount !== undefined) {
-                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            if (this.measure.repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
@@ -686,14 +686,14 @@ export class MeasureRenderer {
         const rightBarX = this.x + this.width - VISUAL.STROKE_WIDTH_THIN * 2;
         
         // Draw left barline
-        if ((this.measure as any).isRepeatStart) {
+        if (this.measure.isRepeatStart) {
             this.drawBarWithRepeat(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, true, measureIndex);
-        } else if (measureIndex === 0 || (this.measure as any).__isLineStart) {
+        } else if (measureIndex === 0 || this.measure.__isLineStart) {
             this.drawBar(svg, leftBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'left');
         }
         
         // Draw time signature if marked for display (either changed or line start with different metric)
-        if ((this.measure as any).__shouldShowTimeSignature && this.measure.timeSignature) {
+        if (this.measure.__shouldShowTimeSignature && this.measure.timeSignature) {
             this.drawTimeSignature(svg, this.measure.timeSignature, measureIndex);
         }
         
@@ -709,15 +709,15 @@ export class MeasureRenderer {
         svg.appendChild(staffLine);
         
         // Mark measure as having repeat symbol for ChordRenderer
-        (this.measure as any).__hasRepeatSymbol = true;
+        this.measure.__hasRepeatSymbol = true;
         
         this.drawRepeatSymbol(svg);
         
         // Draw right barline
-        if ((this.measure as any).isRepeatEnd) {
+        if (this.measure.isRepeatEnd) {
             this.drawBarWithRepeat(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, false, measureIndex);
-            if ((this.measure as any).repeatCount !== undefined) {
-                this.drawRepeatCount(svg, rightBarX, (this.measure as any).repeatCount);
+            if (this.measure.repeatCount !== undefined) {
+                this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
         } else if (this.measure.barline === '||') {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
@@ -775,7 +775,7 @@ export class MeasureRenderer {
      * Draw the right barline of the measure.
      */
     private drawRightBarline(svg: SVGElement, x: number, y: number, height: number): void {
-        if ((this.measure as any).isRepeatEnd) {
+        if (this.measure.isRepeatEnd) {
             this.drawBarWithRepeat(svg, x, y, height, false);
         } else {
             this.drawBar(svg, x, y, height);
@@ -791,9 +791,9 @@ export class MeasureRenderer {
      * @param timeSignature - Time signature to display
      * @param measureIndex - Measure index (for PlaceAndSizeManager)
      */
-    private drawTimeSignature(svg: SVGElement, timeSignature: any, measureIndex: number): void {
+    private drawTimeSignature(svg: SVGElement, timeSignature: TimeSignature, measureIndex: number): void {
         // Determine if this is a line-start time signature (drawn before barline)
-        const isLineStart = (this.measure as any).__isLineStart;
+        const isLineStart = this.measure.__isLineStart;
         const shouldDrawBeforeBar = isLineStart && measureIndex > 0;
         
         let timeSignatureX: number;

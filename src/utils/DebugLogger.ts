@@ -2,8 +2,7 @@
  * @file DebugLogger.ts
  * @description Logging system for debugging in Obsidian.
  * 
- * Since console.log() is not easily accessible in Obsidian,
- * this logger displays messages directly in the user interface.
+ * This logger displays messages directly in the user interface.
  * Logs can be enabled/disabled and appear in a dedicated panel
  * above the SVG rendering.
  */
@@ -52,7 +51,7 @@ export class DebugLogger {
   /**
    * Records a log message.
    */
-  static log(message: string, data?: any) {
+  static log(message: string, data?: unknown) {
     if (!this.enabled) return;
 
     const timestamp = new Date().toLocaleTimeString();
@@ -67,26 +66,21 @@ export class DebugLogger {
       this.logs.shift();
     }
     
-    // Console log for DevTools if open
-    console.log(`[ChordGrid] ${message}`, data);
-    
     this.render();
   }
 
   /**
    * Records an error message.
    */
-  static error(message: string, error?: any) {
+  static error(message: string, error?: unknown) {
     if (!this.enabled) return;
 
     const timestamp = new Date().toLocaleTimeString();
-    const errorMessage = error 
-      ? `[${timestamp}] ❌ ERROR: ${message}: ${error.message || JSON.stringify(error)}`
+    const errorMessage = error
+      ? `[${timestamp}] ❌ ERROR: ${message}: ${error instanceof Error ? error.message : JSON.stringify(error)}`
       : `[${timestamp}] ❌ ERROR: ${message}`;
     
     this.logs.push(errorMessage);
-    
-    console.error(`[ChordGrid] ${message}`, error);
     
     this.render();
   }
@@ -94,7 +88,7 @@ export class DebugLogger {
   /**
    * Records a warning message.
    */
-  static warn(message: string, data?: any) {
+  static warn(message: string, data?: unknown) {
     if (!this.enabled) return;
 
     const timestamp = new Date().toLocaleTimeString();
@@ -103,8 +97,6 @@ export class DebugLogger {
       : `[${timestamp}] ⚠️ WARN: ${message}`;
     
     this.logs.push(warnMessage);
-    
-    console.warn(`[ChordGrid] ${message}`, data);
     
     this.render();
   }

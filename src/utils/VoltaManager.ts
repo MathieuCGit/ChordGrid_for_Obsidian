@@ -35,12 +35,13 @@
 import { SVG_NS } from '../renderer/constants';
 import { LAYOUT } from '../renderer/constants';
 import { PlaceAndSizeManager } from '../renderer/PlaceAndSizeManager';
+import { Measure } from '../parser/type';
 
 /**
  * Position information for a measure in the rendered output.
  */
 export interface MeasurePosition {
-  measure: any; // Using 'any' to match SVGRenderer's usage (parser/type.Measure)
+  measure: Measure;
   lineIndex: number;
   posInLine: number;
   globalIndex: number;
@@ -114,13 +115,13 @@ export class VoltaManager {
     // Find all volta starts
     for (let i = 0; i < measurePositions.length; i++) {
       const mp = measurePositions[i];
-      const measure = mp.measure as any;
+      const measure = mp.measure;
       
       if (measure.voltaStart) {
         // Find the corresponding end measure
         let endMeasureIndex = i;
         for (let j = i; j < measurePositions.length; j++) {
-          const endMeasure = measurePositions[j].measure as any;
+          const endMeasure = measurePositions[j].measure;
           // Compare volta info by text value since voltaEnd is a copy of voltaStart
           if (endMeasure.voltaEnd && endMeasure.voltaEnd.text === measure.voltaStart.text) {
             endMeasureIndex = j;
@@ -157,7 +158,7 @@ export class VoltaManager {
             
             // Find start X: left barline of first measure in segment
             let startX: number;
-            let startBarline: any;
+            let startBarline: BarlineInfo | undefined;
             
             if (isFirstLine && i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex) {
               // First line: use right barline of previous measure if exists
