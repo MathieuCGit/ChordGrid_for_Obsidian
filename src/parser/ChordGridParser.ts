@@ -704,7 +704,7 @@ export class ChordGridParser {
           chord: seg.chord,
           notes: flatNotes,
           leadingSpace: !!seg.leadingSpace,
-        } as AnalyzerParsedSegment;
+        };
       });
 
       return {
@@ -713,7 +713,7 @@ export class ChordGridParser {
         barline: m.barline,
         isLineBreak: m.isLineBreak,
         source: m.source,
-      } as AnalyzerParsedMeasure;
+      };
     });
 
     return { timeSignature: result.grid.timeSignature, measures };
@@ -823,7 +823,7 @@ export class ChordGridParser {
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       const startsRepeatAfterMeasure = t.bar === '||:' && t.content.trim().length > 0;
-      const bar = (startsRepeatAfterMeasure ? '|' : t.bar) as BarlineType;
+      const bar = startsRepeatAfterMeasure ? BarlineType.Single : this.toBarlineType(t.bar);
       
       // Check if this is a start repeat marker (||:) with no content
       if (t.content.trim().length === 0 && t.bar === '||:') {
@@ -902,7 +902,7 @@ export class ChordGridParser {
           }
           
           // Handle repeat count on the barline (:||x3)
-          if (bar === ':||' && t.repeatCount) {
+          if (bar === BarlineType.RepeatEnd && t.repeatCount) {
             emptyMeasure.repeatEndCount = t.repeatCount;
           }
           
@@ -973,7 +973,7 @@ export class ChordGridParser {
         // After creating the measure, check if this token's barline has a volta
         if (t.volta) {
           pendingVolta = t.volta;
-          pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+          pendingVoltaIsAfterRepeatEnd = bar === BarlineType.RepeatEnd;
         }
         
         // Update reference: % becomes new reference for next %
@@ -1019,7 +1019,7 @@ export class ChordGridParser {
         // After creating the measure, check if this token's barline has a volta
         if (t.volta) {
           pendingVolta = t.volta;
-          pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+          pendingVoltaIsAfterRepeatEnd = bar === BarlineType.RepeatEnd;
         }
         lastExplicitMeasure = clonedMeasure;
         continue;
@@ -1242,7 +1242,7 @@ export class ChordGridParser {
         pendingStartBarline = null; // Clear after applying
       }
       
-      if (bar === ':||') {
+      if (bar === BarlineType.RepeatEnd) {
         newMeasure.isRepeatEnd = true;
         // Auto-queue ||: as pending for next measure (repeat end typically implies start of next repeat)
         // This handles the case of consecutive repeats like :|||: where :|| on one measure
@@ -1302,7 +1302,7 @@ export class ChordGridParser {
         } else {
           pendingVolta = t.volta;
           // Check if this volta comes after a :|| barline
-          pendingVoltaIsAfterRepeatEnd = (bar === ':||');
+          pendingVoltaIsAfterRepeatEnd = bar === BarlineType.RepeatEnd;
         }
       }
       
@@ -1328,6 +1328,18 @@ export class ChordGridParser {
    * @param line - First line containing the time signature
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
+  private toBarlineType(barline: string): BarlineType {
+    switch (barline) {
+      case BarlineType.Single:
+      case BarlineType.Double:
+      case BarlineType.RepeatStart:
+      case BarlineType.RepeatEnd:
+        return barline;
+      default:
+        throw new Error(`Unsupported barline: ${barline}`);
+    }
+  }
+
   private parseTimeSignature(line: string): TimeSignature {
     // Match: "4/4" optionally followed by grouping mode
     const m = /^\s*(\d+)\/(\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?/.exec(line);
@@ -1417,9 +1429,9 @@ export class ChordGridParser {
     }
 
     // Add repeat bar properties based on barline type
-    if (barline === '||:') {
+    if (barline === BarlineType.RepeatStart) {
       cloned.isRepeatStart = true;
-    } else if (barline === ':||') {
+    } else if (barline === BarlineType.RepeatEnd) {
       cloned.isRepeatEnd = true;
     }
 
@@ -1941,7 +1953,7 @@ class BeamAndTieAnalyzer {
           isRest,
           position: startIndex,
           length: totalLen
-        } as NoteElement;
+        };
       }
     }
 
@@ -1949,7 +1961,7 @@ class BeamAndTieAnalyzer {
     // to avoid infinite loops and return a default quarter note placeholder so
     // the parser can continue. This should be rare; ideally callers validate input.
     return {
-      value: 4 as NoteValue,
+      value: 4,
       dotted: false,
       isGhost: false,
       tieStart: false,
@@ -1959,7 +1971,7 @@ class BeamAndTieAnalyzer {
       isRest: false,
       position: startIndex,
       length: 1
-    } as NoteElement;
+    };
   }
 
   private markTieStart(notes: NoteElement[]) {
@@ -2016,7 +2028,7 @@ class BeamAndTieAnalyzer {
       notes: beatNotes,
       hasBeam,
       beamGroups,
-    } as Beat;
+    };
   }
 
   // ...existing code...

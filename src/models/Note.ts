@@ -1,4 +1,4 @@
-import { NoteElement, NoteValue } from '../parser/type';
+import { NoteElement } from '../parser/type';
 
 /**
  * @file Note.ts
@@ -46,7 +46,7 @@ export class Note implements NoteElement {
    *               Default: value=4 (quarter), dotted=false, isRest=false
    */
   constructor(data: Partial<NoteElement> = {}) {
-    this.value = (data.value ?? 4) as NoteValue;
+    this.value = data.value ?? 4;
     this.dotted = Boolean(data.dotted);
     this.isRest = Boolean(data.isRest);
     this.isGhost = Boolean(data.isGhost);

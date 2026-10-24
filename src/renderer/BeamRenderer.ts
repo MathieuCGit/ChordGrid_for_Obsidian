@@ -58,7 +58,7 @@ export function drawBeams(
         p.chordIndex === ref.segmentIndex &&
         p.segmentNoteIndex === ref.noteIndex
       );
-      return { ref, pos } as { ref: typeof ref; pos?: NotePositionRef };
+      return { ref, pos };
     });
 
     const valid = refs.filter(r => r.pos);

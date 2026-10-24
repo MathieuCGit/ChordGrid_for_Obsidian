@@ -654,7 +654,7 @@ var _ChordGridParser = class _ChordGridParser {
     for (let ti = 0; ti < tokens.length; ti++) {
       const t = tokens[ti];
       const startsRepeatAfterMeasure = t.bar === "||:" && t.content.trim().length > 0;
-      const bar = startsRepeatAfterMeasure ? "|" : t.bar;
+      const bar = startsRepeatAfterMeasure ? "|" /* Single */ : this.toBarlineType(t.bar);
       if (t.content.trim().length === 0 && t.bar === "||:") {
         pendingStartBarline = "||:";
         if (t.volta) {
@@ -703,7 +703,7 @@ var _ChordGridParser = class _ChordGridParser {
             emptyMeasure.voltaEndMarker = true;
             pendingVoltaEndMarker = false;
           }
-          if (bar === ":||" && t.repeatCount) {
+          if (bar === ":||" /* RepeatEnd */ && t.repeatCount) {
             emptyMeasure.repeatEndCount = t.repeatCount;
           }
           measures.push(emptyMeasure);
@@ -751,7 +751,7 @@ var _ChordGridParser = class _ChordGridParser {
         }
         if (t.volta) {
           pendingVolta = t.volta;
-          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+          pendingVoltaIsAfterRepeatEnd = bar === ":||" /* RepeatEnd */;
         }
         lastExplicitMeasure = clonedMeasure;
         continue;
@@ -786,7 +786,7 @@ var _ChordGridParser = class _ChordGridParser {
         }
         if (t.volta) {
           pendingVolta = t.volta;
-          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+          pendingVoltaIsAfterRepeatEnd = bar === ":||" /* RepeatEnd */;
         }
         lastExplicitMeasure = clonedMeasure;
         continue;
@@ -922,7 +922,7 @@ var _ChordGridParser = class _ChordGridParser {
         newMeasure.isRepeatStart = true;
         pendingStartBarline = null;
       }
-      if (bar === ":||") {
+      if (bar === ":||" /* RepeatEnd */) {
         newMeasure.isRepeatEnd = true;
         if (!pendingStartBarline) {
           pendingStartBarline = "||:";
@@ -957,7 +957,7 @@ var _ChordGridParser = class _ChordGridParser {
           pendingVoltaEndMarker = true;
         } else {
           pendingVolta = t.volta;
-          pendingVoltaIsAfterRepeatEnd = bar === ":||";
+          pendingVoltaIsAfterRepeatEnd = bar === ":||" /* RepeatEnd */;
         }
       }
       lastExplicitMeasure = newMeasure;
@@ -979,6 +979,17 @@ var _ChordGridParser = class _ChordGridParser {
    * @param line - First line containing the time signature
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
+  toBarlineType(barline) {
+    switch (barline) {
+      case "|" /* Single */:
+      case "||" /* Double */:
+      case "||:" /* RepeatStart */:
+      case ":||" /* RepeatEnd */:
+        return barline;
+      default:
+        throw new Error(`Unsupported barline: ${barline}`);
+    }
+  }
   parseTimeSignature(line) {
     const m = /^\s*(\d+)\/(\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?/.exec(line);
     if (m) {
@@ -1054,9 +1065,9 @@ var _ChordGridParser = class _ChordGridParser {
     if (source.__isChordOnlyMode) {
       cloned.__isChordOnlyMode = true;
     }
-    if (barline === "||:") {
+    if (barline === "||:" /* RepeatStart */) {
       cloned.isRepeatStart = true;
-    } else if (barline === ":||") {
+    } else if (barline === ":||" /* RepeatEnd */) {
       cloned.isRepeatEnd = true;
     }
     if (repeatCount !== void 0) {
@@ -2767,7 +2778,7 @@ var MeasureRenderer = class {
       });
     }
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
-    const segmentNoteCursor = new Array(segments.length).fill(0);
+    const segmentNoteCursor = Array(segments.length).fill(0);
     const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
     const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + (idx > 0 && seg.leadingSpace ? 1 : 0), 0);
     const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
@@ -2799,7 +2810,7 @@ var MeasureRenderer = class {
       return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + 8;
     };
     const perSegmentRequired = segments.map((seg) => {
-      const reqs = (seg.beats || []).map((b) => requiredBeatWidth(b));
+      const reqs = (seg.beats || []).map(requiredBeatWidth);
       return reqs.reduce((a, b) => a + b, 0);
     });
     const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
@@ -2829,7 +2840,7 @@ var MeasureRenderer = class {
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
-    } else if (this.measure.barline === "||") {
+    } else if (this.measure.barline === "||" /* Double */) {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
     } else if (this.measure.barline || measureIndex === grid.measures.length - 1) {
       this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
@@ -3053,7 +3064,7 @@ var MeasureRenderer = class {
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
-    } else if (this.measure.barline === "||") {
+    } else if (this.measure.barline === "||" /* Double */) {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
     } else {
       this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
@@ -3115,7 +3126,7 @@ var MeasureRenderer = class {
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
-    } else if (this.measure.barline === "||") {
+    } else if (this.measure.barline === "||" /* Double */) {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
     } else {
       this.drawBar(svg, rightBarX, this.y, 120, measureIndex, "right");
@@ -3144,7 +3155,7 @@ var MeasureRenderer = class {
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
-    } else if (this.measure.barline === "||") {
+    } else if (this.measure.barline === "||" /* Double */) {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
     } else {
       this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
@@ -3182,7 +3193,7 @@ var MeasureRenderer = class {
       if (this.measure.repeatCount !== void 0) {
         this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
       }
-    } else if (this.measure.barline === "||") {
+    } else if (this.measure.barline === "||" /* Double */) {
       this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
     } else {
       this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, "right");
@@ -4460,24 +4471,26 @@ var PlaceAndSizeManager = class {
         return (_a = el.metadata) == null ? void 0 : _a.measureIndex;
       }).filter((idx) => idx !== void 0)
     );
-    return Array.from(measures).map((measureIndex) => {
-      const chords = this.getElementsByMeasure(measureIndex).filter((el) => {
+    return Array.from(measures).filter((measureIndex) => measureIndex !== void 0).map((measureIndex) => {
+      const chords = this.getElementsByMeasure(measureIndex).flatMap((el) => {
         var _a;
-        return el.type === "chord" && ((_a = el.metadata) == null ? void 0 : _a.chord);
-      }).map((el) => ({
-        symbol: el.metadata.chord.symbol,
-        textX: el.metadata.chord.textX,
-        textAnchor: el.metadata.chord.textAnchor,
-        bbox: el.bbox
-      }));
-      const stems = this.getElementsByMeasure(measureIndex).filter((el) => {
+        const chord = (_a = el.metadata) == null ? void 0 : _a.chord;
+        return el.type === "chord" && chord ? [{
+          symbol: chord.symbol,
+          textX: chord.textX,
+          textAnchor: chord.textAnchor,
+          bbox: el.bbox
+        }] : [];
+      });
+      const stems = this.getElementsByMeasure(measureIndex).flatMap((el) => {
         var _a;
-        return el.type === "stem" && ((_a = el.metadata) == null ? void 0 : _a.stem);
-      }).map((el) => ({
-        centerX: el.metadata.stem.centerX,
-        direction: el.metadata.stem.direction,
-        bbox: el.bbox
-      }));
+        const stem = (_a = el.metadata) == null ? void 0 : _a.stem;
+        return el.type === "stem" && stem ? [{
+          centerX: stem.centerX,
+          direction: stem.direction,
+          bbox: el.bbox
+        }] : [];
+      });
       const alignment = chords.length > 0 && stems.length > 0 ? {
         firstChordX: chords[0].textX,
         firstStemX: stems[0].centerX,
@@ -4921,6 +4934,9 @@ var ChordRenderer = class {
 };
 
 // src/renderer/StrumPatternRenderer.ts
+function isSubdivision(value) {
+  return value === 8 || value === 16 || value === 32 || value === 64;
+}
 var StrumPatternRenderer = class {
   /**
    * Detect the global subdivision (8, 16, 32, or 64) across the entire grid.
@@ -4958,7 +4974,7 @@ var StrumPatternRenderer = class {
               const base = groupBase[gid] || n.value;
               effectiveValue = Math.max(effectiveValue, base);
             }
-            if (effectiveValue > smallestValue) {
+            if (effectiveValue > smallestValue && isSubdivision(effectiveValue)) {
               smallestValue = effectiveValue;
             }
           }
@@ -4977,7 +4993,7 @@ var StrumPatternRenderer = class {
     let smallestValue = 4;
     for (const note of beat.notes) {
       if (note.isRest || note.tieEnd || note.tieFromVoid) continue;
-      if (note.value > smallestValue) {
+      if (note.value > smallestValue && isSubdivision(note.value)) {
         smallestValue = note.value;
       }
     }
@@ -5813,7 +5829,7 @@ var SVGRenderer = class {
     var _a;
     const lineStartPadding = (_a = svg.__dynamicLineStartPadding) != null ? _a : 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map((m) => m.lineIndex));
-    const lineOffsets = new Array(maxLineIndex + 1).fill(lineStartPadding);
+    const lineOffsets = Array(maxLineIndex + 1).fill(lineStartPadding);
     const measureXB = {};
     measurePositions.sort((a, b) => a.globalIndex - b.globalIndex).forEach((mp) => {
       const xStart = lineOffsets[mp.lineIndex];
@@ -6109,7 +6125,7 @@ var SVGRenderer = class {
       let thinLineX = rightBarX;
       let thickLineX = void 0;
       let dotsX = void 0;
-      if (measure.barline === ":||") {
+      if (measure.barline === ":||" /* RepeatEnd */) {
         barlineType = "repeat-end";
         barlineWidth = 10;
         visualStartX = rightBarX - 0.75;
@@ -6117,7 +6133,7 @@ var SVGRenderer = class {
         thinLineX = rightBarX;
         thickLineX = rightBarX + 6;
         dotsX = rightBarX - 12;
-      } else if (measure.barline === "||") {
+      } else if (measure.barline === "||" /* Double */) {
         barlineType = "final-double";
         barlineWidth = 10;
         visualStartX = rightBarX - 2.5;

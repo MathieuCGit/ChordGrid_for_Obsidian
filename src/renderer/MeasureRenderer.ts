@@ -1,6 +1,6 @@
 import { RestRenderer } from './RestRenderer';
 import { NoteRenderer, NotePosition } from './NoteRenderer';
-import { Beat, Measure, ChordGrid, ChordSegment, TimeSignature } from '../parser/type';
+import { Beat, Measure, ChordGrid, ChordSegment, TimeSignature, BarlineType } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
@@ -160,7 +160,7 @@ export class MeasureRenderer {
         // Render measure content (rhythm notation)
         const segments: ChordSegment[] = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
     // Track per-segment note index to map to analyzer references
-    const segmentNoteCursor: number[] = new Array(segments.length).fill(0);
+    const segmentNoteCursor = Array<number>(segments.length).fill(0);
 
         // Layout segments: allocate widths proportional to per-beat required width,
         // but insert a visible separator when a segment has leadingSpace=true.
@@ -204,7 +204,7 @@ export class MeasureRenderer {
         // iterate segments and place beats
         // Pre-compute required width sums per segment to distribute measure space fairly
         const perSegmentRequired: number[] = segments.map(seg => {
-            const reqs = (seg.beats || []).map(b => requiredBeatWidth(b as Beat));
+            const reqs = (seg.beats || []).map(requiredBeatWidth);
             return reqs.reduce((a, b) => a + b, 0);
         });
         const totalRequiredAcrossSegments = perSegmentRequired.reduce((a, b) => a + b, 0) || 1;
@@ -249,7 +249,7 @@ export class MeasureRenderer {
             if (this.measure.repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
-        } else if (this.measure.barline === '||') {
+        } else if (this.measure.barline === BarlineType.Double) {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
         } else if (this.measure.barline || measureIndex === (grid.measures.length - 1)) {
             this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
@@ -539,7 +539,7 @@ export class MeasureRenderer {
             if (this.measure.repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
-        } else if (this.measure.barline === '||') {
+        } else if (this.measure.barline === BarlineType.Double) {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
         } else {
             this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
@@ -625,7 +625,7 @@ export class MeasureRenderer {
             if (this.measure.repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
-        } else if (this.measure.barline === '||') {
+        } else if (this.measure.barline === BarlineType.Double) {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, 120);
         } else {
             this.drawBar(svg, rightBarX, this.y, 120, measureIndex, 'right');
@@ -665,7 +665,7 @@ export class MeasureRenderer {
             if (this.measure.repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
-        } else if (this.measure.barline === '||') {
+        } else if (this.measure.barline === BarlineType.Double) {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
         } else {
             this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');
@@ -715,7 +715,7 @@ export class MeasureRenderer {
             if (this.measure.repeatCount !== undefined) {
                 this.drawRepeatCount(svg, rightBarX, this.measure.repeatCount);
             }
-        } else if (this.measure.barline === '||') {
+        } else if (this.measure.barline === BarlineType.Double) {
             this.drawFinalDoubleBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT);
         } else {
             this.drawBar(svg, rightBarX, this.y, LAYOUT.MEASURE_HEIGHT, measureIndex, 'right');

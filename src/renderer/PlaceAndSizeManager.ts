@@ -920,37 +920,41 @@ export class PlaceAndSizeManager {
                 .filter(idx => idx !== undefined)
         );
 
-        return Array.from(measures).map(measureIndex => {
-            const chords = this.getElementsByMeasure(measureIndex!)
-                .filter(el => el.type === 'chord' && el.metadata?.chord)
-                .map(el => ({
-                    symbol: el.metadata!.chord!.symbol,
-                    textX: el.metadata!.chord!.textX,
-                    textAnchor: el.metadata!.chord!.textAnchor,
-                    bbox: el.bbox
-                }));
+        return Array.from(measures)
+            .filter((measureIndex): measureIndex is number => measureIndex !== undefined)
+            .map(measureIndex => {
+                const chords = this.getElementsByMeasure(measureIndex).flatMap(el => {
+                    const chord = el.metadata?.chord;
+                    return el.type === 'chord' && chord ? [{
+                        symbol: chord.symbol,
+                        textX: chord.textX,
+                        textAnchor: chord.textAnchor,
+                        bbox: el.bbox
+                    }] : [];
+                });
 
-            const stems = this.getElementsByMeasure(measureIndex!)
-                .filter(el => el.type === 'stem' && el.metadata?.stem)
-                .map(el => ({
-                    centerX: el.metadata!.stem!.centerX,
-                    direction: el.metadata!.stem!.direction,
-                    bbox: el.bbox
-                }));
+                const stems = this.getElementsByMeasure(measureIndex).flatMap(el => {
+                    const stem = el.metadata?.stem;
+                    return el.type === 'stem' && stem ? [{
+                        centerX: stem.centerX,
+                        direction: stem.direction,
+                        bbox: el.bbox
+                    }] : [];
+                });
 
-            const alignment = (chords.length > 0 && stems.length > 0) ? {
-                firstChordX: chords[0].textX,
-                firstStemX: stems[0].centerX,
-                difference: chords[0].textX - stems[0].centerX
-            } : null;
+                const alignment = (chords.length > 0 && stems.length > 0) ? {
+                    firstChordX: chords[0].textX,
+                    firstStemX: stems[0].centerX,
+                    difference: chords[0].textX - stems[0].centerX
+                } : null;
 
-            return {
-                measureIndex: measureIndex!,
-                chords,
-                stems,
-                alignment
-            };
-        }).sort((a, b) => a.measureIndex - b.measureIndex);
+                return {
+                    measureIndex,
+                    chords,
+                    stems,
+                    alignment
+                };
+            }).sort((a, b) => a.measureIndex - b.measureIndex);
     }
 
 }

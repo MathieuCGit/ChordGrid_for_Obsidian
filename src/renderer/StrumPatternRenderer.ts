@@ -55,6 +55,10 @@ interface PatternConfig {
     language?: 'en' | 'fr'; // For fingerstyle translation
 }
 
+function isSubdivision(value: number): value is 8 | 16 | 32 | 64 {
+    return value === 8 || value === 16 || value === 32 || value === 64;
+}
+
 /**
  * Main class for strum pattern logic
  */
@@ -71,7 +75,7 @@ export class StrumPatternRenderer {
      * @returns 8, 16, 32, or 64 (subdivision unit)
      */
     public static detectGlobalSubdivision(grid: ChordGrid): 8 | 16 | 32 | 64 {
-        let smallestValue = 8; // Default to eighth notes
+        let smallestValue: 8 | 16 | 32 | 64 = 8; // Default to eighth notes
         
         for (const measure of grid.measures) {
             // Build map of tuplet groups to determine their baseLen
@@ -108,8 +112,8 @@ export class StrumPatternRenderer {
                         }
                         
                         // Track the smallest note value (largest number)
-                        if (effectiveValue > smallestValue) {
-                            smallestValue = effectiveValue as 8 | 16 | 32 | 64;
+                        if (effectiveValue > smallestValue && isSubdivision(effectiveValue)) {
+                            smallestValue = effectiveValue;
                         }
                     }
                 }
@@ -117,7 +121,7 @@ export class StrumPatternRenderer {
         }
         
         // Return the detected subdivision (8, 16, 32, or 64)
-        return smallestValue as 8 | 16 | 32 | 64;
+        return smallestValue;
     }
 
     /**
@@ -127,18 +131,18 @@ export class StrumPatternRenderer {
      * @returns 4, 8, 16, 32, or 64 (subdivision unit for this beat)
      */
     private static detectBeatSubdivision(beat: Beat): 4 | 8 | 16 | 32 | 64 {
-        let smallestValue = 4; // Default to quarter notes
+        let smallestValue: 4 | 8 | 16 | 32 | 64 = 4; // Default to quarter notes
         
         for (const note of beat.notes) {
             // Skip non-attacks
             if (note.isRest || note.tieEnd || note.tieFromVoid) continue;
             
-            if (note.value > smallestValue) {
-                smallestValue = note.value as 4 | 8 | 16 | 32 | 64;
+            if (note.value > smallestValue && isSubdivision(note.value)) {
+                smallestValue = note.value;
             }
         }
         
-        return smallestValue as 4 | 8 | 16 | 32 | 64;
+        return smallestValue;
     }
     
     /**

@@ -43,7 +43,7 @@ export class Measure implements IMeasure {
   constructor(data: Partial<IMeasure> = {}) {
     this.beats = (data.beats || []).map(b => new Beat(b.notes, b.chord));
     this.chord = data.chord || '';
-    this.barline = data.barline || (BarlineType.Single as BarlineType);
+    this.barline = data.barline || BarlineType.Single;
     this.isLineBreak = Boolean(data.isLineBreak || data.lineBreakAfter);
     this.chordSegments = data.chordSegments || [];
     this.source = data.source;

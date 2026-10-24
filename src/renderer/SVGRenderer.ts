@@ -24,7 +24,7 @@
  * @see {@link TieManager} for managing ties between measures
  */
 
-import { ChordGrid, Measure, Beat as ParsedBeat, ChordSegment, TimeSignature, NoteElement } from '../parser/type';
+import { ChordGrid, Measure, Beat as ParsedBeat, ChordSegment, TimeSignature, NoteElement, BarlineType } from '../parser/type';
 import { MeasureRenderer } from './MeasureRenderer';
 import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
@@ -555,14 +555,14 @@ export class SVGRenderer {
             notes
           };
         });
-        const parsedMeasure = {
+        const parsedMeasure: ParsedMeasure = {
           segments,
           timeSignature: m.timeSignature || grid.timeSignature,
           barline: m.barline,
           isLineBreak: m.isLineBreak,
           source: m.source || ''
         };
-        const analyzed = analyzer.analyze(parsedMeasure as ParsedMeasure);
+        const analyzed = analyzer.analyze(parsedMeasure);
         return analyzed;
       });
 
@@ -799,7 +799,7 @@ export class SVGRenderer {
   // Use same dynamic padding as measure start to align tie rendering
   const lineStartPadding = (svg as SVGWithLayoutPadding).__dynamicLineStartPadding ?? 40;
     const maxLineIndex = Math.max(0, ...measurePositions.map(m => m.lineIndex));
-    const lineOffsets: number[] = new Array(maxLineIndex + 1).fill(lineStartPadding);
+    const lineOffsets = Array<number>(maxLineIndex + 1).fill(lineStartPadding);
     const measureXB: Record<number, { xStart: number; xEnd: number; y: number }> = {};
     measurePositions
       .sort((a, b) => a.globalIndex - b.globalIndex)
@@ -1232,7 +1232,7 @@ export class SVGRenderer {
       let thickLineX: number | undefined = undefined;
       let dotsX: number | undefined = undefined;
       
-      if (measure.barline === ':||') {
+      if (measure.barline === BarlineType.RepeatEnd) {
         // :|| - Thin bar at rightBarX (stroke-width: 1.5), thick bar at rightBarX+6 (stroke-width: 3)
         // Visual extent: rightBarX - 0.75 (left edge of thin bar) to rightBarX + 6 + 1.5 (right edge of thick bar)
         barlineType = 'repeat-end';
@@ -1242,7 +1242,7 @@ export class SVGRenderer {
         thinLineX = rightBarX;
         thickLineX = rightBarX + 6;
         dotsX = rightBarX - 12; // Dots are 12px to the left
-      } else if (measure.barline === '||') {
+      } else if (measure.barline === BarlineType.Double) {
         // || - Two thin lines at rightBarX and rightBarX+6 (both stroke-width: 5)
         // Visual extent: rightBarX - 2.5 to rightBarX + 6 + 2.5
         barlineType = 'final-double';
@@ -1319,8 +1319,8 @@ export class SVGRenderer {
           const startX = startBarline?.metadata?.visualEndX
             ?? (startBarline ? startBarline.bbox.x + startBarline.bbox.width : undefined)
             ?? ((i > 0 && measurePositions[i - 1].lineIndex === startMP.lineIndex)
-              ? measurePositions[i - 1].x! + measurePositions[i - 1].width
-              : startMP.x!);
+              ? measurePositions[i - 1].x + measurePositions[i - 1].width
+              : startMP.x);
           
           const y = startMP.y;
           const textSize = 14;
