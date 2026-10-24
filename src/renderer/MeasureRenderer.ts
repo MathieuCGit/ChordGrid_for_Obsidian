@@ -1,6 +1,6 @@
 import { RestRenderer } from './RestRenderer';
 import { NoteRenderer, NotePosition } from './NoteRenderer';
-import { Beat, Measure, NoteElement, ChordGrid, ChordSegment, TimeSignature } from '../parser/type';
+import { Beat, Measure, ChordGrid, ChordSegment, TimeSignature } from '../parser/type';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { TimeSignatureRenderer } from './TimeSignatureRenderer';
 import { 
@@ -10,8 +10,6 @@ import {
     NOTE_SPACING, 
     SEGMENT_WIDTH,
     VISUAL,
-    POSITIONING,
-    TYPOGRAPHY
 } from './constants';
 
 /**
@@ -166,7 +164,6 @@ export class MeasureRenderer {
 
         // Layout segments: allocate widths proportional to per-beat required width,
         // but insert a visible separator when a segment has leadingSpace=true.
-        const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
         const separatorWidth = LAYOUT.SEPARATOR_WIDTH; // px gap when source had a space
         const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + ((idx > 0 && seg.leadingSpace) ? 1 : 0), 0);
 
@@ -221,7 +218,6 @@ export class MeasureRenderer {
                 currentX += separatorWidth;
             }
 
-            const segBeatCount = segment.beats.length || 1;
             // Determine required width per beat for this segment
             const reqPerBeat = segment.beats.map(b => requiredBeatWidth(b));
             const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
@@ -236,7 +232,7 @@ export class MeasureRenderer {
             segment.beats.forEach((beat: Beat, beatIndex: number) => {
                 const beatWidth = (reqPerBeat[beatIndex] / reqSum) * beatsWidth;
                 const beatX = beatCursorX;
-                const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
+                this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
 
                 // NOTE: Chord rendering is now handled by ChordRenderer after all measures are drawn
                 // This ensures proper alignment with stem metadata

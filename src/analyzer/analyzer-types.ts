@@ -6,7 +6,7 @@
  * the analyzed musical structure after syntactic parsing but before rendering.
  */
 
-import { NoteValue, NoteElement, BarlineType, TimeSignature } from '../parser/type';
+import { NoteValue, BarlineType, TimeSignature } from '../parser/type';
 
 /**
  * Reference to a specific note within a measure

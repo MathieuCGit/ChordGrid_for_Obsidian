@@ -20,7 +20,7 @@
  * @see {@link FINGER_PATTERNS} in constants.ts for pattern definitions
  */
 
-import { ChordGrid, NoteElement, Beat } from '../parser/type';
+import { ChordGrid, Beat } from '../parser/type';
 import { FINGER_PATTERNS } from './constants';
 
 /**

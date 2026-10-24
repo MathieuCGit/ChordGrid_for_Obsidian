@@ -10,7 +10,7 @@
  */
 
 import { Measure, ChordSegment } from '../parser/type';
-import { PlaceAndSizeManager, ChordMetadata } from './PlaceAndSizeManager';
+import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 import { SVG_NS, TYPOGRAPHY, POSITIONING, LAYOUT, NOTATION } from './constants';
 
 /**
@@ -36,18 +36,6 @@ export interface ChordRenderOptions {
     fontSize?: number;
     /** Vertical offset above the staff */
     verticalOffset?: number;
-}
-
-/**
- * Rendering options for chords in chord-only mode.
- */
-interface ChordOnlyRenderOptions {
-    /** Measure position */
-    measureX: number;
-    measureY: number;
-    measureWidth: number;
-    /** Global measure index */
-    measureIndex: number;
 }
 
 /**

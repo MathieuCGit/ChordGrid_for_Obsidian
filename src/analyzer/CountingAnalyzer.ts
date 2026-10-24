@@ -182,9 +182,7 @@ export class CountingAnalyzer {
         const smallestValue = Math.max(...beat.notes.map(n => n.value));
         const useAndNotation = smallestValue === 8 && beat.notes.every(n => n.value <= 8 && !n.isRest);
         
-        beat.notes.forEach((note, noteIndex) => {
-          const isFirstNoteOfBeat = noteIndex === 0;
-          
+        beat.notes.forEach(note => {
           // Calculate which metric unit this note falls into
           const metricNumber = Math.floor(measureSubdivisionPosition / subdivisionsPerMetricUnit) + 1;
           

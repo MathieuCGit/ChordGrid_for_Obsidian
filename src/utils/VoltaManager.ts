@@ -252,13 +252,11 @@ export class VoltaManager {
               svg.appendChild(voltaText);
               
               // Measure REAL text dimensions for volta-bracket height calculation
-              let realTextWidth = voltaInfo.text.length * (textSize * 0.6); // fallback estimation
               let realTextHeight = textSize;
               try {
                 const textBBox = voltaText.getBBox();
-                realTextWidth = textBBox.width;
                 realTextHeight = textBBox.height;
-              } catch (e) {
+              } catch {
                 // getBBox() may fail if SVG not attached to DOM yet, use estimation
               }
               

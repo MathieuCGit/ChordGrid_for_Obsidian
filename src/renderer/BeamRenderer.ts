@@ -9,7 +9,7 @@
  * - Adapting position according to stem direction
  */
 import { SVG_NS, NOTATION, VISUAL } from './constants';
-import { BeamGroup, AnalyzedMeasure } from '../analyzer/analyzer-types';
+import { AnalyzedMeasure } from '../analyzer/analyzer-types';
 
 export interface NotePositionRef {
   x: number;

@@ -1,4 +1,4 @@
-import { Measure as IMeasure, Beat as IBeat, BarlineType, ChordSegment } from '../parser/type';
+import { Measure as IMeasure, BarlineType, ChordSegment } from '../parser/type';
 import { Beat } from './Beat';
 
 /**

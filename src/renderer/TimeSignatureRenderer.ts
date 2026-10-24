@@ -12,7 +12,7 @@
  * standard music notation fonts (similar to Wikimedia Commons music notation).
  */
 
-import { SVG_NS, TYPOGRAPHY, NOTATION, LAYOUT } from './constants';
+import { SVG_NS, LAYOUT } from './constants';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
 
 /**

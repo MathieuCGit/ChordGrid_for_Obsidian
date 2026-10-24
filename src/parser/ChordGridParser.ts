@@ -425,7 +425,6 @@ export class ChordGridParser {
         
         // Find the end of this volta
         let endIndex = i;
-        let foundExplicitEnd = false;
         
         // Always search for explicit end marker, even for open voltas
         for (let j = i + 1; j < allMeasures.length; j++) {
@@ -434,7 +433,6 @@ export class ChordGridParser {
           // Check for explicit end marker (|.) - has highest priority
           if (nextMeasure.voltaEndMarker) {
             endIndex = j;
-            foundExplicitEnd = true;
             delete nextMeasure.voltaEndMarker; // Clean up marker
             break;
           }
@@ -790,7 +788,6 @@ export class ChordGridParser {
     }
 
     // Helper: parse a single measure text like "Am[88 4 4 88]"
-    const measureRe = /^\s*([^\x5b]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
 
     // A token's content may contain multiple chord[rhythm] groups (e.g. "Am[88 4] G[4 88]").
@@ -2025,7 +2022,6 @@ class BeamAndTieAnalyzer {
   // ...existing code...
 }
 import { Transposer } from '../utils/Transposer';
-import { CountingAnalyzer } from '../analyzer/CountingAnalyzer';
 import {
   NoteValue,
   NoteElement,

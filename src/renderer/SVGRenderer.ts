@@ -32,14 +32,11 @@ import {
   LAYOUT, 
   NOTE_SPACING, 
   SEGMENT_WIDTH,
-  SVG_VIEWPORT,
   TYPOGRAPHY,
-  NOTATION,
-  FINGER_PATTERNS
+  NOTATION
 } from './constants';
 import { TieManager } from '../utils/TieManager';
 import { VoltaManager } from '../utils/VoltaManager';
-import { ChordGridParser } from '../parser/ChordGridParser';
 import { MusicAnalyzer } from '../analyzer/MusicAnalyzer';
 import { drawBeams } from './BeamRenderer';
 import { PlaceAndSizeManager } from './PlaceAndSizeManager';
@@ -375,8 +372,6 @@ export class SVGRenderer {
   private createSVG(grid: ChordGrid, stemsDirection: 'up' | 'down', options: RenderOptions): SVGElement {
     const measuresPerLine = LAYOUT.DEFAULT_MEASURES_PER_LINE;
     const baseMeasureWidth = LAYOUT.BASE_MEASURE_WIDTH; // increased fallback minimum width per measure for readability
-    const measureHeight = LAYOUT.MEASURE_HEIGHT;
-
     // Pre-compute dynamic widths per measure based on rhythmic density
     // (Time signature width factored into initial padding later)
     const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
@@ -385,42 +380,6 @@ export class SVGRenderer {
     const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
     const baseLeftPadding = LAYOUT.BASE_LEFT_PADDING;
     const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + LAYOUT.TIME_SIG_MARGIN; // minimal margin after metric
-    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
-    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
-    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX; // for diamond
-    // Minimum horizontal spacing between consecutive note centers based on rhythmic subdivision.
-    // Increased values to improve legibility of dense patterns (user request).
-    const valueMinSpacing = (v: number) => {
-      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;   // was 12
-      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;   // was 14
-      if (v >= 16) return NOTE_SPACING.SIXTEENTH;   // was 20 (16816 needs more air)
-      if (v >= 8)  return NOTE_SPACING.EIGHTH;   // was 20
-      return NOTE_SPACING.QUARTER_AND_LONGER;                // was 16 for quarters & longer
-    };
-    const requiredBeatWidth = (beat: ParsedBeat) => {
-      const noteCount = beat?.notes?.length || 0;
-      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax; // increased minimal single-note width
-      const spacing = Math.max(
-        ...beat.notes.map(n => {
-          const base = valueMinSpacing(n.value);
-          return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base; // give short rests a bit more room when estimating width
-        })
-      );
-      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + LAYOUT.SEGMENT_END_PADDING; // +8 extra breathing room
-    };
-    const requiredMeasureWidth = (measure: Measure) => {
-      const segments: ChordSegment[] = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
-      let width = 0;
-      segments.forEach((seg, idx) => {
-        if (idx > 0 && seg.leadingSpace) width += separatorWidth;
-        const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + requiredBeatWidth(b), 0);
-        width += beatsWidth + innerPaddingPerSegment; // include inner padding for segment
-      });
-      // Ensure a sensible minimum
-      return Math.max(baseMeasureWidth, Math.ceil(width));
-    };
-    const dynamicMeasureWidths = grid.measures.map(m => this.calculateMeasureWidth(m));
-
     // Build linear positions honoring line breaks and available line width budget
     // In forced mode (measures-per-line), calculate available width to ensure everything fits
     let maxLineWidth: number;
@@ -469,8 +428,6 @@ export class SVGRenderer {
         });
     });
 
-    const lines = renderLines.length;
-    
     // Check if any line has a repeat count on its last measure (needs extra space)
     let maxRepeatCountWidth = 0;
     renderLines.forEach(line => {
@@ -490,7 +447,6 @@ export class SVGRenderer {
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
     
     // Calculate additional space needed for counting and fingerstyle annotations
-    const isStemDown = options.stemsDirection === 'down';
     let additionalBottomSpace = 0;
     
     // Add space for annotations below staff (stem-up mode) or reserve equivalent space
@@ -571,7 +527,6 @@ export class SVGRenderer {
     let analyzedMeasures: AnalyzedMeasure[] = [];
     let level1BeamSet: Set<string> | undefined;
     try {
-      const parser = new ChordGridParser();
       const analyzer = new MusicAnalyzer();
       // rebuild text source from grid? we keep existing grid measures
       analyzedMeasures = grid.measures.map(m => {
@@ -622,14 +577,11 @@ export class SVGRenderer {
           }
         });
       });
-    } catch (e) {
+    } catch {
       analyzedMeasures = [];
     }
 
-  // Use dynamic padding instead of fixed 40 to prevent overlap with multi-digit time signatures
-  // const lineAccumulated: number[] = new Array(lines).fill(dynamicLineStartPadding);
-    
-    // ========== LINE-SCOPED ARCHITECTURE ==========
+  // ========== LINE-SCOPED ARCHITECTURE ==========
     // We treat each line as a closed universe for collisions
     
     let globalMeasureIndex = 0;
@@ -756,10 +708,6 @@ export class SVGRenderer {
         }
         
         // Filter notes from the current line for the following methods
-        const currentLineNotes = notePositions.filter(n => 
-            lineMeasurePositions.some(mp => mp.globalIndex === n.measureIndex)
-        );
-
         const allowedMeasureIndices = new Set(lineMeasurePositions.map(mp => mp.globalIndex));
         
         // Draw Ties (Current line only) - BEFORE pick-strokes
@@ -796,10 +744,6 @@ export class SVGRenderer {
     // This allows voltas to span multiple lines correctly
     voltaManager.renderVoltas(svg, placeAndSizeManager);
 
-    // Global bounds from PlaceAndSizeManager (note: currently contains only the last line)
-    // We use the width/height calculated by layout instead, which covers all lines correctly
-    const bounds = placeAndSizeManager.getGlobalBounds();
-    
     return svg;
   }
 

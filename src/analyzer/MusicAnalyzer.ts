@@ -21,15 +21,13 @@
  * ```
  */
 
-import { NoteValue, GroupingMode, TimeSignature } from '../parser/type';
+import { NoteValue, TimeSignature } from '../parser/type';
 import {
   ParsedMeasure,
-  ParsedSegment,
   ParsedNote,
   AnalyzedMeasure,
   BeamGroup,
-  NoteWithPosition,
-  NoteReference
+  NoteWithPosition
 } from './analyzer-types';
 
 export class MusicAnalyzer {

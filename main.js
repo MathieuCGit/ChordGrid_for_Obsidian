@@ -394,12 +394,10 @@ var _ChordGridParser = class _ChordGridParser {
       if (measure.voltaStart) {
         const voltaInfo = measure.voltaStart;
         let endIndex = i;
-        let foundExplicitEnd = false;
         for (let j = i + 1; j < allMeasures.length; j++) {
           const nextMeasure = allMeasures[j];
           if (nextMeasure.voltaEndMarker) {
             endIndex = j;
-            foundExplicitEnd = true;
             delete nextMeasure.voltaEndMarker;
             break;
           }
@@ -645,7 +643,6 @@ var _ChordGridParser = class _ChordGridParser {
     if (currentText.length > 0 && currentText.trim().length > 0) {
       tokens.push({ bar: "|", content: currentText });
     }
-    const measureRe = /^\s*([^\x5b]+?)?\s*(?:\[([^\]]*)\])?\s*$/;
     const analyzer = new BeamAndTieAnalyzer();
     const segmentRe = /(\s*)([^\x5b\x5d\s]+)?\s*\[([^\]]*)\]/g;
     let lastExplicitMeasure = lastExplicitMeasureFromPreviousLine || null;
@@ -2771,7 +2768,6 @@ var MeasureRenderer = class {
     }
     const segments = this.measure.chordSegments || [{ chord: this.measure.chord, beats: this.measure.beats }];
     const segmentNoteCursor = new Array(segments.length).fill(0);
-    const totalBeats = segments.reduce((s, seg) => s + (seg.beats ? seg.beats.length : 0), 0) || 1;
     const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
     const separatorsCount = segments.reduce((cnt, seg, idx) => cnt + (idx > 0 && seg.leadingSpace ? 1 : 0), 0);
     const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
@@ -2813,7 +2809,6 @@ var MeasureRenderer = class {
       if (segmentIndex > 0 && segment.leadingSpace) {
         currentX += separatorWidth;
       }
-      const segBeatCount = segment.beats.length || 1;
       const reqPerBeat = segment.beats.map((b) => requiredBeatWidth(b));
       const reqSum = reqPerBeat.reduce((a, b) => a + b, 0) || 1;
       const segmentBeatsWidth = availableForBeatCells * (perSegmentRequired[segmentIndex] / totalRequiredAcrossSegments);
@@ -2824,7 +2819,7 @@ var MeasureRenderer = class {
       segment.beats.forEach((beat, beatIndex) => {
         const beatWidth = reqPerBeat[beatIndex] / reqSum * beatsWidth;
         const beatX = beatCursorX;
-        const firstNoteX = this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
+        this.drawRhythm(svg, beat, beatX, staffLineY, beatWidth, measureIndex, segmentIndex, beatIndex, notePositions, segmentNoteCursor);
         beatCursorX += beatWidth;
       });
       currentX += segmentWidth;
@@ -3471,11 +3466,9 @@ var VoltaManager = class {
               voltaText.setAttribute("data-volta", "text");
               voltaText.textContent = voltaInfo.text;
               svg.appendChild(voltaText);
-              let realTextWidth = voltaInfo.text.length * (textSize * 0.6);
               let realTextHeight = textSize;
               try {
                 const textBBox = voltaText.getBBox();
-                realTextWidth = textBBox.width;
                 realTextHeight = textBBox.height;
               } catch (e) {
               }
@@ -5523,46 +5516,12 @@ var SVGRenderer = class {
   createSVG(grid, stemsDirection, options) {
     const measuresPerLine = LAYOUT.DEFAULT_MEASURES_PER_LINE;
     const baseMeasureWidth = LAYOUT.BASE_MEASURE_WIDTH;
-    const measureHeight = LAYOUT.MEASURE_HEIGHT;
     const timeSignatureString = `${grid.timeSignature.numerator}/${grid.timeSignature.denominator}`;
     const timeSigFontSize = TYPOGRAPHY.TIME_SIG_NUMERATOR_SIZE;
     const timeSigAvgCharFactor = TYPOGRAPHY.CHAR_WIDTH_RATIO;
     const timeSigWidthEstimate = Math.ceil(timeSignatureString.length * timeSigFontSize * timeSigAvgCharFactor);
     const baseLeftPadding = LAYOUT.BASE_LEFT_PADDING;
     const dynamicLineStartPadding = baseLeftPadding + timeSigWidthEstimate + LAYOUT.TIME_SIG_MARGIN;
-    const separatorWidth = LAYOUT.SEPARATOR_WIDTH;
-    const innerPaddingPerSegment = LAYOUT.INNER_PADDING_PER_SEGMENT;
-    const headHalfMax = SEGMENT_WIDTH.HEAD_HALF_MAX;
-    const valueMinSpacing = (v) => {
-      if (v >= 64) return NOTE_SPACING.SIXTY_FOURTH;
-      if (v >= 32) return NOTE_SPACING.THIRTY_SECOND;
-      if (v >= 16) return NOTE_SPACING.SIXTEENTH;
-      if (v >= 8) return NOTE_SPACING.EIGHTH;
-      return NOTE_SPACING.QUARTER_AND_LONGER;
-    };
-    const requiredBeatWidth = (beat) => {
-      var _a;
-      const noteCount = ((_a = beat == null ? void 0 : beat.notes) == null ? void 0 : _a.length) || 0;
-      if (noteCount <= 1) return SEGMENT_WIDTH.SINGLE_NOTE_BASE + LAYOUT.BASE_LEFT_PADDING + headHalfMax;
-      const spacing = Math.max(
-        ...beat.notes.map((n) => {
-          const base = valueMinSpacing(n.value);
-          return n.isRest ? base + NOTE_SPACING.REST_EXTRA_SPACING : base;
-        })
-      );
-      return LAYOUT.BASE_LEFT_PADDING + LAYOUT.BASE_LEFT_PADDING + headHalfMax + (noteCount - 1) * spacing + LAYOUT.SEGMENT_END_PADDING;
-    };
-    const requiredMeasureWidth = (measure) => {
-      const segments = measure.chordSegments || [{ chord: measure.chord, beats: measure.beats }];
-      let width2 = 0;
-      segments.forEach((seg, idx) => {
-        if (idx > 0 && seg.leadingSpace) width2 += separatorWidth;
-        const beatsWidth = (seg.beats || []).reduce((acc, b) => acc + requiredBeatWidth(b), 0);
-        width2 += beatsWidth + innerPaddingPerSegment;
-      });
-      return Math.max(baseMeasureWidth, Math.ceil(width2));
-    };
-    const dynamicMeasureWidths = grid.measures.map((m) => this.calculateMeasureWidth(m));
     let maxLineWidth;
     if (options.measuresPerLine) {
       const targetSVGWidth = 1e3;
@@ -5596,7 +5555,6 @@ var SVGRenderer = class {
         globalIndex++;
       });
     });
-    const lines = renderLines.length;
     let maxRepeatCountWidth = 0;
     renderLines.forEach((line) => {
       const lastMeasure = line.measures[line.measures.length - 1];
@@ -5609,7 +5567,6 @@ var SVGRenderer = class {
     });
     const width = Math.max(...renderLines.map((l) => l.width + dynamicLineStartPadding), baseMeasureWidth + dynamicLineStartPadding) + LAYOUT.RIGHT_SVG_MARGIN + maxRepeatCountWidth;
     const layoutBottom = renderLines.reduce((max, l) => Math.max(max, l.startY + l.height), 0);
-    const isStemDown = options.stemsDirection === "down";
     let additionalBottomSpace = 0;
     if (options.countingMode) {
       additionalBottomSpace += NOTATION.COUNTING_FONT_SIZE_TALL + NOTATION.COUNTING_MARGIN;
@@ -5656,7 +5613,6 @@ var SVGRenderer = class {
     let analyzedMeasures = [];
     let level1BeamSet;
     try {
-      const parser = new ChordGridParser();
       const analyzer = new MusicAnalyzer();
       analyzedMeasures = grid.measures.map((m) => {
         const segments = (m.chordSegments || [{ chord: m.chord, beats: m.beats }]).map((seg) => {
@@ -5735,12 +5691,12 @@ var SVGRenderer = class {
       this.registerVoltaText(lineMeasurePositions, placeAndSizeManager);
       lineMeasurePositions.forEach((mp) => {
         const measure = mp.measure;
-        const measureHeight2 = 120;
+        const measureHeight = 120;
         placeAndSizeManager.registerElement("measure", {
           x: mp.x,
           y: mp.y,
           width: mp.width,
-          height: measureHeight2
+          height: measureHeight
         }, 0, {
           measureIndex: mp.globalIndex,
           lineIndex: mp.lineIndex,
@@ -5748,7 +5704,7 @@ var SVGRenderer = class {
           visualStartX: mp.x,
           visualEndX: mp.x + mp.width,
           visualTopY: mp.y,
-          visualBottomY: mp.y + measureHeight2,
+          visualBottomY: mp.y + measureHeight,
           timeSignature: measure.timeSignature ? `${measure.timeSignature.numerator}/${measure.timeSignature.denominator}` : void 0,
           isLineStart: measure.__isLineStart,
           isRepeatStart: measure.isRepeatStart,
@@ -5793,9 +5749,6 @@ var SVGRenderer = class {
       } else if (options.measureNumbering && options.measureNumbering.interval === 0) {
         this.drawMeasureNumber(svg, lineMeasurePositions[0], options.measureNumbering.startNumber + lineMeasurePositions[0].globalIndex);
       }
-      const currentLineNotes = notePositions.filter(
-        (n) => lineMeasurePositions.some((mp) => mp.globalIndex === n.measureIndex)
-      );
       const allowedMeasureIndices = new Set(lineMeasurePositions.map((mp) => mp.globalIndex));
       this.detectAndDrawTies(svg, notePositions, width, tieManager, measurePositions, placeAndSizeManager, stemsDirection, allowedMeasureIndices);
       this.drawPickStrokes(svg, grid, notePositions, placeAndSizeManager, stemsDirection, options, allowedMeasureIndices);
@@ -5817,7 +5770,6 @@ var SVGRenderer = class {
       voltaManager.addBarlines(lineBarlines);
     });
     voltaManager.renderVoltas(svg, placeAndSizeManager);
-    const bounds = placeAndSizeManager.getGlobalBounds();
     return svg;
   }
   /**
@@ -6789,8 +6741,7 @@ var CountingAnalyzer = class {
       segment.beats.forEach((beat) => {
         const smallestValue = Math.max(...beat.notes.map((n) => n.value));
         const useAndNotation = smallestValue === 8 && beat.notes.every((n) => n.value <= 8 && !n.isRest);
-        beat.notes.forEach((note, noteIndex) => {
-          const isFirstNoteOfBeat = noteIndex === 0;
+        beat.notes.forEach((note) => {
           const metricNumber = Math.floor(measureSubdivisionPosition / subdivisionsPerMetricUnit) + 1;
           const isOnMetricBoundary = measureSubdivisionPosition % subdivisionsPerMetricUnit === 0;
           const positionInMetricUnit = measureSubdivisionPosition - currentMetricUnitSubdivisionStart + 1;
