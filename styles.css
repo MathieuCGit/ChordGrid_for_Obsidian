@@ -48,19 +48,19 @@
    - Monospace font for code/data display
    - Scrollable with max height limit
    - Pre-formatted text with word wrapping */
-.chord-grid-debug-content {
+.chord-grid-debug > pre.chord-grid-debug-content {
   font-family: var(--font-monospace);
   font-size: 11px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
-  margin: 0 !important;
-  padding: 12px !important;
-  background: var(--code-background) !important;
-  color: var(--code-normal) !important;
-  max-height: 400px !important;
-  overflow-y: auto !important;
-  border-radius: 0 0 6px 6px !important;
+  margin: 0;
+  padding: 12px;
+  background: var(--code-background);
+  color: var(--code-normal);
+  max-height: 400px;
+  overflow-y: auto;
+  border-radius: 0 0 6px 6px;
 }
 
 /* ==========================================================================

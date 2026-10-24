@@ -980,15 +980,10 @@ var _ChordGridParser = class _ChordGridParser {
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   toBarlineType(barline) {
-    switch (barline) {
-      case "|" /* Single */:
-      case "||" /* Double */:
-      case "||:" /* RepeatStart */:
-      case ":||" /* RepeatEnd */:
-        return barline;
-      default:
-        throw new Error(`Unsupported barline: ${barline}`);
+    if (barline === "|" /* Single */ || barline === "||" /* Double */ || barline === "||:" /* RepeatStart */ || barline === ":||" /* RepeatEnd */) {
+      return barline;
     }
+    throw new Error(`Unsupported barline: ${barline}`);
   }
   parseTimeSignature(line) {
     const m = /^\s*(\d+)\/(\d+)(?:\s+(auto-beams?|binary|ternary|auto|noauto))?/.exec(line);

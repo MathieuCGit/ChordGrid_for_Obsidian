@@ -1,6 +1,6 @@
-# 🎵 Chord Grid for Obsidian
+# Chord Grid With Rhythmic Notation
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
+[![Version](https://img.shields.io/badge/version-2.3.1-blue.svg)](https://github.com/MathieuCGit/ChordGrid_for_Obsidian/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-601%20passing-brightgreen.svg)](#)
 

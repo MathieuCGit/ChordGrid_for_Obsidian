@@ -1329,15 +1329,16 @@ export class ChordGridParser {
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   private toBarlineType(barline: string): BarlineType {
-    switch (barline) {
-      case BarlineType.Single:
-      case BarlineType.Double:
-      case BarlineType.RepeatStart:
-      case BarlineType.RepeatEnd:
-        return barline;
-      default:
-        throw new Error(`Unsupported barline: ${barline}`);
+    if (
+      barline === BarlineType.Single ||
+      barline === BarlineType.Double ||
+      barline === BarlineType.RepeatStart ||
+      barline === BarlineType.RepeatEnd
+    ) {
+      return barline;
     }
+
+    throw new Error(`Unsupported barline: ${barline}`);
   }
 
   private parseTimeSignature(line: string): TimeSignature {

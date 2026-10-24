@@ -30,20 +30,9 @@ export class DebugLogger {
     const summary = this.logContainer.createEl('summary');
     summary.setText('🐛 Debug Logs');
     
-    const logContent = this.logContainer.createEl('pre', { 
+    this.logContainer.createEl('pre', {
       cls: 'chord-grid-debug-content'
     });
-    logContent.style.cssText = `
-      background: #1e1e1e;
-      color: #d4d4d4;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-size: 12px;
-      max-height: 300px;
-      overflow-y: auto;
-      font-family: 'Consolas', 'Monaco', monospace;
-    `;
     
     return this.logContainer;
   }
