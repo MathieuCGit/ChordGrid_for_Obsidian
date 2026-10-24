@@ -980,8 +980,9 @@ var _ChordGridParser = class _ChordGridParser {
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   toBarlineType(barline) {
-    if (barline === "|" /* Single */ || barline === "||" /* Double */ || barline === "||:" /* RepeatStart */ || barline === ":||" /* RepeatEnd */) {
-      return barline;
+    const barlineType = BARLINE_TYPES[barline];
+    if (barlineType !== void 0 && Object.prototype.hasOwnProperty.call(BARLINE_TYPES, barline)) {
+      return barlineType;
     }
     throw new Error(`Unsupported barline: ${barline}`);
   }
@@ -1539,6 +1540,12 @@ var BeamAndTieAnalyzer = class {
     };
   }
   // ...existing code...
+};
+var BARLINE_TYPES = {
+  ["|" /* Single */]: "|" /* Single */,
+  ["||" /* Double */]: "||" /* Double */,
+  ["||:" /* RepeatStart */]: "||:" /* RepeatStart */,
+  [":||" /* RepeatEnd */]: ":||" /* RepeatEnd */
 };
 
 // src/renderer/constants.ts

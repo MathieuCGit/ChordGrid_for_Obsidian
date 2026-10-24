@@ -1329,13 +1329,12 @@ export class ChordGridParser {
    * @returns TimeSignature object with numerator, denominator, and groupingMode
    */
   private toBarlineType(barline: string): BarlineType {
+    const barlineType = BARLINE_TYPES[barline];
     if (
-      barline === BarlineType.Single ||
-      barline === BarlineType.Double ||
-      barline === BarlineType.RepeatStart ||
-      barline === BarlineType.RepeatEnd
+      barlineType !== undefined &&
+      Object.prototype.hasOwnProperty.call(BARLINE_TYPES, barline)
     ) {
-      return barline;
+      return barlineType;
     }
 
     throw new Error(`Unsupported barline: ${barline}`);
@@ -2055,3 +2054,10 @@ import {
   ParsedSegment as AnalyzerParsedSegment,
   ParsedNote as AnalyzerParsedNote,
 } from '../analyzer/analyzer-types';
+
+const BARLINE_TYPES: Record<string, BarlineType> = {
+  [BarlineType.Single]: BarlineType.Single,
+  [BarlineType.Double]: BarlineType.Double,
+  [BarlineType.RepeatStart]: BarlineType.RepeatStart,
+  [BarlineType.RepeatEnd]: BarlineType.RepeatEnd
+};
